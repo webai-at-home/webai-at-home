@@ -3,7 +3,7 @@ import type { ChatCompletionStreamUsage, OpenaiApiClient } from '../libs/openai_
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	StageHelperLlmLlama3_2_3bFull — runs Llama 3.2 3B through a local OpenAI-compatible server
+//	StageHelperLlmLlama3_2_1bFull — runs Llama 3.2 1B Instruct through a local OpenAI-compatible server
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -65,7 +65,7 @@ type TaskGenerationState = {
 	/** How many pieces have been read, which bounds how long one answer may be read for. */
 	pieceCount: number;
 	/**
-	 * Whether {@link StageHelperLlmLlama3_2_3bFull.clearGeneration} has released this generation
+	 * Whether {@link StageHelperLlmLlama3_2_1bFull.clearGeneration} has released this generation
 	 * while the stage run still had it in hand.
 	 *
 	 * Read at the two points a run can learn its work is no longer wanted: after a read, because a
@@ -83,7 +83,7 @@ type TaskGenerationState = {
 };
 
 /**
- * Runs the complete Llama 3.2 3B model by forwarding the stage's prompt to a locally running
+ * Runs the complete Llama 3.2 1B Instruct model by forwarding the stage's prompt to a locally running
  * server that speaks the OpenAI-compatible Chat Completions API, such as LM Studio.
  *
  * The model is held complete on one device by that server, which also loads it, quantizes it,
@@ -104,12 +104,12 @@ type TaskGenerationState = {
  * the local server already holds it, so there is no state shared across tasks beyond the answers
  * currently being read.
  */
-export class StageHelperLlmLlama3_2_3bFull {
+export class StageHelperLlmLlama3_2_1bFull {
 	/**
 	 * The computation this worker implements, named the way a pipeline stage names its
 	 * computation.
 	 */
-	static readonly computation = 'llm_llama3_2_3b_full';
+	static readonly computation = 'llm_llama3_2_1b_full';
 
 	/**
 	 * Reports whether this helper implements a computation.
@@ -118,7 +118,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * @returns `true` when this helper can run it.
 	 */
 	static implementsComputation(computation: string): boolean {
-		return computation === StageHelperLlmLlama3_2_3bFull.computation;
+		return computation === StageHelperLlmLlama3_2_1bFull.computation;
 	}
 
 	/**
@@ -137,7 +137,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * offers a stage that downloads a model.
 	 *
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
-	 * @param modelId The model this worker was told to serve, such as `llama-3.2-3b-instruct`.
+	 * @param modelId The model this worker was told to serve, such as `llama-3.2-1b-instruct`.
 	 * @returns Whether the stage can be run, and why not when it cannot.
 	 */
 	static async readiness(openaiApiClient: OpenaiApiClient, modelId: string): Promise<LocalModelReadiness> {
@@ -192,14 +192,14 @@ export class StageHelperLlmLlama3_2_3bFull {
 	): Promise<LlmStagePayload> {
 		const wantsPieces = generationSettings?.isStreaming === true;
 		const state = payload.isContinuation === true
-			? StageHelperLlmLlama3_2_3bFull.heldGeneration(taskId, stageAssignmentId)
-			: StageHelperLlmLlama3_2_3bFull.newGeneration(taskId, stageAssignmentId);
+			? StageHelperLlmLlama3_2_1bFull.heldGeneration(taskId, stageAssignmentId)
+			: StageHelperLlmLlama3_2_1bFull.newGeneration(taskId, stageAssignmentId);
 		// A run that returns a piece leaves the answer open behind it, so it is the one kind of
 		// run that must not release what it was reading. Every other way out of this method — the
 		// finished answer, and every failure — releases it.
 		let leavesAnswerOpen = false;
 		try {
-			const reader = state.reader ?? await StageHelperLlmLlama3_2_3bFull.startGeneration(state, payload.conversation ?? payload.text ?? '', openaiApiClient, modelId, generationSettings);
+			const reader = state.reader ?? await StageHelperLlmLlama3_2_1bFull.startGeneration(state, payload.conversation ?? payload.text ?? '', openaiApiClient, modelId, generationSettings);
 			while (state.pieceCount < MAXIMUM_ANSWER_PIECES) {
 				const piece = await reader.read();
 				if (state.isReleased === true) {
@@ -211,20 +211,20 @@ export class StageHelperLlmLlama3_2_3bFull {
 				state.text += piece.value;
 				state.unreportedText += piece.value;
 				state.pieceCount += 1;
-				StageHelperLlmLlama3_2_3bFull.refuseIfReplaced(state, stageAssignmentId);
+				StageHelperLlmLlama3_2_1bFull.refuseIfReplaced(state, stageAssignmentId);
 				if (wantsPieces === true) {
 					leavesAnswerOpen = true;
 					const reported = state.unreportedText;
 					state.unreportedText = '';
-					StageHelperLlmLlama3_2_3bFull.waitForTheRunAfterThis(taskId, state);
+					StageHelperLlmLlama3_2_1bFull.waitForTheRunAfterThis(taskId, state);
 					return StagePayloadFactory.llmPartialText(reported);
 				}
 			}
-			StageHelperLlmLlama3_2_3bFull.refuseIfReplaced(state, stageAssignmentId);
-			return StagePayloadFactory.llmDone(state.text, undefined, StageHelperLlmLlama3_2_3bFull.usageOf(state.usage));
+			StageHelperLlmLlama3_2_1bFull.refuseIfReplaced(state, stageAssignmentId);
+			return StagePayloadFactory.llmDone(state.text, undefined, StageHelperLlmLlama3_2_1bFull.usageOf(state.usage));
 		} finally {
 			if (leavesAnswerOpen === false) {
-				StageHelperLlmLlama3_2_3bFull.clearGeneration(taskId, stageAssignmentId);
+				StageHelperLlmLlama3_2_1bFull.clearGeneration(taskId, stageAssignmentId);
 			}
 		}
 	}
@@ -237,9 +237,9 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * to carry an open answer on while there is no connection to assign one.
 	 */
 	static clearEveryGeneration(): void {
-		for (const [taskId, state] of StageHelperLlmLlama3_2_3bFull.stateByTaskId) {
-			StageHelperLlmLlama3_2_3bFull.stateByTaskId.delete(taskId);
-			StageHelperLlmLlama3_2_3bFull.release(state);
+		for (const [taskId, state] of StageHelperLlmLlama3_2_1bFull.stateByTaskId) {
+			StageHelperLlmLlama3_2_1bFull.stateByTaskId.delete(taskId);
+			StageHelperLlmLlama3_2_1bFull.release(state);
 		}
 	}
 
@@ -251,21 +251,21 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * @param stageAssignmentId The assignment asking to release it.
 	 */
 	static clearGeneration(taskId: string, stageAssignmentId: string): void {
-		const state = StageHelperLlmLlama3_2_3bFull.stateByTaskId.get(taskId);
+		const state = StageHelperLlmLlama3_2_1bFull.stateByTaskId.get(taskId);
 		if (state === undefined || state.owningStageAssignmentId !== stageAssignmentId) {
 			return;
 		}
-		StageHelperLlmLlama3_2_3bFull.stateByTaskId.delete(taskId);
-		StageHelperLlmLlama3_2_3bFull.release(state);
+		StageHelperLlmLlama3_2_1bFull.stateByTaskId.delete(taskId);
+		StageHelperLlmLlama3_2_1bFull.release(state);
 	}
 
 	/** Creates and stores fresh generation state for a task's first round. */
 	private static newGeneration(taskId: string, stageAssignmentId: string): TaskGenerationState {
 		// A task asks for its answer once, so anything still held for this task is left over from
 		// an attempt that was given up on without being cancelled.
-		const abandoned = StageHelperLlmLlama3_2_3bFull.stateByTaskId.get(taskId);
+		const abandoned = StageHelperLlmLlama3_2_1bFull.stateByTaskId.get(taskId);
 		if (abandoned !== undefined) {
-			StageHelperLlmLlama3_2_3bFull.release(abandoned);
+			StageHelperLlmLlama3_2_1bFull.release(abandoned);
 		}
 		const state: TaskGenerationState = {
 			abortController: undefined,
@@ -278,7 +278,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 			isReleased: false,
 			usage: undefined,
 		};
-		StageHelperLlmLlama3_2_3bFull.stateByTaskId.set(taskId, state);
+		StageHelperLlmLlama3_2_1bFull.stateByTaskId.set(taskId, state);
 		return state;
 	}
 
@@ -292,7 +292,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * @throws If this worker holds no answer for the task.
 	 */
 	private static heldGeneration(taskId: string, stageAssignmentId: string): TaskGenerationState {
-		const state = StageHelperLlmLlama3_2_3bFull.stateByTaskId.get(taskId);
+		const state = StageHelperLlmLlama3_2_1bFull.stateByTaskId.get(taskId);
 		if (state === undefined) {
 			throw new Error('This stage was asked to carry on an answer, but this worker is not holding one for that task.');
 		}
@@ -329,11 +329,11 @@ export class StageHelperLlmLlama3_2_3bFull {
 			clearTimeout(state.idleTimer);
 		}
 		const timer = setTimeout(() => {
-			if (StageHelperLlmLlama3_2_3bFull.stateByTaskId.get(taskId) !== state) {
+			if (StageHelperLlmLlama3_2_1bFull.stateByTaskId.get(taskId) !== state) {
 				return;
 			}
-			StageHelperLlmLlama3_2_3bFull.stateByTaskId.delete(taskId);
-			StageHelperLlmLlama3_2_3bFull.release(state);
+			StageHelperLlmLlama3_2_1bFull.stateByTaskId.delete(taskId);
+			StageHelperLlmLlama3_2_1bFull.release(state);
 		}, ANSWER_IDLE_TIMEOUT_MS);
 		// A worker with an answer held open must stay alive to hand it to the run that carries it
 		// on, but that is what the open gateway connection already guarantees; this timer must not
@@ -384,7 +384,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 		modelId: string,
 		generationSettings: GenerationSettings | undefined,
 	): Promise<ReadableStreamDefaultReader<string>> {
-		if (StageHelperLlmLlama3_2_3bFull.isEmpty(promptOrConversation)) {
+		if (StageHelperLlmLlama3_2_1bFull.isEmpty(promptOrConversation)) {
 			throw new Error('A prompt is needed to start an answer.');
 		}
 		const abortController = new AbortController();
@@ -445,7 +445,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 		if (usage?.completionTokenCount !== undefined) {
 			result.completionTokenCount = usage.completionTokenCount;
 		}
-		const stopReason = StageHelperLlmLlama3_2_3bFull.stopReasonOf(usage?.finishReason);
+		const stopReason = StageHelperLlmLlama3_2_1bFull.stopReasonOf(usage?.finishReason);
 		if (stopReason !== undefined) {
 			result.stopReason = stopReason;
 		}

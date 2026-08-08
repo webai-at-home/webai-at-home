@@ -5,20 +5,22 @@ import { RealTestHelper } from './real_test_helper.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Real llm_llama3_2_3b_full test — the OpenAI-compatible server against a real native worker
+//	Real llm_llama3_2_1b_full test — the OpenAI-compatible server against a real native worker
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-// Run with: npm run test:real:llm_llama3_2_3b_full --workspace @webai/consumer-openai
+// Run with: npm run test:real:llm_llama3_2_1b_full_native_worker --workspace @webai/consumer-openai
 //
 // Unlike tests/index.test.ts, this test is not part of the default `npm run test --workspaces`. It builds the
 // protocol and consumer CLI packages, starts the central gateway, this package's own OpenAI-compatible server,
 // and one worker process from @webai/worker-openai, then submits a prompt through the `openai` package and
 // checks the answer mentions the expected capital.
 //
-// This is the one real test with no browser in it, and so no headed variant either: `llm_llama3_2_3b_full` is
-// carried out by a Node.js command line process that forwards the prompt to a language-model server running on
-// the same device, rather than by a worker browser tab. There is no debug page to open and nothing to watch.
+// `stage_llm_llama3_2_1b_full` can be fulfilled by either of two worker types: a worker browser tab that
+// downloads and runs the model itself, exercised by real_llm_llama3_2_1b_full.test.ts, or, as here, a Node.js
+// command line process from @webai/worker-openai that forwards the prompt to a language-model server already
+// running on the same device. This is the one real test of that second path, with no browser in it, and so no
+// headed variant either. There is no debug page to open and nothing to watch.
 //
 // It needs a server speaking the OpenAI-compatible API running locally with the model already downloaded. By
 // default that is LM Studio, whose local server is started from the LM Studio application or with:
@@ -40,7 +42,7 @@ import { RealTestHelper } from './real_test_helper.js';
 
 /** The local server the worker forwards prompts to, and the model it asks that server for. */
 const localModelBaseUrl = process.env.WEBAI_LOCAL_MODEL_BASE_URL ?? 'http://localhost:1234/v1';
-const localModelId = process.env.WEBAI_LOCAL_MODEL ?? 'llama-3.2-3b-instruct';
+const localModelId = process.env.WEBAI_LOCAL_MODEL ?? 'llama-3.2-1b-instruct';
 
 const realTestHelper = new RealTestHelper({
 	expectedWorkerCount: 1,
@@ -106,7 +108,7 @@ NodeTest.test('answers with the capital of France in one stage assignment, throu
 		timeout: 300_000,
 	});
 	const completion = await client.chat.completions.create({
-		model: 'llm_llama3_2_3b_full',
+		model: 'llm_llama3_2_1b_full',
 		messages: [{
 			role: 'user',
 			content: 'What is the capital of France? Answer in one short sentence.',
@@ -126,7 +128,7 @@ NodeTest.test('streams the answer one piece at a time, through a real worker pro
 		timeout: 300_000,
 	});
 	const stream = await client.chat.completions.create({
-		model: 'llm_llama3_2_3b_full',
+		model: 'llm_llama3_2_1b_full',
 		messages: [{
 			role: 'user',
 			content: 'What is the capital of France?',
