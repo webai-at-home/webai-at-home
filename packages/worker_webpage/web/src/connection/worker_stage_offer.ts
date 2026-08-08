@@ -3,6 +3,7 @@ import { StageHelperDevFormula } from '../stages/stage_helper_dev_formula';
 import { StageHelperLlmQwen3_0_6bSharded } from '../stages/stage_helper_llm_qwen3_0_6b_sharded';
 import { StageHelperLlmGemmaNanoChromeFull } from '../stages/stage_helper_llm_gemma_nano_chrome_full';
 import { StageHelperLlmQwen3_5_0_8bFull } from '../stages/stage_helper_llm_qwen3_5_0_8b_full';
+import { StageHelperLlmLlama3_2_1bFull } from '../stages/stage_helper_llm_llama3_2_1b_full';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,17 +51,29 @@ export class WorkerStageOffer {
 	 * @param pipelines The pipeline specifications the gateway returned.
 	 * @param requestedStageNames The stages the page URL restricts this browser to, if any.
 	 * @returns The stage names to advertise, the language-model shard positions to preload, the
-	 * offered stages that need the language model built into the browser, and the offered stages
-	 * that need the complete Qwen3.5-0.8B model downloaded and held by this browser.
+	 * offered stages that need the language model built into the browser, the offered stages that
+	 * need the complete Qwen3.5-0.8B model downloaded and held by this browser, and the offered
+	 * stages that need the complete Llama 3.2 1B Instruct model downloaded and held by this
+	 * browser. The two full-model lists are kept apart, rather than combined into one, so that a
+	 * tab offering only one of the two downloaded full models checks the readiness of and
+	 * downloads only that one — combining them would have a tab offering only the Llama stage
+	 * check Qwen3.5-0.8B's WebGPU and storage requirements and download Qwen3.5-0.8B's weights.
 	 */
 	static offeredStages(
 		pipelines: { stages: { name: string; computation: string }[] }[],
 		requestedStageNames: readonly string[],
-	): { stageNames: string[]; llmShardIndexes: number[]; builtInModelStageNames: string[]; fullModelStageNames: string[] } {
+	): {
+		stageNames: string[];
+		llmShardIndexes: number[];
+		builtInModelStageNames: string[];
+		qwen3_5_0_8bFullModelStageNames: string[];
+		llama3_2_1bFullModelStageNames: string[];
+	} {
 		const stageNames: string[] = [];
 		const llmShardIndexes: number[] = [];
 		const builtInModelStageNames: string[] = [];
-		const fullModelStageNames: string[] = [];
+		const qwen3_5_0_8bFullModelStageNames: string[] = [];
+		const llama3_2_1bFullModelStageNames: string[] = [];
 		for (const pipeline of pipelines) {
 			for (const [stageIndex, stage] of pipeline.stages.entries()) {
 				if (WorkerStageOffer.implementsComputation(stage.computation) === false) {
@@ -86,13 +99,19 @@ export class WorkerStageOffer {
 				}
 				if (
 					StageHelperLlmQwen3_5_0_8bFull.implementsComputation(stage.computation)
-					&& fullModelStageNames.includes(stage.name) === false
+					&& qwen3_5_0_8bFullModelStageNames.includes(stage.name) === false
 				) {
-					fullModelStageNames.push(stage.name);
+					qwen3_5_0_8bFullModelStageNames.push(stage.name);
+				}
+				if (
+					StageHelperLlmLlama3_2_1bFull.implementsComputation(stage.computation)
+					&& llama3_2_1bFullModelStageNames.includes(stage.name) === false
+				) {
+					llama3_2_1bFullModelStageNames.push(stage.name);
 				}
 			}
 		}
-		return { stageNames, llmShardIndexes, builtInModelStageNames, fullModelStageNames };
+		return { stageNames, llmShardIndexes, builtInModelStageNames, qwen3_5_0_8bFullModelStageNames, llama3_2_1bFullModelStageNames };
 	}
 
 	/**
@@ -107,6 +126,7 @@ export class WorkerStageOffer {
 		return StageHelperDevFormula.implementsComputation(computation)
 			|| StageHelperLlmQwen3_0_6bSharded.implementsComputation(computation)
 			|| StageHelperLlmGemmaNanoChromeFull.implementsComputation(computation)
-			|| StageHelperLlmQwen3_5_0_8bFull.implementsComputation(computation);
+			|| StageHelperLlmQwen3_5_0_8bFull.implementsComputation(computation)
+			|| StageHelperLlmLlama3_2_1bFull.implementsComputation(computation);
 	}
 }

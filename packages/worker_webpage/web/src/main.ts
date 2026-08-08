@@ -5,6 +5,7 @@ import { StageHelperDevFormula } from './stages/stage_helper_dev_formula';
 import { StageHelperLlmQwen3_0_6bSharded } from './stages/stage_helper_llm_qwen3_0_6b_sharded';
 import { StageHelperLlmGemmaNanoChromeFull } from './stages/stage_helper_llm_gemma_nano_chrome_full';
 import { StageHelperLlmQwen3_5_0_8bFull } from './stages/stage_helper_llm_qwen3_5_0_8b_full';
+import { StageHelperLlmLlama3_2_1bFull } from './stages/stage_helper_llm_llama3_2_1b_full';
 import { GatewayConfig } from './connection/gateway_config';
 import { GatewayLink } from './connection/gateway_link';
 import { LeaseHeartbeat } from './connection/lease_heartbeat';
@@ -75,7 +76,13 @@ type GatewayMessage = {
 };
 
 /** The stages this browser could offer, as the loaded pipelines describe them. */
-type OfferedStages = { stageNames: string[]; llmShardIndexes: number[]; builtInModelStageNames: string[]; fullModelStageNames: string[] };
+type OfferedStages = {
+	stageNames: string[];
+	llmShardIndexes: number[];
+	builtInModelStageNames: string[];
+	qwen3_5_0_8bFullModelStageNames: string[];
+	llama3_2_1bFullModelStageNames: string[];
+};
 
 /** How often the quiet tone's own state is checked for a change worth reflecting in the page. */
 const AUDIO_STATE_POLL_INTERVAL_MS = 2000;
@@ -398,6 +405,7 @@ export class WorkerPage {
 			// again.
 			StageHelperLlmGemmaNanoChromeFull.clearEveryGeneration();
 			StageHelperLlmQwen3_5_0_8bFull.clearEveryGeneration();
+			StageHelperLlmLlama3_2_1bFull.clearEveryGeneration();
 			this.isRegistered = false;
 			// The account belongs to the connection that proved it, so the next connection proves it
 			// again. The key pair itself stays in this browser's storage and is the same account.
@@ -601,6 +609,7 @@ export class WorkerPage {
 			if (message.stageAssignmentId !== undefined) {
 				StageHelperLlmGemmaNanoChromeFull.clearGeneration(message.taskId, message.stageAssignmentId);
 				StageHelperLlmQwen3_5_0_8bFull.clearGeneration(message.taskId, message.stageAssignmentId);
+				StageHelperLlmLlama3_2_1bFull.clearGeneration(message.taskId, message.stageAssignmentId);
 			}
 			return;
 		}
@@ -732,6 +741,14 @@ export class WorkerPage {
 					message.generationSettings,
 				);
 			}
+			if (StageHelperLlmLlama3_2_1bFull.implementsComputation(computation)) {
+				return StageHelperLlmLlama3_2_1bFull.compute(
+					taskId,
+					stageAssignmentId,
+					value as Exclude<StagePayload, number>,
+					message.generationSettings,
+				);
+			}
 			return Promise.resolve(StageHelperDevFormula.compute(computation, value as number));
 		};
 		runComputation()
@@ -764,6 +781,7 @@ export class WorkerPage {
 				StageHelperLlmQwen3_0_6bSharded.clearTask(taskId);
 				StageHelperLlmGemmaNanoChromeFull.clearGeneration(taskId, stageAssignmentId);
 				StageHelperLlmQwen3_5_0_8bFull.clearGeneration(taskId, stageAssignmentId);
+				StageHelperLlmLlama3_2_1bFull.clearGeneration(taskId, stageAssignmentId);
 				const failedMessage: ClientMessage = {
 					type: 'stage.failed',
 					taskId,
@@ -796,14 +814,16 @@ export class WorkerPage {
 	 * Gets this browser ready to run the stages it could offer, and reports which of them it
 	 * can actually offer.
 	 *
-	 * Three stages need something to be in place before work arrives. A language-model shard
+	 * Four stages need something to be in place before work arrives. A language-model shard
 	 * stage needs its shard downloaded, which is done here so that a shard is never downloaded
 	 * while a task is waiting for it. A stage that runs the language model built into the
 	 * browser needs that model to be ready, and this browser drops the stage rather than
 	 * advertising work it would fail, because the browser may have no built-in model at all or
-	 * may not have downloaded it yet. A stage that runs the complete Qwen3.5-0.8B model needs a
-	 * WebGPU adapter with 16-bit float support and enough free storage, checked the same way and
-	 * for the same reason, and then needs the model itself downloaded and loaded.
+	 * may not have downloaded it yet. A stage that runs the complete Qwen3.5-0.8B model, and a
+	 * stage that runs the complete Llama 3.2 1B Instruct model, each need a WebGPU adapter with
+	 * 16-bit float support and enough free storage, checked the same way and for the same reason,
+	 * and then need their own model downloaded and loaded — kept apart from one another so that a
+	 * tab offering only one of the two checks the requirements of, and downloads, only that one.
 	 *
 	 * @param offered The stages this browser could offer, from the loaded pipelines.
 	 * @returns The stage names this browser can offer, in the order they were found.
@@ -834,12 +854,12 @@ export class WorkerPage {
 		await StageHelperLlmQwen3_0_6bSharded.preload(offered.llmShardIndexes, (phase) => {
 			this.statusEl.textContent = phase === 'downloading' ? 'Downloading model files' : 'Loading model in GPU';
 		});
-		if (offered.fullModelStageNames.length > 0) {
+		if (offered.qwen3_5_0_8bFullModelStageNames.length > 0) {
 			this.statusEl.textContent = 'Checking Qwen3.5-0.8B requirements';
 			this.statusEl.className = 'badge text-bg-warning';
 			const readiness = await StageHelperLlmQwen3_5_0_8bFull.readiness();
 			if (readiness.status !== 'ready') {
-				stageNames = stageNames.filter((stageName) => offered.fullModelStageNames.includes(stageName) === false);
+				stageNames = stageNames.filter((stageName) => offered.qwen3_5_0_8bFullModelStageNames.includes(stageName) === false);
 				this.eventLog.add({
 					direction: 'local',
 					type: 'worker.full_model',
@@ -848,6 +868,24 @@ export class WorkerPage {
 				});
 			} else {
 				await StageHelperLlmQwen3_5_0_8bFull.preload((message) => {
+					this.statusEl.textContent = message;
+				});
+			}
+		}
+		if (offered.llama3_2_1bFullModelStageNames.length > 0) {
+			this.statusEl.textContent = 'Checking Llama 3.2 1B Instruct requirements';
+			this.statusEl.className = 'badge text-bg-warning';
+			const readiness = await StageHelperLlmLlama3_2_1bFull.readiness();
+			if (readiness.status !== 'ready') {
+				stageNames = stageNames.filter((stageName) => offered.llama3_2_1bFullModelStageNames.includes(stageName) === false);
+				this.eventLog.add({
+					direction: 'local',
+					type: 'worker.full_model',
+					timestamp: new Date().toISOString(),
+					message: readiness.message,
+				});
+			} else {
+				await StageHelperLlmLlama3_2_1bFull.preload((message) => {
 					this.statusEl.textContent = message;
 				});
 			}
