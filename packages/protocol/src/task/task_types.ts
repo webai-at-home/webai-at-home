@@ -20,7 +20,6 @@ export const TaskType = z.enum([
 	'task_type_llm_qwen3_0_6b_sharded',
 	'task_type_llm_gemma_nano_chrome_full',
 	'task_type_llm_qwen3_5_0_8b_full',
-	'task_type_llm_llama3_2_3b_full',
 	'task_type_llm_llama3_2_1b_full',
 ]);
 /** The kinds of work a consumer may submit. */
@@ -140,7 +139,6 @@ export const TaskInput = z.discriminatedUnion('taskType', [
 	z.object({ taskType: z.literal('task_type_llm_qwen3_0_6b_sharded'), input: z.string(), generationSettings: GenerationSettingsSchema.optional() }),
 	z.object({ taskType: z.literal('task_type_llm_gemma_nano_chrome_full'), input: z.string(), generationSettings: GenerationSettingsSchema.optional() }),
 	z.object({ taskType: z.literal('task_type_llm_qwen3_5_0_8b_full'), input: LlmTaskValueSchema, generationSettings: GenerationSettingsSchema.optional() }),
-	z.object({ taskType: z.literal('task_type_llm_llama3_2_3b_full'), input: LlmTaskValueSchema, generationSettings: GenerationSettingsSchema.optional() }),
 	z.object({ taskType: z.literal('task_type_llm_llama3_2_1b_full'), input: LlmTaskValueSchema, generationSettings: GenerationSettingsSchema.optional() }),
 ]);
 /** The work submitted with a task: its kind, the value that kind carries, and how to generate it. */

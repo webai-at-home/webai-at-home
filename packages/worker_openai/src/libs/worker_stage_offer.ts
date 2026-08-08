@@ -1,4 +1,4 @@
-import { StageHelperLlmLlama3_2_3bFull } from '../stages/stage_helper_llm_llama3_2_3b_full.js';
+import { StageHelperLlmLlama3_2_1bFull } from '../stages/stage_helper_llm_llama3_2_1b_full.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -10,9 +10,9 @@ import { StageHelperLlmLlama3_2_3bFull } from '../stages/stage_helper_llm_llama3
 export type OfferedPipeline = {
 	/** The stages of the pipeline, in the order they run. */
 	stages: {
-		/** The stage's own name, such as `stage_llm_llama3_2_3b_full`. */
+		/** The stage's own name, such as `stage_llm_llama3_2_1b_full`. */
 		name: string;
-		/** The computation the stage needs a worker to run, such as `llm_llama3_2_3b_full`. */
+		/** The computation the stage needs a worker to run, such as `llm_llama3_2_1b_full`. */
 		computation: string;
 	}[];
 };
@@ -62,7 +62,7 @@ export class WorkerStageOffer {
 					stageNames.push(stage.name);
 				}
 				if (
-					StageHelperLlmLlama3_2_3bFull.implementsComputation(stage.computation)
+					StageHelperLlmLlama3_2_1bFull.implementsComputation(stage.computation)
 					&& localModelStageNames.includes(stage.name) === false
 				) {
 					localModelStageNames.push(stage.name);
@@ -81,6 +81,6 @@ export class WorkerStageOffer {
 	 * @returns `true` when one of this worker's helpers implements it.
 	 */
 	private static implementsComputation(computation: string): boolean {
-		return StageHelperLlmLlama3_2_3bFull.implementsComputation(computation);
+		return StageHelperLlmLlama3_2_1bFull.implementsComputation(computation);
 	}
 }

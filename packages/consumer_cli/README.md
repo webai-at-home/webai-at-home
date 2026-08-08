@@ -53,7 +53,7 @@ npm run dev --workspace @webai/consumer-cli -- submit 5 --url ws://localhost:900
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-t, --task_type <type>` | `dev_formula` | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, or `llm_qwen3_5_0_8b_full`. |
+| `-t, --task_type <type>` | `dev_formula` | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
 | `-n, --consumer_name <name>` | `consumer` | Name registered with the gateway. |
 | `-s, --stream` | off | Ask a language-model task to return answer pieces while it runs. |
 
@@ -63,6 +63,7 @@ Use `-t/--task_type` to choose the task type:
 - `llm_qwen3_0_6b_sharded` takes free text, and is run by three worker browser tabs, each holding one shard of the Qwen3-0.6B model.
 - `llm_gemma_nano_chrome_full` takes free text, and is run by one worker browser tab using the Gemma Nano model built into Chrome.
 - `llm_qwen3_5_0_8b_full` takes free text, and is run by one worker browser tab that downloads and holds the complete Qwen3.5-0.8B model.
+- `llm_llama3_2_1b_full` takes free text or a whole conversation, and is run either by one worker browser tab that downloads and holds the complete Llama 3.2 1B Instruct model, or by a native worker that forwards the prompt to a local server already holding it.
 
 ```sh
 npm run dev --workspace @webai/consumer-cli -- submit "hello there" --task_type llm_qwen3_0_6b_sharded
@@ -122,7 +123,7 @@ A pipeline whose every stage keeps state on one worker between rounds — such a
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--task_type <type>` | — | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_3b_full`. |
+| `--task_type <type>` | — | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
 | `--json` | off | Print the estimate as JSON instead of a sentence. |
 | `--timeout <ms>` | `10000` | How long to wait for the central gateway to answer. |
 

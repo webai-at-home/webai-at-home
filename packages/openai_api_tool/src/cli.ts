@@ -22,10 +22,10 @@ import { SharedOptions } from './shared_options.js';
 //
 //	Run with:
 //	  ./src/cli.ts completion --streamed --model llm_qwen3_0_6b_sharded
-//	  ./src/cli.ts history --model llm_llama3_2_3b_full
+//	  ./src/cli.ts history --model llm_llama3_2_1b_full
 //	  ./src/cli.ts benchmark --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct
 //	  ./src/cli.ts usage --model all
-//	  ./src/cli.ts generation_controls --model llm_llama3_2_3b_full --nostream
+//	  ./src/cli.ts generation_controls --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct --nostream
 //	or, from the workspace:
 //	  npm run completion --workspace @webai/openai-api-tool -- --model all
 //

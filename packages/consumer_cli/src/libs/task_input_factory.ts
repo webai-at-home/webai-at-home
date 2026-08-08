@@ -10,7 +10,7 @@ import type { ConversationInput, GenerationSettings, TaskInput } from '@webai/pr
  * The task types a consumer may submit, each named as its task type without the leading
  * `task_type_`. This is the list the `-t/--task_type` command line option accepts.
  */
-export const taskTypeNames = ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_3b_full', 'llm_llama3_2_1b_full'] as const;
+export const taskTypeNames = ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full'] as const;
 
 /** One of the task types a consumer may submit. */
 export type TaskTypeName = typeof taskTypeNames[number];
@@ -20,16 +20,17 @@ export type TaskTypeName = typeof taskTypeNames[number];
  *
  * These are exactly the task types whose stage helper can hand a message list to its model: the
  * complete Qwen3.5-0.8B model and the complete Llama 3.2 1B Instruct model, whose workers each
- * apply the model's chat template through `@huggingface/transformers`, and the complete Llama
- * 3.2 3B model, whose worker forwards the messages to a local server that speaks the
- * OpenAI-compatible API.
+ * apply the model's chat template through `@huggingface/transformers`. Llama 3.2 1B Instruct's
+ * task type can also be run by a worker that forwards the messages to a local server speaking the
+ * OpenAI-compatible API instead of downloading and running the model itself, but that is a choice
+ * of which worker is assigned the task, not something a consumer names here.
  *
  * The other two language-model task types take a prompt and nothing else. The Chrome built-in
  * model is given one piece of text by the browser's own prompt interface, and the sharded Qwen3
  * worker builds its chat template as a string by hand. Both would have to have a conversation
  * flattened for them, which is the thing this widening exists to stop, so neither is offered it.
  */
-export const taskTypeNamesAcceptingConversation = ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_3b_full', 'llm_llama3_2_1b_full'] as const;
+export const taskTypeNamesAcceptingConversation = ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full'] as const;
 
 /** One of the task types that accept a whole conversation. */
 export type TaskTypeNameAcceptingConversation = typeof taskTypeNamesAcceptingConversation[number];
@@ -97,7 +98,6 @@ export class TaskInputFactory {
 		if (type === 'llm_qwen3_0_6b_sharded') return { taskType: 'task_type_llm_qwen3_0_6b_sharded', input: TaskInputFactory.parseLlmInput(TaskInputFactory.requireString(type, value)), ...settings };
 		if (type === 'llm_gemma_nano_chrome_full') return { taskType: 'task_type_llm_gemma_nano_chrome_full', input: TaskInputFactory.parseLlmInput(TaskInputFactory.requireString(type, value)), ...settings };
 		if (type === 'llm_qwen3_5_0_8b_full') return { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: TaskInputFactory.parseLlmOrConversationInput(value), ...settings };
-		if (type === 'llm_llama3_2_3b_full') return { taskType: 'task_type_llm_llama3_2_3b_full', input: TaskInputFactory.parseLlmOrConversationInput(value), ...settings };
 		return { taskType: 'task_type_llm_llama3_2_1b_full', input: TaskInputFactory.parseLlmOrConversationInput(value), ...settings };
 	}
 

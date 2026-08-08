@@ -68,7 +68,7 @@ export class Cli {
 			.option('-a, --auth-token <token>', 'bearer token for the central gateway (falls back to the GATEWAY_AUTH_TOKEN environment variable, then to a development default)')
 			.option('-n, --worker_name <name>', 'worker name, which the gateway shows in its device list', 'openai-worker')
 			.option('-b, --base-url <url>', "base URL of the local server's OpenAI-compatible API", 'http://localhost:1234/v1')
-			.option('-m, --model <model>', 'the model the local server is asked for', 'llama-3.2-3b-instruct')
+			.option('-m, --model <model>', 'the model the local server is asked for', 'llama-3.2-1b-instruct')
 			.option('-s, --stage-names <name...>', 'restrict this worker to these stages, instead of every stage it can run')
 			.option('-c, --config_dir <path>', 'the directory holding this worker\'s own account key pair, as default.account_key.json, so the stages it completes earn credits for that account. A directory with no key pair in it means no account', defaultConfigDir);
 

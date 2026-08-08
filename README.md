@@ -41,7 +41,7 @@ The first implementation uses ONNX Runtime Web, with Web Neural Network API or W
 
 ## Current state
 
-This repository contains early experiments and a minimal distributed pipeline. The current gateway prototype runs four task types: a development formula, the Qwen3-0.6B model split into three shards across three worker browser tabs, the Gemma Nano model built into Chrome running in one worker browser tab, and the complete Qwen3.5-0.8B model downloaded from Hugging Face and run in one worker browser tab. The ONNX experiments test running model work directly in browsers, including a small Iris classifier and larger model experiments.
+This repository contains early experiments and a minimal distributed pipeline. The current gateway prototype runs five task types: a development formula, the Qwen3-0.6B model split into three shards across three worker browser tabs, the Gemma Nano model built into Chrome running in one worker browser tab, the complete Qwen3.5-0.8B model downloaded from Hugging Face and run in one worker browser tab, and the complete Llama 3.2 1B Instruct model, downloaded from Hugging Face and run either the same way or by a native worker process that forwards the prompt to a local server already running the model. The ONNX experiments test running model work directly in browsers, including a small Iris classifier and larger model experiments.
 
 The central research questions are still open, especially result verification, browser tab throttling, volunteer and coordinator trust, and reliable model partitioning across very different devices.
 

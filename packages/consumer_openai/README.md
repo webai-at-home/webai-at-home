@@ -64,7 +64,7 @@ A model identifier is the cluster's task type name without the leading `task_typ
 | `llm_qwen3_0_6b_sharded` | The Qwen3-0.6B model split into three shards, one per worker browser tab. | Worker browser tabs offering all three shard stages, and the shard files generated first. |
 | `llm_gemma_nano_chrome_full` | The Gemma Nano language model built into the Chrome browser. | One worker browser tab in a recent Chrome whose own language model is ready. |
 | `llm_qwen3_5_0_8b_full` | The complete Qwen3.5-0.8B model, downloaded from Hugging Face and held by one worker browser tab. | One worker browser tab with WebGPU and 16-bit float shader support, and enough free storage for the roughly 600 MB download. |
-| `llm_llama3_2_3b_full` | The complete Llama 3.2 3B model, held and run by a server on the worker's own device that speaks the OpenAI-compatible API, such as LM Studio. | One worker process from `@webai/worker-openai`, and a local server that already has the model. No browser tab, and no download by this project. |
+| `llm_llama3_2_1b_full` | The complete Llama 3.2 1B Instruct model, held either by one worker browser tab that downloads it, or by a server on a native worker's own device that speaks the OpenAI-compatible API, such as LM Studio. | Either one worker browser tab with WebGPU and 16-bit float shader support and enough free storage for the roughly 1050 MB download, or one worker process from `@webai/worker-openai` and a local server that already has the model. |
 
 [`docs/tasks_and_stages.md`](../../docs/tasks_and_stages.md) describes each of these tasks in full, and [`docs/naming_scheme.md`](../../docs/naming_scheme.md) is the authoritative account of how the names are built.
 
@@ -76,9 +76,9 @@ The examples in [`examples/`](./examples) use the official `openai` package on n
 npm run example:chat_completion_dev_formula --workspace @webai/consumer-openai
 ```
 
-The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_3b_full`, `example:chat_completion_streamed_llm_llama3_2_3b_full`, and `example:chat_completion_history_llm_llama3_2_3b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `WEBAI_OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
+The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `WEBAI_OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
 
-The two `history` examples are the ones to run to see a real conversation reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_3b_full` are the only two models whose task type accepts a whole conversation rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
+The two `history` examples are the ones to run to see a real conversation reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole conversation rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
 
 The sweep that sends one prompt to every model in one run, and the one that checks a two-turn conversation across the models accepting a conversation, moved out of this package into [`@webai/openai-api-tool`](../openai_api_tool/), where they are the `text_completion` and `conversation_history` subcommands. The examples above remain the ones to read first: each is a short, single-purpose file explaining one model in one mode.
 
@@ -118,7 +118,7 @@ Rule 1: `usage` is present on a chat completion response only when the worker th
 | Model | Reports `usage` |
 | --- | --- |
 | `llm_qwen3_5_0_8b_full` | Always — an exact prompt count from the model's own chat template, and an exact completion count counted as it generates. |
-| `llm_llama3_2_3b_full` | Whenever the local OpenAI-compatible server reports it, which LM Studio does. |
+| `llm_llama3_2_1b_full` | Always when a worker browser tab runs it — an exact prompt count from the model's own chat template, and an exact completion count counted as it generates — and whenever the local OpenAI-compatible server reports it, which LM Studio does, when a native worker runs it instead. |
 | `llm_gemma_nano_chrome_full` | Never — this engine has no prompt/completion token count to report, only a cumulative context-window usage number in its own unit. |
 | `dev_formula`, `llm_qwen3_0_6b_sharded` | Never — neither task type carries a language model with token counts to report. |
 
@@ -127,7 +127,7 @@ Rule 2: `finish_reason` is always one of the OpenAI Chat Completions interface's
 A streamed answer has no response body to put `usage` in, so it is carried on an extra final chunk instead, sent only when the request asks for it with `stream_options: { include_usage: true }` — an existing field of the OpenAI Chat Completions interface. Every chunk before that one carries `usage: null` and one choice; the final chunk carries no choices at all and the `usage` object, and it is sent after the chunk that carried `finish_reason` and before the `data: [DONE]` line:
 
 ```sh
-curl -N http://localhost:8788/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"llm_llama3_2_3b_full","messages":[{"role":"user","content":"What is the capital of France?"}],"stream":true,"stream_options":{"include_usage":true}}'
+curl -N http://localhost:8788/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"llm_qwen3_5_0_8b_full","messages":[{"role":"user","content":"What is the capital of France?"}],"stream":true,"stream_options":{"include_usage":true}}'
 ```
 
 A caller that hangs up mid-answer is told nothing, because the connection it would have been told on is the one it closed. The cluster still learns the task was cancelled — that path already works, through this server cancelling the task — but a cancelled answer reports no usage to anybody.
@@ -136,20 +136,19 @@ A caller that hangs up mid-answer is told nothing, because the connection it wou
 
 These five fields of a request are read and carried to the cluster, for whichever models honour them. `max_completion_tokens` is a budget for the whole answer rather than for one stage run, and its older spelling `max_tokens` is accepted too; a request that sends both means the newer one. `stop` is accepted as either one piece of text or a list of up to four, and is applied where the tokens are produced rather than by this server dropping pieces of the answer as it forwards them, since a stop sequence can straddle two pieces.
 
-The four language-model task types sit on four engines with four different sets of controls they can act on, so which ones a request may ask for depends on the model it names:
+No language-model task type honours any of the five generation controls today. `llm_llama3_2_3b_full` was the only one that ever did, proved live against LM Studio 0.4.20 serving `llama-3.2-3b-instruct`, until [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154) retired that task type:
 
 | Model | Honours |
 | --- | --- |
-| `llm_llama3_2_3b_full` | All five. The local OpenAI-compatible server is native for every one of them, proved live against LM Studio 0.4.20 serving `llama-3.2-3b-instruct`. |
-| `llm_qwen3_5_0_8b_full`, `llm_gemma_nano_chrome_full`, `llm_qwen3_0_6b_sharded` | None yet. Two of the three do not sample at all today, so honouring a temperature on either means turning sampling on for the first time and changing the answer every existing caller already receives; that is milestone 3 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151). |
+| `llm_llama3_2_1b_full`, `llm_qwen3_5_0_8b_full`, `llm_gemma_nano_chrome_full`, `llm_qwen3_0_6b_sharded` | None yet. Some of the four do not sample at all today, so honouring a temperature on one of those means turning sampling on for the first time and changing the answer every existing caller already receives; that is milestone 3 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151). |
 | `dev_formula` | None — it answers with one number and generates no text. |
 
 **A control a model cannot honour is refused, not dropped.** Ignoring it would return an answer generated some other way and report nothing, which is a wrong answer with no error. The refusal is an HTTP 400 whose `code` is `unhonourable_generation_control` and whose `param` names the field at fault, and its message lists the controls that model does honour.
 
-A request that asks for this interface's own default is never refused, whatever model it names: `temperature: 1`, `top_p: 1`, an empty `stop` list, and a control sent as `null` all ask for nothing unusual, so a client that always sends `temperature: 1` works against every model as it always did.
+A request that asks for this interface's own default is never refused, whatever model it names: `temperature: 1`, `top_p: 1`, an empty `stop` list, and a control sent as `null` all ask for nothing unusual, so a client that always sends `temperature: 1` works against every model as it always did. Since no model honours anything else today, a request naming any other value for any of the five is refused, whatever model it names:
 
 ```sh
-curl http://localhost:8788/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"llm_llama3_2_3b_full","messages":[{"role":"user","content":"Write one short sentence about a cat."}],"temperature":0,"seed":42,"max_completion_tokens":20,"stop":["\nUser:"]}'
+curl http://localhost:8788/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"llm_llama3_2_1b_full","messages":[{"role":"user","content":"Write one short sentence about a cat."}],"temperature":0,"seed":42,"max_completion_tokens":20,"stop":["\nUser:"]}'
 ```
 
 ## `X-Webai-*` response headers — what has no OpenAI field

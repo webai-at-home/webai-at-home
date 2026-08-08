@@ -150,43 +150,28 @@ export const builtinPipelineSpecifications: PipelineSpecification[] = [
 		],
 	},
 	{
-		// Llama 3.2 3B is held complete on one device by a local server that speaks the
-		// OpenAI-compatible Chat Completions API, such as LM Studio, and the worker that
-		// runs this stage is a Node.js process that forwards the prompt to that server rather than
-		// a browser tab running the model itself
-		// (https://github.com/webai-at-home/webai-at-home/issues/100). The shape is otherwise the
-		// same as the Qwen3.5-0.8B pipeline above: the worker is asked for an answer once and it is
-		// read back in pieces or in one piece depending on what the consumer asked for, and the
-		// pipeline repeats until a stage result reports generation finished. An answer read in
-		// pieces stays open in the memory of the worker process producing it, so all rounds of one
-		// task must reach that same process, which is what prefersSameWorkerOnRetry protects when
-		// an attempt is retried. The lease is longer than the gateway default because the local
-		// server loads the model on the first request of a task; a run that outlasts even this
-		// lease is carried by the stage heartbeats the worker sends while a completion request is
-		// in flight.
-		pipelineId: 'llm_llama3_2_3b_full', version: 1, taskType: 'task_type_llm_llama3_2_3b_full', repeatsUntilDone: true,
-		stages: [
-			{ name: 'stage_llm_llama3_2_3b_full', computation: 'llm_llama3_2_3b_full', inputSchemaId: 'llm@1', outputSchemaId: 'llm@1', encoding: 'inline-json', leaseMs: 60_000, prefersSameWorkerOnRetry: true },
-		],
-	},
-	{
-		// Llama 3.2 1B Instruct is held complete on one device, downloaded and run by a worker
-		// browser tab, the same arrangement as the Qwen3.5-0.8B pipeline above and unlike the
-		// Llama 3.2 3B pipeline above it, which forwards to a local server instead
-		// (https://github.com/webai-at-home/webai-at-home/issues/154). The shape otherwise follows
-		// the Qwen3.5-0.8B pipeline exactly: the worker is asked for an answer once and it is read
-		// back in pieces or in one piece depending on what the consumer asked for, the pipeline
-		// repeats until a stage result reports generation finished, and prefersSameWorkerOnRetry
-		// keeps a retried attempt on the device already holding the downloaded model and the
-		// generation state. The lease matches the Qwen3.5-0.8B and Llama 3.2 3B pipelines above for
-		// the same reason: a device that has just downloaded and loaded the model needs time before
-		// its first result, and a run that outlasts even this lease is carried by the stage
-		// heartbeats the worker browser sends while it is downloading, loading, or generating. This
-		// is not sized from milestone 0's own de-risk gate measurement — that gate ran in a
-		// sandboxed browser environment whose WebGPU backend measured about 390 seconds to download
-		// and load the model and well under one token per second to generate, neither of which is
-		// representative of real worker hardware — so it is sized the same way the two pipelines
-		// above already are, and a true measurement on real hardware is still owed.
+		// Llama 3.2 1B Instruct is held complete on one device, following
+		// [`docs/naming_scheme.md`](../../../docs/naming_scheme.md)'s rule that "full" names an
+		// arrangement rather than which program holds the model
+		// (https://github.com/webai-at-home/webai-at-home/issues/154). This one stage can be
+		// fulfilled by either of two worker types: a worker browser tab that downloads and runs the
+		// model itself, or a native worker from @webai/worker-openai that forwards the prompt to a
+		// local server already holding the model — the gateway assigns the stage to whichever kind
+		// of worker offers it, and does not know or care which one a given assignment reaches. The
+		// shape otherwise follows the Qwen3.5-0.8B pipeline above: the worker is asked for an answer
+		// once and it is read back in pieces or in one piece depending on what the consumer asked
+		// for, the pipeline repeats until a stage result reports generation finished, and
+		// prefersSameWorkerOnRetry keeps a retried attempt on the device already holding the
+		// downloaded model or the open local-server request and the generation state. The lease
+		// matches the Qwen3.5-0.8B pipeline above for the same reason: a device that has just
+		// downloaded and loaded the model needs time before its first result, and a run that
+		// outlasts even this lease is carried by the stage heartbeats the worker sends while it is
+		// downloading, loading, or generating. This is not sized from milestone 0's own de-risk gate
+		// measurement — that gate ran in a sandboxed browser environment whose WebGPU backend
+		// measured about 390 seconds to download and load the model and well under one token per
+		// second to generate, neither of which is representative of real worker hardware — so it is
+		// sized the same way the pipeline above already is, and a true measurement on real hardware
+		// is still owed.
 		pipelineId: 'llm_llama3_2_1b_full', version: 1, taskType: 'task_type_llm_llama3_2_1b_full', repeatsUntilDone: true,
 		stages: [
 			{ name: 'stage_llm_llama3_2_1b_full', computation: 'llm_llama3_2_1b_full', inputSchemaId: 'llm@1', outputSchemaId: 'llm@1', encoding: 'inline-json', leaseMs: 60_000, prefersSameWorkerOnRetry: true },

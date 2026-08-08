@@ -58,12 +58,11 @@ Test('rejects task input that does not match its task type', () => {
 	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_dev_formula', input: '5' }).success, false);
 });
 
-Test('accepts a whole conversation only for the three task types whose worker can hand one to its chat template', () => {
+Test('accepts a whole conversation only for the two task types whose worker can hand one to its chat template', () => {
 	const conversation = { messages: [{ role: 'user', content: 'hello' }] };
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation });
-	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_llama3_2_3b_full', input: conversation }), { taskType: 'task_type_llm_llama3_2_3b_full', input: conversation });
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_llama3_2_1b_full', input: conversation }), { taskType: 'task_type_llm_llama3_2_1b_full', input: conversation });
-	// The same three task types still take one prompt too, exactly as before this existed.
+	// The same two task types still take one prompt too, exactly as before this existed.
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' });
 	// Every other task type refuses a conversation, rather than reading part of it or accepting a
 	// shape its worker cannot hand to anything.
@@ -187,7 +186,6 @@ Test('StagePayloadFactory answers every task type with a first stage value', () 
 	// instead, rather than having it flattened into `text`.
 	const conversation = { messages: [{ role: 'user' as const, content: 'hello' }] };
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation }), { conversation });
-	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_llama3_2_3b_full', input: conversation }), { conversation });
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_llama3_2_1b_full', input: conversation }), { conversation });
 });
 
@@ -204,12 +202,14 @@ Test('validates every inbound client message shape', () => {
 	// Protocol version 6 added the five generation controls beside `isStreaming`, each within the
 	// range the OpenAI Chat Completions interface states for it, so a value outside that range is
 	// refused at submission rather than sent to a worker that would have to decide what to do
-	// with it. See issue #151.
-	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { temperature: 0, topP: 0.9, maximumOutputTokenCount: 20, stopSequences: ['\nUser:'], randomSeed: 42 } } }).success, true);
-	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { temperature: 2.5 } } }).success, false);
-	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { topP: 0 } } }).success, false);
-	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { maximumOutputTokenCount: 0 } } }).success, false);
-	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { stopSequences: [] } } }).success, false);
+	// with it. See issue #151. This range check is a shape check `GenerationSettingsSchema` makes
+	// on every task type alike, so any task type exercises it; `task_type_llm_gemma_nano_chrome_full`
+	// is used here for the same reason it already is above, not because it honours any of the five.
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { temperature: 0, topP: 0.9, maximumOutputTokenCount: 20, stopSequences: ['\nUser:'], randomSeed: 42 } } }).success, true);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { temperature: 2.5 } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { topP: 0 } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { maximumOutputTokenCount: 0 } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { stopSequences: [] } } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { isStreaming: 'yes' } } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', input: { taskType: 'task_type_dev_formula', input: 5 } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'stage.result', taskId: 'task-1', stage: 'stage_dev_formula_multiply', value: 10 }).success, false);

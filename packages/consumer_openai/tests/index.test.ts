@@ -66,7 +66,7 @@ Test('carries a developer message as a system message, since no worker chat temp
 
 Test('reads the five generation controls, and ignores every other field of the request', () => {
 	const parsed = ChatCompletionRequestSchema.safeParse({
-		model: 'llm_llama3_2_3b_full',
+		model: 'llm_qwen3_5_0_8b_full',
 		messages: [{ role: 'user', content: 'hello' }],
 		temperature: 0.7,
 		top_p: 0.9,
@@ -78,7 +78,7 @@ Test('reads the five generation controls, and ignores every other field of the r
 	});
 	Assert.equal(parsed.success, true);
 	Assert.deepEqual(parsed.success === true ? parsed.data : undefined, {
-		model: 'llm_llama3_2_3b_full',
+		model: 'llm_qwen3_5_0_8b_full',
 		messages: [{ role: 'user', content: 'hello' }],
 		temperature: 0.7,
 		top_p: 0.9,
@@ -105,13 +105,13 @@ Test('reads whether the request asks for the answer to be streamed', () => {
 
 Test('refuses a generation control whose value is outside the range this interface states for it', () => {
 	const messages = [{ role: 'user', content: 'hello' }];
-	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, temperature: 2.5 }).success, false);
-	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, top_p: 1.5 }).success, false);
-	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, max_tokens: 0 }).success, false);
-	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, stop: ['a', 'b', 'c', 'd', 'e'] }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_qwen3_5_0_8b_full', messages, temperature: 2.5 }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_qwen3_5_0_8b_full', messages, top_p: 1.5 }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_qwen3_5_0_8b_full', messages, max_tokens: 0 }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_qwen3_5_0_8b_full', messages, stop: ['a', 'b', 'c', 'd', 'e'] }).success, false);
 	// A client holding no value for a control commonly sends the field set to `null` rather than
 	// leaving it out, and both mean the same thing.
-	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, temperature: null, top_p: null, max_tokens: null, stop: null, seed: null }).success, true);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_qwen3_5_0_8b_full', messages, temperature: null, top_p: null, max_tokens: null, stop: null, seed: null }).success, true);
 });
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -134,33 +134,14 @@ const generationSettingsOf = (body: Record<string, unknown>, taskTypeName: TaskT
 	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming);
 };
 
-Test('carries every generation control to a model that honours all five', () => {
-	const settings = generationSettingsOf({
-		model: 'llm_llama3_2_3b_full',
-		messages: [{ role: 'user', content: 'hello' }],
-		temperature: 0,
-		top_p: 0.9,
-		max_tokens: 20,
-		stop: '\nUser:',
-		seed: 42,
-	}, 'llm_llama3_2_3b_full', true);
-	// `stop` is allowed to be one piece of text rather than a list, and becomes a list of one.
-	Assert.deepEqual(settings, {
-		isStreaming: true,
-		temperature: 0,
-		topP: 0.9,
-		maximumOutputTokenCount: 20,
-		stopSequences: ['\nUser:'],
-		randomSeed: 42,
-	});
-});
-
-Test('prefers max_completion_tokens over its older spelling max_tokens', () => {
-	const both = generationSettingsOf({ model: 'llm_llama3_2_3b_full', messages: [{ role: 'user', content: 'hello' }], max_tokens: 20, max_completion_tokens: 30 }, 'llm_llama3_2_3b_full');
-	Assert.deepEqual(both, { maximumOutputTokenCount: 30 });
-	const older = generationSettingsOf({ model: 'llm_llama3_2_3b_full', messages: [{ role: 'user', content: 'hello' }], max_tokens: 20 }, 'llm_llama3_2_3b_full');
-	Assert.deepEqual(older, { maximumOutputTokenCount: 20 });
-});
+// `task_type_llm_llama3_2_3b_full` was, until issue #154 retired it, the only task type that
+// honoured any of the five generation controls, so it was what these two tests exercised
+// `GenerationSettingsBuilder.build`'s honouring branch against: carrying every control through
+// untranslated for a model that honours all five, `stop` normalised from one piece of text to a
+// list of one, and `max_completion_tokens` preferred over its older spelling `max_tokens` when a
+// request sends both. No task type honours any control today, so that branch has no live model
+// to test against; see [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151)
+// milestone 3, and reinstate these two once one does.
 
 Test('submits no settings block at all for a request that asked for nothing', () => {
 	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }] }, 'llm_qwen3_5_0_8b_full'), undefined);
@@ -191,8 +172,8 @@ const refusalOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName): O
 };
 
 Test('refuses a generation control the model named cannot honour, rather than dropping it', () => {
-	// Every control is refused by every model but `llm_llama3_2_3b_full`, which is the only one
-	// of the five language-model task types that honours any of them today. See issue #151.
+	// Every control is refused by every model: none of the language-model task types honours any
+	// of them today. See issue #151.
 	for (const [field, value] of [['temperature', 0], ['top_p', 0.9], ['max_tokens', 20], ['stop', ['\nUser:']], ['seed', 42]] as const) {
 		const refusal = refusalOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_qwen3_5_0_8b_full');
 		Assert.equal(refusal.status, 400);
@@ -214,12 +195,11 @@ Test('refuses a generation control the model named cannot honour, rather than dr
 ///////////////////////////////////////////////////////////////////////////////
 
 Test('offers one model for each task type the cluster runs', () => {
-	Assert.deepEqual(ModelCatalog.modelIds, ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_3b_full', 'llm_llama3_2_1b_full']);
+	Assert.deepEqual(ModelCatalog.modelIds, ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full']);
 	Assert.equal(ModelCatalog.taskTypeNameOf('dev_formula'), 'dev_formula');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_qwen3_0_6b_sharded'), 'llm_qwen3_0_6b_sharded');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_gemma_nano_chrome_full'), 'llm_gemma_nano_chrome_full');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_qwen3_5_0_8b_full'), 'llm_qwen3_5_0_8b_full');
-	Assert.equal(ModelCatalog.taskTypeNameOf('llm_llama3_2_3b_full'), 'llm_llama3_2_3b_full');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_llama3_2_1b_full'), 'llm_llama3_2_1b_full');
 	// The task type name itself is not a model identifier, and neither is a name nobody offers.
 	Assert.equal(ModelCatalog.taskTypeNameOf('task_type_dev_formula'), undefined);
@@ -229,7 +209,7 @@ Test('offers one model for each task type the cluster runs', () => {
 Test('lists the models in the shape an OpenAI client reads', () => {
 	const list = ModelCatalog.list(1_700_000_000);
 	Assert.equal(list.object, 'list');
-	Assert.equal(list.data.length, 6);
+	Assert.equal(list.data.length, 5);
 	Assert.deepEqual(list.data[0], { id: 'dev_formula', object: 'model', created: 1_700_000_000, owned_by: 'webai-at-home' });
 });
 
@@ -259,7 +239,7 @@ Test('names the field at fault and the failure kind in the body', () => {
 	Assert.equal(unknownModel.error.param, 'model');
 	Assert.equal(unknownModel.error.code, 'model_not_found');
 	// Every model on offer is named, so the caller can correct the request without asking.
-	Assert.match(unknownModel.error.message, /dev_formula, llm_qwen3_0_6b_sharded, llm_gemma_nano_chrome_full, llm_qwen3_5_0_8b_full, llm_llama3_2_3b_full, llm_llama3_2_1b_full/);
+	Assert.match(unknownModel.error.message, /dev_formula, llm_qwen3_0_6b_sharded, llm_gemma_nano_chrome_full, llm_qwen3_5_0_8b_full, llm_llama3_2_1b_full/);
 	// `param` and `code` are always present, holding null when they say nothing.
 	const rateLimited = OpenaiError.tooManyTasksInFlight(20).body;
 	Assert.equal(rateLimited.error.type, 'rate_limit_error');
@@ -853,7 +833,7 @@ Test('submits the real conversation for a model that accepts one, instead of a f
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
-				model: 'llm_llama3_2_3b_full',
+				model: 'llm_qwen3_5_0_8b_full',
 				messages: [
 					{ role: 'system', content: 'Answer in one short sentence.' },
 					{ role: 'user', content: 'What is the capital of France?' },
@@ -863,7 +843,7 @@ Test('submits the real conversation for a model that accepts one, instead of a f
 		await waitUntil(() => server.cluster.lastSentBody()['type'] === 'task.submit');
 		const submitted = server.cluster.lastSentBody();
 		Assert.deepEqual(submitted['input'], {
-			taskType: 'task_type_llm_llama3_2_3b_full',
+			taskType: 'task_type_llm_qwen3_5_0_8b_full',
 			input: {
 				messages: [
 					{ role: 'system', content: 'Answer in one short sentence.' },

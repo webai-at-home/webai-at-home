@@ -60,8 +60,8 @@ These configure example programs and tests rather than the cluster itself. None 
 | --- | --- | --- | --- |
 | `WEBAI_OPENAI_BASE_URL` | every example in `packages/consumer_openai/examples` | Base URL of the OpenAI-compatible server the example sends its request to | `http://localhost:8788/v1` |
 | `OPENAI_API_KEY` | the same examples, and the examples in `packages/worker_openai/examples` | Key presented to that server | `no-key-required` |
-| `WEBAI_LOCAL_MODEL_BASE_URL` | `packages/consumer_openai/tests/real_llm_llama3_2_3b_full.test.ts` | Base URL of the local model server the test needs running | `http://localhost:1234/v1` |
-| `WEBAI_LOCAL_MODEL` | the same test | Which model that server is asked for | `llama-3.2-3b-instruct` |
+| `WEBAI_LOCAL_MODEL_BASE_URL` | `packages/consumer_openai/tests/real_llm_llama3_2_1b_full_native_worker.test.ts` | Base URL of the local model server the test needs running | `http://localhost:1234/v1` |
+| `WEBAI_LOCAL_MODEL` | the same test | Which model that server is asked for | `llama-3.2-1b-instruct` |
 | `LMSTUDIO_BASE_URL`, `LMSTUDIO_MODEL` | the examples in `packages/worker_openai/examples` | Base URL of, and model asked from, the LM Studio server those examples call directly | see each example |
 | `REAL_TEST_HEADED`, `REAL_TEST_DEVTOOLS`, `REAL_TEST_SLOW` | the `real_*` tests in `packages/consumer_openai/tests` | Whether to show the browser, open its developer tools, and slow each action down, when watching a test run | unset, meaning headless, no developer tools, full speed |
 

@@ -96,7 +96,7 @@ The report measures wall-clock latency and response size; it calculates no monet
 Convenience scripts run the benchmark against the endpoints this project measures most often — LM Studio directly, and the `consumer_openai` server backed by the cluster for two of its models. Start LM Studio, the gateway, the `consumer_openai` server, and the worker processes each model needs first:
 
 ```sh
-npm run benchmark:lm_studio:llama-3.2-3b-instruct --workspace @webai/openai-api-tool
+npm run benchmark:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
 ```
 ```sh
 npm run benchmark:webai_at_home:llm_llama3_2_1b_full --workspace @webai/openai-api-tool
@@ -108,7 +108,7 @@ npm run benchmark:webai_at_home:llm_qwen3_0_6b_sharded --workspace @webai/openai
 Convenience scripts run `history` against the same LM Studio endpoint, and against the cluster's `llm_llama3_2_1b_full` — one of the two models `taskTypeNamesAcceptingConversation` names, so it is the one of the pair `history` can sweep on the cluster:
 
 ```sh
-npm run history:lm_studio:llama-3.2-3b-instruct --workspace @webai/openai-api-tool
+npm run history:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
 ```
 ```sh
 npm run history:webai_at_home:llm_llama3_2_1b_full --workspace @webai/openai-api-tool
@@ -162,7 +162,7 @@ Because three of the five probes need a temperature beside the control they are 
 Convenience scripts run it against LM Studio directly and against the cluster, for a model that honours all five and one that honours none:
 
 ```sh
-npm run generation_controls:lm_studio:llama-3.2-3b-instruct --workspace @webai/openai-api-tool
+npm run generation_controls:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
 ```
 
 ```sh

@@ -23,8 +23,6 @@
     "sample:llm_gemma_nano_chrome_full": "npx tsx src/cli.ts submit --task_type llm_gemma_nano_chrome_full --consumer_name llm-gemma-nano-chrome-full-consumer 'What is the capital of France?' | jq",
     "presample:llm_qwen3_5_0_8b_full": "npm run build:dependencies",
     "sample:llm_qwen3_5_0_8b_full": "npx tsx src/cli.ts submit --task_type llm_qwen3_5_0_8b_full --consumer_name llm-qwen3-5-0-8b-full-consumer 'What is the capital of France?' | jq",
-    "presample:llm_llama3_2_3b_full": "npm run build:dependencies",
-    "sample:llm_llama3_2_3b_full": "npx tsx src/cli.ts submit --task_type llm_llama3_2_3b_full --consumer_name llm-llama3-2-3b-full-consumer 'What is the capital of France?' | jq",
     "presample:llm_llama3_2_1b_full": "npm run build:dependencies",
     "sample:llm_llama3_2_1b_full": "npx tsx src/cli.ts submit --task_type llm_llama3_2_1b_full --consumer_name llm-llama3-2-1b-full-consumer 'What is the capital of France?' | jq",
     "presample:status": "npm run build:dependencies",

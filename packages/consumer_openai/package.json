@@ -24,7 +24,7 @@
 		"test:real:llm_gemma_nano_chrome_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_gemma_nano_chrome_full.test.ts",
 		"test:real:llm_qwen3_5_0_8b_full": "npx tsx --test tests/real_llm_qwen3_5_0_8b_full.test.ts",
 		"test:real:llm_qwen3_5_0_8b_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_qwen3_5_0_8b_full.test.ts",
-		"test:real:llm_llama3_2_3b_full": "npx tsx --test tests/real_llm_llama3_2_3b_full.test.ts",
+		"test:real:llm_llama3_2_1b_full_native_worker": "npx tsx --test tests/real_llm_llama3_2_1b_full_native_worker.test.ts",
 		"test:real:llm_llama3_2_1b_full": "npx tsx --test tests/real_llm_llama3_2_1b_full.test.ts",
 		"test:real:llm_llama3_2_1b_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_llama3_2_1b_full.test.ts",
 		"example:list_models": "tsx examples/list_models.ts",
@@ -37,9 +37,6 @@
 		"example:chat_completion_nostream_llm_qwen3_5_0_8b_full": "tsx examples/chat_completion_nostream_llm_qwen3_5_0_8b_full.ts",
 		"example:chat_completion_streamed_llm_qwen3_5_0_8b_full": "tsx examples/chat_completion_streamed_llm_qwen3_5_0_8b_full.ts",
 		"example:chat_completion_history_llm_qwen3_5_0_8b_full": "tsx examples/chat_completion_history_llm_qwen3_5_0_8b_full.ts",
-		"example:chat_completion_nostream_llm_llama3_2_3b_full": "tsx examples/chat_completion_nostream_llm_llama3_2_3b_full.ts",
-		"example:chat_completion_streamed_llm_llama3_2_3b_full": "tsx examples/chat_completion_streamed_llm_llama3_2_3b_full.ts",
-		"example:chat_completion_history_llm_llama3_2_3b_full": "tsx examples/chat_completion_history_llm_llama3_2_3b_full.ts",
 		"example:chat_completion_nostream_llm_llama3_2_1b_full": "tsx examples/chat_completion_nostream_llm_llama3_2_1b_full.ts",
 		"example:chat_completion_streamed_llm_llama3_2_1b_full": "tsx examples/chat_completion_streamed_llm_llama3_2_1b_full.ts",
 		"example:chat_completion_history_llm_llama3_2_1b_full": "tsx examples/chat_completion_history_llm_llama3_2_1b_full.ts"

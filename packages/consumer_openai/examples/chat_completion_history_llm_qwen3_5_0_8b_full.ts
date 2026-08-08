@@ -9,9 +9,8 @@ import OpenAI, { APIError } from 'openai';
 // Run with:
 //   npm run example:chat_completion_history_llm_qwen3_5_0_8b_full --workspace @webai/consumer-openai
 //
-// The model `llm_qwen3_5_0_8b_full` is one of the three models whose task type accepts a whole
-// conversation rather than only one prompt (`llm_llama3_2_3b_full` and `llm_llama3_2_1b_full` are
-// the other two; see `examples/chat_completion_history_llm_llama3_2_3b_full.ts` and
+// The model `llm_qwen3_5_0_8b_full` is one of the two models whose task type accepts a whole
+// conversation rather than only one prompt (`llm_llama3_2_1b_full` is the other; see
 // `examples/chat_completion_history_llm_llama3_2_1b_full.ts`). Sending several messages here does
 // not flatten them into lines of `role: content` text the way `llm_gemma_nano_chrome_full` and
 // `llm_qwen3_0_6b_sharded` still do — this server submits the messages as they are, and

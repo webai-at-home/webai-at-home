@@ -24,7 +24,7 @@ npm run sample:lmstudio --workspace @webai/worker-openai
 To point the worker somewhere else, use `npm run dev` and give the options yourself:
 
 ```sh
-npm run dev --workspace @webai/worker-openai -- --base-url http://localhost:1234/v1 --model llama-3.2-3b-instruct
+npm run dev --workspace @webai/worker-openai -- --base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
 ```
 
 Or, against a built package:
@@ -42,7 +42,7 @@ npm run start --workspace @webai/worker-openai
 | `-a, --auth-token <token>` | `development-token` | The bearer token the gateway requires. Falls back to the `GATEWAY_AUTH_TOKEN` environment variable. |
 | `-n, --worker_name <name>` | `openai-worker` | The worker name shown in the gateway's device list. |
 | `-b, --base-url <url>` | `http://localhost:1234/v1` | The base URL of the local server's OpenAI-compatible API. That default is LM Studio's; another server listens elsewhere. |
-| `-m, --model <model>` | `llama-3.2-3b-instruct` | The model the local server is asked for, exactly as that server names it. Two servers name the same model differently, so this has to change with the base URL. |
+| `-m, --model <model>` | `llama-3.2-1b-instruct` | The model the local server is asked for, exactly as that server names it. Two servers name the same model differently, so this has to change with the base URL. |
 | `-s, --stage-names <name...>` | every stage this worker can run | Restrict this worker to particular stages. |
 | `-c, --config_dir <path>` | `data/worker_openai_config` | The directory holding this worker's own account key pair, as `default.account_key.json`, relative to this checkout of the repository, so the stages it completes earn credits for that account. A directory with no key pair in it means no account, and the stages it completes earn credits for nobody. See [`docs/accounting_system.md`](../../docs/accounting_system.md). |
 
@@ -62,10 +62,16 @@ generation setting the consumer submitted, exactly as the browser-based full-mod
 
 ## What this worker checks before it registers
 
-Before it advertises `stage_llm_llama3_2_3b_full`, this worker asks the configured base URL for
+Before it advertises `stage_llm_llama3_2_1b_full`, this worker asks the configured base URL for
 `GET /v1/models` and checks that the model named by `--model` is in the answer. A worker whose
 local server cannot be reached, or does not currently hold that model, registers with no stage
 at all rather than accepting work it would fail, and says why in its own output.
+
+`stage_llm_llama3_2_1b_full` is the same stage `@webai/worker-webpage`'s browser tab offers by
+downloading and running the model itself (see
+[`packages/worker_webpage/README.md`](../worker_webpage/README.md)). Either worker type can
+fulfil it: this worker forwards the prompt to a local server that already holds the model, and
+does not download anything itself.
 
 ## Testing what a model behind LM Studio can do on its own
 
@@ -126,7 +132,7 @@ Measured on 4 August 2026, against LM Studio's server on `http://localhost:1234/
 
 What that means for this worker:
 
-- Both models carry a conversation across turns, which is what the `stage_llm_llama3_2_3b_full` stage this worker already offers needs. Each recalled both facts from the first turn word for word.
+- Both models carry a conversation across turns, which is what the `stage_llm_llama3_2_1b_full` stage this worker already offers needs. Each recalled both facts from the first turn word for word.
 - The Llama 3.2 3B model does not generate tool calls. It answered the question in words, explaining that it has no weather tool, and it wrote a made-up temperature of its own instead. Sending `tool_choice: "required"` did not change that: LM Studio still returned an empty `tool_calls` list. The working hypothesis in issue #119 is therefore confirmed for this model.
 - The Qwen3.5 2B model does generate tool calls. It answered with `get_current_weather({"city":"Paris"})` on the first turn, which is the whole first step passed, and it is the smaller of the two models on parameter count.
 - Both models read a tool result back out of the conversation. Given a tool call and a tool result, LM Studio accepted the conversation, and each model answered with the temperature the tool result carried rather than with one of its own. So a caller that decides by itself which tool to run can use either model to turn the result into an answer, while a caller that wants the model to choose the tool needs Qwen3.5 2B and not Llama 3.2 3B.

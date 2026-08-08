@@ -33,10 +33,11 @@ import type { GatewayMessage } from './gateway_message.js';
  *
  * Version 4 widened the value a language-model task carries. `TaskInput.input` now accepts a whole
  * conversation as well as one piece of text, for the task types whose stage helper can hand a
- * message list to its model — `task_type_llm_qwen3_5_0_8b_full`, `task_type_llm_llama3_2_3b_full`,
- * and, since [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154),
- * `task_type_llm_llama3_2_1b_full` — and the first stage value of such a task carries that
- * conversation in the new `conversation` field of `LlmStagePayload`. Both `TaskInput` and
+ * message list to its model — `task_type_llm_qwen3_5_0_8b_full` and, since
+ * [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154),
+ * `task_type_llm_llama3_2_1b_full` (`task_type_llm_llama3_2_3b_full` accepted one too, from this
+ * same version, until that task type was retired) — and the first stage value of such a task
+ * carries that conversation in the new `conversation` field of `LlmStagePayload`. Both `TaskInput` and
  * `StagePayloadSchema` refuse that shape before this version, so a consumer or worker built after
  * the change is refused by a gateway built before it at the moment it authenticates. That refusal
  * is the point: it is what stops a worker built before the change from receiving a first stage
@@ -56,7 +57,9 @@ import type { GatewayMessage } from './gateway_message.js';
  * Version 6 widened what a consumer may ask for about how its answer is generated.
  * `GenerationSettingsSchema` now carries `temperature`, `topP`, `maximumOutputTokenCount`,
  * `stopSequences`, and `randomSeed` beside `isStreaming`, and `task_type_llm_llama3_2_3b_full`
- * honours all five. See milestone 1 of
+ * honoured all five, for as long as it existed — that task type has since been retired, and no
+ * task type honours any of the five today; see [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154).
+ * See milestone 1 of
  * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151). Every earlier version
  * is refused because this is the first version in which a stage acts on a generation setting at
  * all: a gateway built before this version has no such field on its task input, its task input

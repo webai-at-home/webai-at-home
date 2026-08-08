@@ -4,7 +4,7 @@ import Test from 'node:test';
 import { protocolVersion, type ClientMessage, type GatewayMessage, type GenerationSettings } from '@webai/protocol';
 import { GatewayWorkerClient, type WorkerSocket } from '../src/libs/gateway_worker_client.js';
 import { WorkerStageOffer } from '../src/libs/worker_stage_offer.js';
-import { StageHelperLlmLlama3_2_3bFull } from '../src/stages/stage_helper_llm_llama3_2_3b_full.js';
+import { StageHelperLlmLlama3_2_1bFull } from '../src/stages/stage_helper_llm_llama3_2_1b_full.js';
 import { OpenaiApiClient, type ChatCompletionStreamUsage } from '../src/libs/openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -47,7 +47,7 @@ const fakeChatClient = (
 ): { client: OpenaiApiClient; state: { abortedCount: number } } => {
 	const state = { abortedCount: 0 };
 	const client = {
-		listModelIds: async (): Promise<string[]> => ['llama-3.2-3b-instruct'],
+		listModelIds: async (): Promise<string[]> => ['llama-3.2-1b-instruct'],
 		chatCompletionStream: async (
 			_modelId: string,
 			_prompt: string,
@@ -99,7 +99,7 @@ const requestBodyOf = async (generationSettings: GenerationSettings | undefined)
 	const port = typeof address === 'object' && address !== null ? address.port : 0;
 	try {
 		const client = new OpenaiApiClient(`http://127.0.0.1:${port}/v1`);
-		const { stream } = await client.chatCompletionStream('llama-3.2-3b-instruct', 'hello', new AbortController(), generationSettings);
+		const { stream } = await client.chatCompletionStream('llama-3.2-1b-instruct', 'hello', new AbortController(), generationSettings);
 		const reader = stream.getReader();
 		while ((await reader.read()).done === false) {
 			continue;
@@ -120,7 +120,7 @@ const loadedPipelines = [
 	},
 	{
 		stages: [
-			{ name: 'stage_llm_llama3_2_3b_full', computation: 'llm_llama3_2_3b_full' },
+			{ name: 'stage_llm_llama3_2_1b_full', computation: 'llm_llama3_2_1b_full' },
 		],
 	},
 ];
@@ -171,17 +171,17 @@ const receive = (socket: WorkerSocket, message: GatewayMessage): void => {
 
 Test('offers a stage by the computation it names, and never by its stage name', () => {
 	const offered = WorkerStageOffer.offeredStages(loadedPipelines, []);
-	Assert.deepEqual(offered.stageNames, ['stage_llm_llama3_2_3b_full']);
-	Assert.deepEqual(offered.localModelStageNames, ['stage_llm_llama3_2_3b_full']);
+	Assert.deepEqual(offered.stageNames, ['stage_llm_llama3_2_1b_full']);
+	Assert.deepEqual(offered.localModelStageNames, ['stage_llm_llama3_2_1b_full']);
 	// A stage name this worker has never heard of is offered all the same, as long as it names a
 	// computation this worker implements, which is what lets a pipeline be added without
 	// releasing the worker.
-	const laterPipeline = [{ stages: [{ name: 'stage_llm_llama3_2_3b_full_again', computation: 'llm_llama3_2_3b_full' }] }];
-	Assert.deepEqual(WorkerStageOffer.offeredStages(laterPipeline, []).stageNames, ['stage_llm_llama3_2_3b_full_again']);
+	const laterPipeline = [{ stages: [{ name: 'stage_llm_llama3_2_1b_full_again', computation: 'llm_llama3_2_1b_full' }] }];
+	Assert.deepEqual(WorkerStageOffer.offeredStages(laterPipeline, []).stageNames, ['stage_llm_llama3_2_1b_full_again']);
 });
 
 Test('restricts the offer to the stages the command line named', () => {
-	Assert.deepEqual(WorkerStageOffer.offeredStages(loadedPipelines, ['stage_llm_llama3_2_3b_full']).stageNames, ['stage_llm_llama3_2_3b_full']);
+	Assert.deepEqual(WorkerStageOffer.offeredStages(loadedPipelines, ['stage_llm_llama3_2_1b_full']).stageNames, ['stage_llm_llama3_2_1b_full']);
 	Assert.deepEqual(WorkerStageOffer.offeredStages(loadedPipelines, ['stage_dev_formula_add']).stageNames, []);
 });
 
@@ -192,14 +192,14 @@ Test('restricts the offer to the stages the command line named', () => {
 ///////////////////////////////////////////////////////////////////////////////
 
 Test('is ready only when the local server offers the model this worker was told to serve', async () => {
-	const ready = await StageHelperLlmLlama3_2_3bFull.readiness(fakeOpenaiApiClient(['llama-3.2-3b-instruct', 'qwen3.5-9b']), 'llama-3.2-3b-instruct');
+	const ready = await StageHelperLlmLlama3_2_1bFull.readiness(fakeOpenaiApiClient(['llama-3.2-1b-instruct', 'qwen3.5-9b']), 'llama-3.2-1b-instruct');
 	Assert.deepEqual(ready, { status: 'ready' });
-	const missing = await StageHelperLlmLlama3_2_3bFull.readiness(fakeOpenaiApiClient(['qwen3.5-9b']), 'llama-3.2-3b-instruct');
+	const missing = await StageHelperLlmLlama3_2_1bFull.readiness(fakeOpenaiApiClient(['qwen3.5-9b']), 'llama-3.2-1b-instruct');
 	Assert.equal(missing.status, 'unavailable');
-	Assert.match(missing.status === 'unavailable' ? missing.message : '', /does not offer llama-3\.2-3b-instruct/);
+	Assert.match(missing.status === 'unavailable' ? missing.message : '', /does not offer llama-3\.2-1b-instruct/);
 	// A server that cannot be reached is reported in the same shape, rather than thrown, because
 	// it is the same decision: this worker does not offer the stage.
-	const unreachable = await StageHelperLlmLlama3_2_3bFull.readiness(fakeOpenaiApiClient(new Error('connection refused')), 'llama-3.2-3b-instruct');
+	const unreachable = await StageHelperLlmLlama3_2_1bFull.readiness(fakeOpenaiApiClient(new Error('connection refused')), 'llama-3.2-1b-instruct');
 	Assert.equal(unreachable.status, 'unavailable');
 	Assert.match(unreachable.status === 'unavailable' ? unreachable.message : '', /connection refused/);
 });
@@ -212,8 +212,8 @@ Test('is ready only when the local server offers the model this worker was told 
 
 Test('reads the whole answer in one run when the consumer asked for nothing', async () => {
 	const { client } = fakeChatClient(['Paris', ' is', ' the capital.']);
-	const result = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-a', 'assignment-a', { text: 'What is the capital of France?' }, undefined, client, 'llama-3.2-3b-instruct',
+	const result = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-a', 'assignment-a', { text: 'What is the capital of France?' }, undefined, client, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(result, { text: 'Paris is the capital.', done: true });
 });
@@ -252,42 +252,42 @@ Test('sends no generation control field at all when the consumer asked for none,
 
 Test('reports the usage and finish reason the local server sent, translated into this worker\'s own stopReason vocabulary', async () => {
 	const { client } = fakeChatClient(['Paris', ' is', ' the capital.'], { promptTokenCount: 32, completionTokenCount: 5, finishReason: 'stop' });
-	const result = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-usage-stop', 'assignment-usage-stop', { text: 'What is the capital of France?' }, undefined, client, 'llama-3.2-3b-instruct',
+	const result = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-usage-stop', 'assignment-usage-stop', { text: 'What is the capital of France?' }, undefined, client, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(result, { text: 'Paris is the capital.', done: true, promptTokenCount: 32, completionTokenCount: 5, stopReason: 'end_of_sequence' });
 });
 
 Test('translates a "length" finish reason into "max_new_tokens", and reports no stopReason for one it does not recognise', async () => {
 	const { client: lengthClient } = fakeChatClient(['In'], { promptTokenCount: 12, completionTokenCount: 1, finishReason: 'length' });
-	const lengthResult = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-usage-length', 'assignment-usage-length', { text: 'Write a long story.' }, undefined, lengthClient, 'llama-3.2-3b-instruct',
+	const lengthResult = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-usage-length', 'assignment-usage-length', { text: 'Write a long story.' }, undefined, lengthClient, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(lengthResult, { text: 'In', done: true, promptTokenCount: 12, completionTokenCount: 1, stopReason: 'max_new_tokens' });
 
 	const { client: unknownClient } = fakeChatClient(['hi'], { promptTokenCount: undefined, completionTokenCount: undefined, finishReason: 'content_filter' });
-	const unknownResult = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-usage-unknown', 'assignment-usage-unknown', { text: 'hello' }, undefined, unknownClient, 'llama-3.2-3b-instruct',
+	const unknownResult = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-usage-unknown', 'assignment-usage-unknown', { text: 'hello' }, undefined, unknownClient, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(unknownResult, { text: 'hi', done: true });
 });
 
 Test('reads one piece per run, and joins them across a continuation, when asked for pieces', async () => {
 	const { client } = fakeChatClient(['Paris', ' is', ' the capital.']);
-	const first = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-b', 'assignment-b', { text: 'What is the capital of France?' }, { isStreaming: true }, client, 'llama-3.2-3b-instruct',
+	const first = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-b', 'assignment-b', { text: 'What is the capital of France?' }, { isStreaming: true }, client, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(first, { newText: 'Paris', isContinuation: true, done: false });
-	const second = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-b', 'assignment-b', { isContinuation: true }, { isStreaming: true }, client, 'llama-3.2-3b-instruct',
+	const second = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-b', 'assignment-b', { isContinuation: true }, { isStreaming: true }, client, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(second, { newText: ' is', isContinuation: true, done: false });
-	const third = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-b', 'assignment-b', { isContinuation: true }, { isStreaming: true }, client, 'llama-3.2-3b-instruct',
+	const third = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-b', 'assignment-b', { isContinuation: true }, { isStreaming: true }, client, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(third, { newText: ' the capital.', isContinuation: true, done: false });
-	const fourth = await StageHelperLlmLlama3_2_3bFull.compute(
-		'task-b', 'assignment-b', { isContinuation: true }, { isStreaming: true }, client, 'llama-3.2-3b-instruct',
+	const fourth = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-b', 'assignment-b', { isContinuation: true }, { isStreaming: true }, client, 'llama-3.2-1b-instruct',
 	);
 	Assert.deepEqual(fourth, { text: 'Paris is the capital.', done: true });
 });
@@ -295,16 +295,16 @@ Test('reads one piece per run, and joins them across a continuation, when asked 
 Test('refuses to carry on an answer this worker is not holding', async () => {
 	const { client } = fakeChatClient(['hello']);
 	await Assert.rejects(
-		() => StageHelperLlmLlama3_2_3bFull.compute('task-c', 'assignment-c', { isContinuation: true }, undefined, client, 'llama-3.2-3b-instruct'),
+		() => StageHelperLlmLlama3_2_1bFull.compute('task-c', 'assignment-c', { isContinuation: true }, undefined, client, 'llama-3.2-1b-instruct'),
 		/not holding one for that task/,
 	);
 });
 
 Test('aborts the request to the local server when an open answer is released', async () => {
 	const { client, state } = fakeChatClient(['piece-one', 'piece-two']);
-	await StageHelperLlmLlama3_2_3bFull.compute('task-d', 'assignment-d', { text: 'hello' }, { isStreaming: true }, client, 'llama-3.2-3b-instruct');
+	await StageHelperLlmLlama3_2_1bFull.compute('task-d', 'assignment-d', { text: 'hello' }, { isStreaming: true }, client, 'llama-3.2-1b-instruct');
 	Assert.equal(state.abortedCount, 0);
-	StageHelperLlmLlama3_2_3bFull.clearGeneration('task-d', 'assignment-d');
+	StageHelperLlmLlama3_2_1bFull.clearGeneration('task-d', 'assignment-d');
 	Assert.equal(state.abortedCount, 1);
 });
 
@@ -320,8 +320,8 @@ Test('authenticates, asks for the pipelines, and registers with the stages it ca
 		name: 'test-worker',
 		authenticationToken: 'development-token',
 		requestedStageNames: [],
-		openaiApiClient: fakeOpenaiApiClient(['llama-3.2-3b-instruct']),
-		modelId: 'llama-3.2-3b-instruct',
+		openaiApiClient: fakeOpenaiApiClient(['llama-3.2-1b-instruct']),
+		modelId: 'llama-3.2-1b-instruct',
 	});
 	socket.onopen?.();
 	Assert.deepEqual(socket.sent.map((message) => message.type), ['deviceAuthenticate']);
@@ -332,7 +332,7 @@ Test('authenticates, asks for the pipelines, and registers with the stages it ca
 	await new Promise((resolve) => setImmediate(resolve));
 	const register = socket.sent.at(-1);
 	Assert.equal(register?.type, 'deviceRegister');
-	Assert.deepEqual(register?.type === 'deviceRegister' ? register.stageNames : [], ['stage_llm_llama3_2_3b_full']);
+	Assert.deepEqual(register?.type === 'deviceRegister' ? register.stageNames : [], ['stage_llm_llama3_2_1b_full']);
 });
 
 Test('registers with no stage, and closes, when the local server does not hold the model', async () => {
@@ -342,7 +342,7 @@ Test('registers with no stage, and closes, when the local server does not hold t
 		authenticationToken: 'development-token',
 		requestedStageNames: [],
 		openaiApiClient: fakeOpenaiApiClient([]),
-		modelId: 'llama-3.2-3b-instruct',
+		modelId: 'llama-3.2-1b-instruct',
 	});
 	socket.onopen?.();
 	receive(socket, { type: 'deviceAuthenticated', authIdentity: 'authIdentity-test', expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
@@ -360,7 +360,7 @@ Test('reports nothing for an assignment the gateway cancelled while its run was 
 		authenticationToken: 'development-token',
 		requestedStageNames: [],
 		openaiApiClient: client,
-		modelId: 'llama-3.2-3b-instruct',
+		modelId: 'llama-3.2-1b-instruct',
 	});
 	socket.onopen?.();
 	receive(socket, {
@@ -368,8 +368,8 @@ Test('reports nothing for an assignment the gateway cancelled while its run was 
 		taskId: 'task-cancel',
 		stageAssignmentId: 'assignment-cancel',
 		attempt: 1,
-		stage: 'stage_llm_llama3_2_3b_full',
-		computation: 'llm_llama3_2_3b_full',
+		stage: 'stage_llm_llama3_2_1b_full',
+		computation: 'llm_llama3_2_1b_full',
 		stageIndex: 0,
 		value: { text: 'hello' },
 		leaseUntil: new Date(Date.now() + 60_000).toISOString(),
@@ -401,8 +401,8 @@ Test('accepts an assignment, and reports a computation it cannot run as a stage 
 		name: 'test-worker',
 		authenticationToken: 'development-token',
 		requestedStageNames: [],
-		openaiApiClient: fakeOpenaiApiClient(['llama-3.2-3b-instruct']),
-		modelId: 'llama-3.2-3b-instruct',
+		openaiApiClient: fakeOpenaiApiClient(['llama-3.2-1b-instruct']),
+		modelId: 'llama-3.2-1b-instruct',
 	});
 	socket.onopen?.();
 	receive(socket, {

@@ -378,7 +378,7 @@ It holds six settings:
 - `stopSequences` names up to four pieces of text that end the answer as soon as the model writes one of them. A stop sequence is applied where the tokens are produced, never by a consumer dropping pieces of the answer as it forwards them, because a stop sequence can straddle two pieces.
 - `randomSeed` decides every random choice made while the answer is generated, so that the same task submitted twice with the same seed is answered the same way twice by the same worker.
 
-Each of the five generation controls is carried exactly as the consumer asked for it and is never translated for the engine that will run the task. Which task type honours which control is written down once, in [`packages/protocol/src/task/generation_control_support.ts`](../packages/protocol/src/task/generation_control_support.ts). Today `task_type_llm_llama3_2_3b_full` honours all five, and the other three language-model task types honour none of them; see [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+Each of the five generation controls is carried exactly as the consumer asked for it and is never translated for the engine that will run the task. Which task type honours which control is written down once, in [`packages/protocol/src/task/generation_control_support.ts`](../packages/protocol/src/task/generation_control_support.ts). No language-model task type honours any of the five today: `task_type_llm_llama3_2_3b_full` was the only one that ever did, until [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154) retired it; see [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
 
 The settings travel with the task input rather than beside it, so the gateway stores them once when the task is created and reads them off the stored task every time it places a stage. Every path that places a stage therefore sends the same settings without any of them having to pass the settings along: the first assignment, each round of a pipeline that repeats, a retry after a lease expires, and a task placed after waiting in the queue.
 
@@ -523,16 +523,27 @@ for the same reason: no run can arrive over a connection that is gone.
 Two further stages carry an answer the same way, in the same message shapes and
 under the same rules as the flow above, and neither needs a separate account
 here: `stage_llm_qwen3_5_0_8b_full`, which runs a model the worker browser tab
-downloads and holds itself, and `stage_llm_llama3_2_3b_full`, which forwards the
-prompt to a language-model server running on the worker's own device.
+downloads and holds itself, and `stage_llm_llama3_2_1b_full`, which either does
+the same or forwards the prompt to a language-model server running on the
+worker's own device, depending on which of the two kinds of worker this project
+can run it — a worker browser tab, or a native worker from
+[`packages/worker_openai`](../packages/worker_openai) — the gateway assigned it
+to.
 
 What differs between the three is only what holds the answer while it is being
 read. It is a browser-managed model session for the flow above, a loaded model in
-the tab's own memory for Qwen3.5-0.8B, and an open request to a local server for
-Llama 3.2 3B. Each of the three lives in the memory of the one worker producing
-it, which is why all three set `prefersSameWorkerOnRetry`, and each is ended by a
+the tab's own memory for Qwen3.5-0.8B, and, for Llama 3.2 1B Instruct, a loaded
+model in the tab's own memory when a worker browser tab runs it or an open
+request to a local server when a native worker runs it instead. Each of these
+lives in the memory of the one worker producing it, which is why every one of
+these stages sets `prefersSameWorkerOnRetry`, and each is ended by a
 `stage.cancel`, by a failed stage, by the five-minute idle timeout, and by the
 connection to the gateway closing.
+
+`task_type_llm_llama3_2_3b_full` was a fourth such flow, forwarding the prompt
+to a local server the same way `stage_llm_llama3_2_1b_full` now can, until
+[issue #154](https://github.com/webai-at-home/webai-at-home/issues/154) retired
+it.
 
 ## Validation and errors
 

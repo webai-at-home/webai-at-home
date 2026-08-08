@@ -18,7 +18,7 @@ export type TaskRecord = {
 	taskId: string;
 	/** The identifier the consumer submitted under, when the log shows the submission. */
 	taskRequestId: string | undefined;
-	/** The task type submitted, for example `task_type_llm_llama3_2_3b_full`. */
+	/** The task type submitted, for example `task_type_llm_llama3_2_1b_full`. */
 	taskType: string | undefined;
 	/** The pipeline the gateway chose to run the task through. */
 	pipelineId: string | undefined;
@@ -56,7 +56,7 @@ export type StageRunRecord = {
 	stageAssignmentId: string;
 	/** The task the stage belongs to. */
 	taskId: string | undefined;
-	/** The stage that was run, for example `stage_llm_llama3_2_3b_full`. */
+	/** The stage that was run, for example `stage_llm_llama3_2_1b_full`. */
 	stageName: string | undefined;
 	/** The worker device the stage was assigned to. */
 	workerDeviceId: string | undefined;

@@ -35,11 +35,15 @@ const controlNames: readonly GenerationControlName[] = ['temperature', 'topP', '
  * cluster task carries, and refuses a request the chosen model could only answer by ignoring
  * part of it.
  *
- * The four language-model task types sit on four engines with four different sets of controls
- * they can act on, and a client sends one request to one interface without knowing which engine
- * will answer it. So a control has three possible fates, and this class decides between them
- * exactly as milestone 4 of
- * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151) proposes:
+ * The language-model task types sit on different engines that can each act on a different set of
+ * controls, and a client sends one request to one interface without knowing which engine will
+ * answer it. So a control has three possible fates, and this class decides between them exactly
+ * as milestone 4 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151)
+ * proposes. No task type honours any of the five today — `task_type_llm_llama3_2_3b_full`, the
+ * only one that ever did, was retired by [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154)
+ * — so today every control that is not this interface's own default is refused; the three-way
+ * decision below is what lets a task type start honouring a control again without this class
+ * changing.
  *
  * - The model honours the control: it is carried to the cluster as the client asked for it,
  *   untranslated, because what a value means to an engine is that engine's stage helper's

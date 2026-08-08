@@ -103,18 +103,18 @@ Test('refuses to calculate statistics when nothing was measured', () => {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-const universe = ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_llama3_2_3b_full'];
+const universe = ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_llama3_2_1b_full'];
 
 Test('expands all into every model identifier the subcommand knows about', () => {
 	Assert.deepEqual(ModelSweeper.resolveModelIds('all', universe, 'reject'), universe);
 });
 
 Test('expands a pattern into the identifiers it matches, in the order they are declared', () => {
-	Assert.deepEqual(ModelSweeper.resolveModelIds('llm_*', universe, 'reject'), ['llm_qwen3_0_6b_sharded', 'llm_llama3_2_3b_full']);
+	Assert.deepEqual(ModelSweeper.resolveModelIds('llm_*', universe, 'reject'), ['llm_qwen3_0_6b_sharded', 'llm_llama3_2_1b_full']);
 });
 
 Test('expands a comma-separated list without repeating an identifier matched twice', () => {
-	Assert.deepEqual(ModelSweeper.resolveModelIds('llm_*,llm_llama3_2_3b_full', universe, 'reject'), ['llm_qwen3_0_6b_sharded', 'llm_llama3_2_3b_full']);
+	Assert.deepEqual(ModelSweeper.resolveModelIds('llm_*,llm_llama3_2_1b_full', universe, 'reject'), ['llm_qwen3_0_6b_sharded', 'llm_llama3_2_1b_full']);
 });
 
 Test('rejects a name outside the list when the subcommand can only reach this cluster', () => {
@@ -398,7 +398,7 @@ const usageOutcomes: UsageOutcome[] = [
 		failureMessage: 'it answers with one number',
 	},
 	{
-		modelId: 'llm_llama3_2_3b_full',
+		modelId: 'llm_llama3_2_1b_full',
 		mode: 'nostream',
 		status: 'failed',
 		usagePresent: false,
