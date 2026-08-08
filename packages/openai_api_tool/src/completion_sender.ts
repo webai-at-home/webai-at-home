@@ -2,7 +2,7 @@
 import OpenAI, { APIError } from 'openai';
 
 // local imports
-import type { ChatCompletionUsage, CompletionMode, CompletionResult, CompletionTarget } from './completion_types.js';
+import type { ChatCompletionUsage, CompletionMode, CompletionResult, CompletionTarget, GenerationControls } from './completion_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,6 +45,13 @@ export type SendCompletionOptions = {
 	 * regardless of this option.
 	 */
 	readonly includeUsage?: boolean;
+	/**
+	 * The generation controls to ask for, each spelled the way the OpenAI Chat Completions
+	 * interface spells it. Left out by every caller other than the `generation_controls`
+	 * subcommand, so `completion`, `history`, `benchmark`, and `usage` keep sending the exact
+	 * request they always have.
+	 */
+	readonly controls?: GenerationControls;
 };
 
 /** The completion request a benchmark run uses, replaceable for deterministic tests. */
@@ -111,11 +118,72 @@ export class CompletionSender {
 		return String(error);
 	}
 
+	/**
+	 * Reads the endpoint's own short name for why it refused a request, when it sent one.
+	 *
+	 * This is what tells a refusal that is an answer apart from a refusal that is a fault. This
+	 * project's own `consumer_openai` server refuses a request asking a model for a generation
+	 * control it cannot honour with the code `unhonourable_generation_control`, rather than
+	 * ignoring the control, so a prober reading that code learns the model's real answer.
+	 *
+	 * @param error The error caught around one request.
+	 * @returns The endpoint's own `code`, or `undefined` when the failure carried none.
+	 */
+	static failureCode(error: unknown): string | undefined {
+		if (error instanceof APIError && typeof error.code === 'string') {
+			return error.code;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Reads the endpoint's own explanation of a failure, in its own words and nothing else.
+	 *
+	 * Unlike {@link describeFailure}, this adds no status and no code, and it removes the status
+	 * the `openai` npm package puts at the front of its message, so a caller that already reports
+	 * the status itself does not print it twice.
+	 *
+	 * @param error The error caught around one request.
+	 * @returns The endpoint's own words.
+	 */
+	static failureExplanation(error: unknown): string {
+		if (error instanceof APIError) {
+			return error.message.startsWith(`${error.status} `) ? error.message.slice(String(error.status).length + 1) : error.message;
+		}
+		if (error instanceof Error) {
+			return error.message;
+		}
+		return String(error);
+	}
+
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
 	//	Private Helpers
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Builds the generation control fields of one request body.
+	 *
+	 * A control the caller did not ask for produces no field at all, rather than a field set to
+	 * `null`, so that the endpoint applies its own default and a probe measures the control it
+	 * named and nothing else.
+	 *
+	 * @param controls The controls to ask for, or `undefined` when the caller asked for none.
+	 * @returns The fields to spread into the request body, empty when no control was asked for.
+	 */
+	private static _controlFieldsOf(controls: GenerationControls | undefined): Record<string, unknown> {
+		if (controls === undefined) {
+			return {};
+		}
+		const fields: Record<string, unknown> = {};
+		for (const [field, value] of Object.entries(controls)) {
+			if (value !== undefined) {
+				fields[field] = value;
+			}
+		}
+		return fields;
+	}
 
 	/**
 	 * Sends one streamed chat completion request, writing each piece out as it arrives rather
@@ -138,6 +206,7 @@ export class CompletionSender {
 			messages: options.messages,
 			stream: true,
 			...(options.includeUsage === true ? { stream_options: { include_usage: true } } : {}),
+			...CompletionSender._controlFieldsOf(options.controls),
 		}).withResponse();
 		const clusterTimeToFirstPieceMs = CompletionSender._readMsHeader(response, 'x-webai-time-to-first-piece-ms');
 
@@ -197,6 +266,7 @@ export class CompletionSender {
 		const { data: completion, response } = await options.client.chat.completions.create({
 			model: options.modelId,
 			messages: options.messages,
+			...CompletionSender._controlFieldsOf(options.controls),
 		}).withResponse();
 		const elapsedMs = performance.now() - startedAt;
 		const answer = completion.choices[0]?.message.content ?? '';

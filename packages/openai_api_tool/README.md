@@ -32,7 +32,7 @@ Once this package has been built (`npm run build --workspace @webai/openai-api-t
 npx openai_api_tool completion --model all
 ```
 
-## The four subcommands
+## The five subcommands
 
 | Subcommand | What it does |
 | --- | --- |
@@ -41,7 +41,9 @@ npx openai_api_tool completion --model all
 | `benchmark` | Measures the latency of one endpoint, one model at a time, over repeated requests, and prints a report as text, markdown, or JSON. |
 | `usage` | Sends one prompt per model and per mode, the same sweep `completion` runs, and reports each answer's `usage` — whether it was present, and its `prompt_tokens`/`completion_tokens`/`total_tokens` when it was — and its `finish_reason`. The streamed mode asks for its final, choice-less usage chunk with `stream_options: { include_usage: true }`. |
 
-`completion`, `history`, and `usage` print one line per swept pair followed by a summary table, and set the process exit code to `1` when any pair failed, so a single command answers whether the cluster still works.
+| `generation_controls` | Probes each of `temperature`, `top_p`, `max_completion_tokens`, `stop`, and `seed` against every model, and reports whether that model really honours it — proved by comparing repeated answers, never by the endpoint having accepted the field. |
+
+`completion`, `history`, `usage`, and `generation_controls` print one line per swept pair followed by a summary table, and set the process exit code to `1` when any pair failed, so a single command answers whether the cluster still works.
 
 ## Options
 
@@ -55,11 +57,11 @@ Every subcommand accepts these:
 | `--timeout_ms <number>` | `600000` | How long one request may take before it is given up on. |
 | `-f, --format <format>` | `text` | The output format: `text`, `markdown`, or `json`. |
 
-`completion`, `history`, and `usage` additionally accept `-s/--streamed` or `--nostream` to restrict the run to one mode; giving neither, or both, sweeps both modes. `completion` and `usage` also accept `-p/--prompt` to send one prompt instead of each model's own default prompt.
+`completion`, `history`, `usage`, and `generation_controls` additionally accept `-s/--streamed` or `--nostream` to restrict the run to one mode; giving neither, or both, sweeps both modes. `completion` and `usage` also accept `-p/--prompt` to send one prompt instead of each model's own default prompt. `generation_controls` accepts `-r/--repeats` (`3`), how many times a probe that compares repeated answers sends its prompt; it sends its own prompts, chosen so the control under test visibly changes the answer, so it has no `-p/--prompt`.
 
 `benchmark` accepts neither mode flag, because it always asks for the answer in pieces: that is what lets it measure the Time to First Character apart from the Time to Last Character. It adds `-p/--prompt` (`Count up to 30`), `-r/--runs` (`10`), and `-w/--warmup_runs` (`1`).
 
-`-f/--format text`, the default for all four subcommands, is the only format `completion` and `history` stream live: the raw answer is written out piece by piece as it arrives, followed by one analysis line per swept pair, colored green for `ok`, yellow for `skipped`, and red for `failed` (using [`chalk`](https://www.npmjs.com/package/chalk), which turns color off automatically once the output is piped or redirected). `usage` prints its own analysis line live the same way, without streaming the raw answer, since what it reports is the answer's `usage` and `finish_reason` rather than its text. `-f/--format markdown` or `-f/--format json` runs the sweep silently instead, and prints one report — a markdown table, or JSON holding every outcome and the passed/skipped/failed (or reported/skipped/failed, for `usage`) counts — once every pair has finished:
+`-f/--format text`, the default for all five subcommands, is the only format `completion` and `history` stream live: the raw answer is written out piece by piece as it arrives, followed by one analysis line per swept pair, colored green for `ok`, yellow for `skipped`, and red for `failed` (using [`chalk`](https://www.npmjs.com/package/chalk), which turns color off automatically once the output is piped or redirected). `usage` prints its own analysis line live the same way, without streaming the raw answer, since what it reports is the answer's `usage` and `finish_reason` rather than its text. `-f/--format markdown` or `-f/--format json` runs the sweep silently instead, and prints one report — a markdown table, or JSON holding every outcome and the passed/skipped/failed (or reported/skipped/failed, for `usage`) counts — once every pair has finished:
 
 ```sh
 npx tsx ./src/cli.ts completion --base_url http://localhost:1234/v1 --model qwen3.5-2b-mlx --format markdown
@@ -139,25 +141,77 @@ npm run usage:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
 npm run usage:webai_at_home:llm_qwen3_5_0_8b_full --workspace @webai/openai-api-tool
 ```
 
+## What `generation_controls` reports
+
+A generation control that is accepted and quietly ignored looks exactly like a control that works, until the answers are compared. So this subcommand never concludes anything from the endpoint having accepted a field: every probe sends the same prompt more than once and reads whether the answers changed the way that control is supposed to change them. It is the de-risk gate of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151), made re-runnable against any endpoint that speaks the OpenAI-compatible API.
+
+| Control | How it is proved |
+| --- | --- |
+| `temperature` | The same prompt at `0` several times, then at `1.6` several times. Honoured when every answer at `0` is identical and the high-temperature answers are not. Either half alone proves nothing, since a model can be deterministic for reasons that have nothing to do with the temperature it was given. |
+| `top_p` | The same prompt at `1.6` with `top_p` narrowed to `0.01`, several times. Honoured when every answer is identical, because narrowing the probability mass to the most likely token is what makes a high temperature stop mattering. |
+| `max_completion_tokens` | A long-answer prompt with a budget of 8 tokens, against the same prompt with no budget. Honoured when the endpoint reports `finish_reason: length`. An endpoint that ignores `max_completion_tokens` is then asked again with `max_tokens`, this interface's older spelling of the same control, and the report says which spelling it reads — Ollama 0.32.5 reads only the older one. |
+| `stop` | `Count from 1 to 9` with `stop: ["3"]`, against the same prompt without it. Honoured when the answer stops before `3` and the unstopped answer wrote straight past it. The second half is what makes the first mean anything. |
+| `seed` | The same prompt at `1.6` with seed `42` twice, then with seed `43`. Honoured when the two runs of `42` agree and `43` does not. |
+
+Each probe reports one of five conclusions: `honoured`, `not_honoured` (accepted and then ignored — the fault this subcommand exists to catch), `refused` (the endpoint answered that this model cannot honour the control, which is a correct answer and not a fault), `inconclusive` (the runs cannot tell the two apart), and `failed` (no answer arrived, so the control was never tested). The process exit code is `1` when any probe was `not_honoured` or `failed`.
+
+Because three of the five probes need a temperature beside the control they are measuring, each control is first asked about on its own, with no other control in the request. Without that, an endpoint refusing more than one control would name whichever it checked first, and every control would be reported as refused for the wrong reason.
+
+```sh
+npx tsx ./src/cli.ts generation_controls --model llm_llama3_2_3b_full --nostream
+```
+
+```
+llm_llama3_2_3b_full (nostream) temperature: honoured — 3 answers at temperature 0 were identical, and 3 at 1.6 were not
+llm_llama3_2_3b_full (nostream) top_p: honoured — 3 answers at temperature 1.6 with top_p 0.01 were identical, so narrowing the probability mass removed the variation that temperature added
+llm_llama3_2_3b_full (nostream) max_completion_tokens: honoured — asking for at most 8 tokens stopped the answer with finish_reason length, 8 completion tokens
+llm_llama3_2_3b_full (nostream) stop: honoured — the answer stopped before "3", which the same prompt wrote straight past without a stop sequence
+llm_llama3_2_3b_full (nostream) seed: honoured — seed 42 gave the same answer twice at a high temperature, and seed 43 gave a different one
+
+Summary:
+  llm_llama3_2_3b_full (nostream): honours temperature, top_p, max_completion_tokens, stop, seed
+
+5/5 honoured, 0 refused, 0 not honoured, 0 inconclusive, 0 failed
+```
+
+`-f/--format markdown` and `-f/--format json` also carry every answer each probe produced, so a reader can check a conclusion against the text it was drawn from rather than taking it on trust.
+
+Convenience scripts run it against Ollama directly and against the cluster, for a model that honours all five and one that honours none:
+
+```sh
+npm run generation_controls:ollama:llama3.2_3b --workspace @webai/openai-api-tool
+```
+
+```sh
+npm run generation_controls:webai_at_home:llm_llama3_2_3b_full --workspace @webai/openai-api-tool
+```
+
+```sh
+npm run generation_controls:webai_at_home:llm_qwen3_5_0_8b_full --workspace @webai/openai-api-tool
+```
+
 ## Test it
 
 ```sh
 npm run test --workspace @webai/openai-api-tool
 ```
 
-The tests need no cluster and no gateway. The statistics, the model expansion, the aggregation, and the report rendering are checked on their own; the sender is checked against a local HTTP server started by the test, once for a real server-sent event stream whose pieces are spaced out over real wall-clock time, once for a server that ignores the streaming request and answers with one JSON body, and once each for `usage` and `finish_reason` read from the nostream response body and from the streamed final usage chunk.
+The tests need no cluster and no gateway. The statistics, the model expansion, the aggregation, and the report rendering are checked on their own; the sender is checked against a local HTTP server started by the test, once for a real server-sent event stream whose pieces are spaced out over real wall-clock time, once for a server that ignores the streaming request and answers with one JSON body, and once each for `usage` and `finish_reason` read from the nostream response body and from the streamed final usage chunk. The `generation_controls` probes are checked the same way, against three stand-in endpoints: one that really honours all five, one that accepts every control and answers the same way regardless, and one that refuses every control the way this project's own `consumer_openai` server does.
 
 ## The source files
 
-- [`src/cli.ts`](./src/cli.ts) — the `openai_api_tool` command line program: declares the four subcommands and dispatches to them.
+- [`src/cli.ts`](./src/cli.ts) — the `openai_api_tool` command line program: declares the five subcommands and dispatches to them.
 - [`src/commands/completion_command.ts`](./src/commands/completion_command.ts) — the `completion` subcommand.
 - [`src/commands/history_command.ts`](./src/commands/history_command.ts) — the `history` subcommand.
 - [`src/commands/benchmark_command.ts`](./src/commands/benchmark_command.ts) — the `benchmark` subcommand.
 - [`src/commands/usage_command.ts`](./src/commands/usage_command.ts) — the `usage` subcommand.
+- [`src/commands/generation_controls_command.ts`](./src/commands/generation_controls_command.ts) — the `generation_controls` subcommand.
 - [`src/completion_sender.ts`](./src/completion_sender.ts) — the one way this package sends a request and times it.
 - [`src/benchmark_runner.ts`](./src/benchmark_runner.ts) — the warm-up and measured requests of one run, and the aggregation of what they measured.
 - [`src/model_sweeper.ts`](./src/model_sweeper.ts) — expands `-m/--model` into the model identifiers to work through.
 - [`src/statistics_calculator.ts`](./src/statistics_calculator.ts) — the average, median, minimum, and maximum of measured values.
+- [`src/generation_control_prober.ts`](./src/generation_control_prober.ts) — the five probes, and what each one concludes from the answers it compared.
 - [`src/report_renderer.ts`](./src/report_renderer.ts) — the outcome lines, the summary table, and the text, markdown, and JSON reports.
-- [`src/shared_options.ts`](./src/shared_options.ts) — every command line option all four subcommands accept.
-- [`src/completion_types.ts`](./src/completion_types.ts) — every data shape the four subcommands share.
+- [`src/generation_control_renderer.ts`](./src/generation_control_renderer.ts) — the same, for what the `generation_controls` probes concluded.
+- [`src/shared_options.ts`](./src/shared_options.ts) — every command line option all five subcommands accept.
+- [`src/completion_types.ts`](./src/completion_types.ts) — every data shape the five subcommands share.

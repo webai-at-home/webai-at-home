@@ -260,3 +260,79 @@ export type ReportFormat = 'text' | 'markdown' | 'json';
 
 /** Every format all three subcommands accept, in the order the help text lists them. */
 export const reportFormats: readonly ReportFormat[] = ['text', 'markdown', 'json'];
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The Generation Controls
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * The generation controls one request asks for, each spelled the way the OpenAI Chat Completions
+ * interface spells it on the connection.
+ *
+ * These spellings are what the endpoint reads, so they are not renamed to match this
+ * repository's own naming rules, exactly as the response body field names above are not.
+ */
+export type GenerationControls = {
+	/** How much the model may prefer a less likely next token, from `0` to `2`. */
+	readonly temperature?: number;
+	/** The share of the probability mass the next token is drawn from, from just above `0` to `1`. */
+	readonly top_p?: number;
+	/** The largest number of tokens the whole answer may be generated as. */
+	readonly max_completion_tokens?: number;
+	/**
+	 * The older spelling of `max_completion_tokens` on this interface.
+	 *
+	 * Both spellings are sent because an endpoint may read one and not the other: Ollama 0.32.5
+	 * ignores `max_completion_tokens` and honours `max_tokens`, which the `generation_controls`
+	 * probe finds and reports rather than concluding the endpoint honours neither.
+	 */
+	readonly max_tokens?: number;
+	/** The pieces of text that end the answer as soon as the model writes one of them. */
+	readonly stop?: readonly string[];
+	/** The number that decides every random choice made while the answer is generated. */
+	readonly seed?: number;
+};
+
+/** Every generation control this tool probes, named as the request field it is sent in. */
+export const generationControlFields = ['temperature', 'top_p', 'max_completion_tokens', 'stop', 'seed'] as const;
+
+/** One generation control this tool probes, named as the request field it is sent in. */
+export type GenerationControlField = typeof generationControlFields[number];
+
+/**
+ * What probing one generation control against one model and one mode concluded.
+ *
+ * - `honoured` — the answers changed in the way the control is supposed to change them.
+ * - `not_honoured` — the endpoint accepted the control and the answers did not change, which is
+ *   the failure this probe exists to catch: a control accepted and quietly ignored looks exactly
+ *   like a control that works until it is measured.
+ * - `refused` — the endpoint answered that this model cannot honour the control. That is a
+ *   correct answer, not a fault: it is what this project's own `consumer_openai` server does
+ *   rather than ignoring a control. See milestone 4 of
+ *   [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+ * - `inconclusive` — the runs cannot tell the two apart, such as a model answering identically
+ *   whatever seed it is given, so nothing is claimed either way.
+ * - `failed` — a request did not produce an answer at all, so the control was never tested.
+ */
+export const generationControlStatuses = ['honoured', 'not_honoured', 'refused', 'inconclusive', 'failed'] as const;
+
+/** What probing one generation control against one model and one mode concluded. */
+export type GenerationControlStatus = typeof generationControlStatuses[number];
+
+/** What probing one generation control against one model and one mode produced. */
+export type GenerationControlOutcome = {
+	/** The model identifier probed. */
+	readonly modelId: string;
+	/** The mode probed. */
+	readonly mode: CompletionMode;
+	/** The control probed, named as the request field it was sent in. */
+	readonly control: GenerationControlField;
+	/** What the probe concluded. */
+	readonly status: GenerationControlStatus;
+	/** What was observed, in words, naming the numbers the conclusion was drawn from. */
+	readonly observation: string;
+	/** The answers the probe's requests produced, in the order they were sent, so a reader can check the conclusion. */
+	readonly answers: readonly string[];
+};

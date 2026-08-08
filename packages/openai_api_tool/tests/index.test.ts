@@ -7,6 +7,7 @@ import Test from 'node:test';
 import { BenchmarkRunner, type BenchmarkOptions } from '../src/benchmark_runner.js';
 import { CompletionSender } from '../src/completion_sender.js';
 import type { CompletionResult, CompletionTarget, UsageOutcome } from '../src/completion_types.js';
+import { GenerationControlProber } from '../src/generation_control_prober.js';
 import { ModelSweeper } from '../src/model_sweeper.js';
 import { ReportRenderer } from '../src/report_renderer.js';
 import { StatisticsCalculator } from '../src/statistics_calculator.js';
@@ -821,6 +822,169 @@ Test('reports a refusal from the endpoint in words rather than as a stack trace'
 			Assert.match(message, /^HTTP 503 \(no_worker\)/);
 			Assert.match(message, /no worker is offering this work/);
 		}
+	} finally {
+		await server.stop();
+	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	GenerationControlProber
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** The generation controls one request to the stand-in endpoint below asked for. */
+type ReceivedControls = {
+	temperature?: number;
+	top_p?: number;
+	max_completion_tokens?: number;
+	max_tokens?: number;
+	stop?: string[];
+	seed?: number;
+	messages: { content: string }[];
+};
+
+/**
+ * Answers a chat completion request the way an endpoint that really honours every generation
+ * control would, so the prober can be checked against a known-good endpoint without a language
+ * model anywhere.
+ *
+ * @param body The request body received.
+ * @returns The answer text and the finish reason to answer with.
+ */
+function honouringAnswer(body: ReceivedControls): { text: string; finishReason: string } {
+	const prompt = body.messages[0]?.content ?? '';
+	let text = 'a fixed answer about a cat';
+	if (prompt.startsWith('Count from 1 to 9') === true) {
+		text = '1 2 3 4 5 6 7 8 9';
+	} else if (prompt.startsWith('Count from one to fifty') === true) {
+		text = 'one two three four five six seven eight nine ten eleven twelve';
+	} else if ((body.temperature ?? 0) > 0 && (body.top_p ?? 1) > 0.05) {
+		// Varies exactly as sampling would: by the seed when one was given, and freely when none was.
+		text = body.seed === undefined ? `a cat answer ${randomAnswerCounter += 1}` : `a cat answer for seed ${body.seed}`;
+	}
+	for (const sequence of body.stop ?? []) {
+		const cutAt = text.indexOf(sequence);
+		if (cutAt !== -1) {
+			return { text: text.slice(0, cutAt), finishReason: 'stop' };
+		}
+	}
+	const budget = body.max_completion_tokens ?? body.max_tokens;
+	if (budget !== undefined) {
+		return { text: text.split(' ').slice(0, budget).join(' '), finishReason: 'length' };
+	}
+	return { text, finishReason: 'stop' };
+}
+
+/** Counts the answers an endpoint that samples freely has produced, so each one differs. */
+let randomAnswerCounter = 0;
+
+/**
+ * Starts a stand-in endpoint that answers every chat completion request through one function.
+ *
+ * @param answerOf Builds the answer for one received request body.
+ * @returns The base URL to point a client at, and how to stop the server again.
+ */
+async function startCompletionServer(answerOf: (body: ReceivedControls) => { text: string; finishReason: string }): Promise<{ baseUrl: string; stop: () => Promise<void>; }> {
+	return await startTestServer((request, response) => {
+		let received = '';
+		request.on('data', (piece: Buffer) => {
+			received += piece.toString();
+		});
+		request.on('end', () => {
+			const body = JSON.parse(received) as ReceivedControls;
+			const answer = answerOf(body);
+			response.writeHead(200, { 'Content-Type': 'application/json' });
+			response.end(JSON.stringify({
+				id: 'chatcmpl-test',
+				object: 'chat.completion',
+				created: 0,
+				model: 'stand-in',
+				choices: [{ index: 0, message: { role: 'assistant', content: answer.text }, logprobs: null, finish_reason: answer.finishReason }],
+			}));
+		});
+	});
+}
+
+/**
+ * Probes one stand-in endpoint and returns what each control's probe concluded.
+ *
+ * @param baseUrl The stand-in endpoint's base URL.
+ * @returns The status of each of the five probes, keyed by the control's request field name.
+ */
+async function probeStatuses(baseUrl: string): Promise<Record<string, string>> {
+	const client = CompletionSender.createClient({
+		baseUrl: `${baseUrl}/v1`,
+		apiKey: 'insecure-benchmark-key',
+		timeoutMs: 5_000,
+	});
+	const outcomes = await GenerationControlProber.probeAll({
+		client,
+		modelId: 'stand-in',
+		mode: 'nostream',
+		repeats: 3,
+	});
+	return Object.fromEntries(outcomes.map((outcome) => [outcome.control, outcome.status]));
+}
+
+Test('finds every control honoured against an endpoint that really honours all five', async () => {
+	const server = await startCompletionServer(honouringAnswer);
+	try {
+		Assert.deepEqual(await probeStatuses(server.baseUrl), {
+			temperature: 'honoured',
+			top_p: 'honoured',
+			max_completion_tokens: 'honoured',
+			stop: 'honoured',
+			seed: 'honoured',
+		});
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('finds a control accepted and then ignored, which is the fault this probe exists to catch', async () => {
+	// This endpoint accepts every control without complaining and answers the same way whatever
+	// it was asked for, which is exactly what a control that works looks like until it is measured.
+	const server = await startCompletionServer((body) => ({
+		text: (body.messages[0]?.content ?? '').startsWith('Count from 1 to 9') === true ? '1 2 3 4 5 6 7 8 9' : 'the same answer every time',
+		finishReason: 'stop',
+	}));
+	try {
+		const statuses = await probeStatuses(server.baseUrl);
+		Assert.equal(statuses.temperature, 'not_honoured');
+		Assert.equal(statuses.max_completion_tokens, 'not_honoured');
+		Assert.equal(statuses.stop, 'not_honoured');
+		// A model answering identically whatever seed it is given is what an ignored seed and a
+		// deterministic model both look like, so nothing is claimed either way.
+		Assert.equal(statuses.seed, 'inconclusive');
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('reports a control the endpoint says the model cannot honour as refused, not as a failure', async () => {
+	const server = await startTestServer((request, response) => {
+		request.on('data', () => undefined);
+		request.on('end', () => {
+			response.writeHead(400, { 'Content-Type': 'application/json' });
+			response.end(JSON.stringify({
+				error: {
+					message: 'The model stand-in cannot honour this control.',
+					type: 'invalid_request_error',
+					param: 'temperature',
+					code: 'unhonourable_generation_control',
+				},
+			}));
+		});
+	});
+	try {
+		Assert.deepEqual(await probeStatuses(server.baseUrl), {
+			temperature: 'refused',
+			top_p: 'refused',
+			max_completion_tokens: 'refused',
+			stop: 'refused',
+			seed: 'refused',
+		});
 	} finally {
 		await server.stop();
 	}
