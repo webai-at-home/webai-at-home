@@ -13,8 +13,12 @@
 
     <!-- No data-enabled-stages attribute is set, so this one worker browser frame offers every
          stage whose computation it implements: the development formula stages, all three
-         Qwen3-0.6B shard stages, Chrome's built-in Gemma Nano language-model stage, and the
-         complete Qwen3.5-0.8B language-model stage. The allow="language-model" permission is what
+         Qwen3-0.6B shard stages, Chrome's built-in Gemma Nano language-model stage, the complete
+         Qwen3.5-0.8B language-model stage, and the complete Llama 3.2 1B Instruct language-model
+         stage. Offering the last two together means this one frame downloads both complete models
+         — about 1.65 gigabytes combined — and holds both in graphics memory at once once each has
+         run, so this page is a heavier way to exercise a worker browser than opening the two
+         single-stage debug pages separately. The allow="language-model" permission is what
          lets the Gemma Nano stage run inside this frame at all; see debug_iframe_llm_gemma_nano_chrome_full/index.html.
          The allow="screen-wake-lock" permission is what lets this frame's worker page hold the
          screen wake lock instead of the browser refusing the request with a permissions policy

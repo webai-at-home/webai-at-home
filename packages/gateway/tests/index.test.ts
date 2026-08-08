@@ -139,6 +139,7 @@ Test('selects a pinned compatible pipeline version and rejects invalid definitio
 	Assert.equal(registry.select({ taskType: 'task_type_dev_formula', input: 5 })?.pipelineId, 'dev_formula');
 	Assert.equal(registry.select({ taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello' })?.pipelineId, 'llm_gemma_nano_chrome_full');
 	Assert.equal(registry.select({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' })?.pipelineId, 'llm_qwen3_5_0_8b_full');
+	Assert.equal(registry.select({ taskType: 'task_type_llm_llama3_2_1b_full', input: 'hello' })?.pipelineId, 'llm_llama3_2_1b_full');
 	Assert.equal(registry.select({ taskType: 'task_type_dev_formula', input: 5 }, 'dev_formula', 1)?.version, 1);
 	Assert.throws(() => registry.add({ pipelineId: 'bad', version: 1, taskType: 'task_type_dev_formula', stages: [] }));
 });
@@ -150,6 +151,15 @@ Test('the Qwen3.5-0.8B full pipeline has exactly one stage that repeats until do
 	Assert.deepEqual(specification?.stages.map((stage) => stage.name), ['stage_llm_qwen3_5_0_8b_full']);
 	Assert.equal(specification?.stages[0]?.prefersSameWorkerOnRetry, true);
 	Assert.equal(registry.definesStage('stage_llm_qwen3_5_0_8b_full'), true);
+});
+
+Test('the Llama 3.2 1B Instruct full pipeline has exactly one stage that repeats until done', () => {
+	const registry = new PipelineRegistry(builtinPipelineSpecifications);
+	const specification = registry.select({ taskType: 'task_type_llm_llama3_2_1b_full', input: 'hello' });
+	Assert.equal(specification?.repeatsUntilDone, true);
+	Assert.deepEqual(specification?.stages.map((stage) => stage.name), ['stage_llm_llama3_2_1b_full']);
+	Assert.equal(specification?.stages[0]?.prefersSameWorkerOnRetry, true);
+	Assert.equal(registry.definesStage('stage_llm_llama3_2_1b_full'), true);
 });
 
 Test('creates tasks and advances through both stages', () => {

@@ -39,6 +39,7 @@ const pageRoutes: Record<string, string> = {
 	'/debug_iframe_llm_qwen3_0_6b_sharded': 'debug_iframe_llm_qwen3_0_6b_sharded/index.html',
 	'/debug_iframe_llm_gemma_nano_chrome_full': 'debug_iframe_llm_gemma_nano_chrome_full/index.html',
 	'/debug_iframe_llm_qwen3_5_0_8b_full': 'debug_iframe_llm_qwen3_5_0_8b_full/index.html',
+	'/debug_iframe_llm_llama3_2_1b_full': 'debug_iframe_llm_llama3_2_1b_full/index.html',
 };
 
 /** The content type to serve each built asset with. */

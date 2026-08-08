@@ -58,11 +58,12 @@ Test('rejects task input that does not match its task type', () => {
 	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_dev_formula', input: '5' }).success, false);
 });
 
-Test('accepts a whole conversation only for the two task types whose worker can hand one to its chat template', () => {
+Test('accepts a whole conversation only for the three task types whose worker can hand one to its chat template', () => {
 	const conversation = { messages: [{ role: 'user', content: 'hello' }] };
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation });
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_llama3_2_3b_full', input: conversation }), { taskType: 'task_type_llm_llama3_2_3b_full', input: conversation });
-	// The same two task types still take one prompt too, exactly as before this existed.
+	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_llama3_2_1b_full', input: conversation }), { taskType: 'task_type_llm_llama3_2_1b_full', input: conversation });
+	// The same three task types still take one prompt too, exactly as before this existed.
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' });
 	// Every other task type refuses a conversation, rather than reading part of it or accepting a
 	// shape its worker cannot hand to anything.
@@ -187,6 +188,7 @@ Test('StagePayloadFactory answers every task type with a first stage value', () 
 	const conversation = { messages: [{ role: 'user' as const, content: 'hello' }] };
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation }), { conversation });
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_llama3_2_3b_full', input: conversation }), { conversation });
+	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_llama3_2_1b_full', input: conversation }), { conversation });
 });
 
 Test('validates every inbound client message shape', () => {
