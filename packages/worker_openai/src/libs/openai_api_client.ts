@@ -12,15 +12,15 @@ const modelListTimeoutMs = 10_000;
 /**
  * One entry of the model list a server returns from `GET /v1/models`.
  *
- * Only the identifier is read here. Ollama and LM Studio each return more fields than this,
+ * Only the identifier is read here. LM Studio returns more fields than this,
  * and neither set is part of what this worker relies on.
  */
 type ModelListEntry = {
-	/** The identifier a completion request names in its `model` field, such as `llama3.2:3b`. */
+	/** The identifier a completion request names in its `model` field, such as `llama-3.2-3b-instruct`. */
 	id: string;
 };
 
-/** The answer to `GET /v1/models`, as both Ollama and LM Studio return it. */
+/** The answer to `GET /v1/models`, as LM Studio returns it. */
 type ModelListResponse = {
 	/** The models the server currently offers. */
 	data: ModelListEntry[];
@@ -45,11 +45,13 @@ type ChatCompletionChunk = {
  * whichever streamed event happened to carry them.
  *
  * Milestone 0's de-risk gate for https://github.com/webai-at-home/webai-at-home/issues/150 found
- * both Ollama and LM Studio send an exact `usage` and a real `finish_reason` (`stop` or
- * `length`) already, but split across events: a `finish_reason`-carrying event with an empty
- * delta, and — only when the request asks for it — a further, `choices`-empty event carrying
- * `usage`. This client accumulates both across the whole stream rather than reading either from
- * a single expected event.
+ * LM Studio sends an exact `usage` and a real `finish_reason` (`stop` or `length`) already, but
+ * split across events: a `finish_reason`-carrying event with an empty delta, and — only when the
+ * request asks for it — a further, `choices`-empty event carrying `usage`. This client
+ * accumulates both across the whole stream rather than reading either from a single expected
+ * event. Re-confirmed live against LM Studio 0.4.20 serving `llama-3.2-3b-instruct`: the same
+ * request sent without `stream_options` carried no `choices`-empty usage event at all, and sent
+ * with it carried exactly one.
  */
 export type ChatCompletionStreamUsage = {
 	/** The exact number of tokens the prompt was encoded into, once the server has reported it. */
@@ -84,16 +86,15 @@ type OutgoingGenerationControls = {
 };
 
 /**
- * Talks to one locally running server that speaks the OpenAI-compatible API, such as Ollama or
- * LM Studio.
+ * Talks to one locally running server that speaks the OpenAI-compatible API, such as LM Studio.
  *
  * The server is named by a base URL rather than chosen here, because which server a worker
  * talks to is decided by whoever starts the worker process. The client holds that base URL, so
  * it has state and its methods are instance methods.
  *
- * Confirmed live against a running Ollama instance, version 0.32.5, before this class was
- * written (see the de-risk gate recorded in
- * https://github.com/webai-at-home/webai-at-home/issues/103): `POST /v1/chat/completions` with
+ * Confirmed live against a running local server before this class was written (see the de-risk
+ * gate recorded in https://github.com/webai-at-home/webai-at-home/issues/103), and re-confirmed
+ * against LM Studio 0.4.20 serving `llama-3.2-3b-instruct`: `POST /v1/chat/completions` with
  * `stream: true` delivers one piece of the answer per streamed event, each carrying its piece in
  * `choices[0].delta.content`, and ends with an event whose `finish_reason` is set followed by a
  * literal `data: [DONE]` line.
@@ -101,7 +102,7 @@ type OutgoingGenerationControls = {
 export class OpenaiApiClient {
 	/**
 	 * @param baseUrl The base URL of the local server's OpenAI-compatible API, without a
-	 * trailing slash, such as `http://localhost:11434/v1`.
+	 * trailing slash, such as `http://localhost:1234/v1`.
 	 */
 	constructor(private readonly baseUrl: string) {
 	}
@@ -133,11 +134,10 @@ export class OpenaiApiClient {
 	 * Starts a Chat Completions request and returns the pieces of the answer as they stream in,
 	 * together with the usage and finish reason the server reports for the whole answer.
 	 *
-	 * Sends `stream_options: { include_usage: true }`, confirmed live against both Ollama and LM
-	 * Studio (see milestone 0's de-risk gate for
-	 * https://github.com/webai-at-home/webai-at-home/issues/150) to be what makes each of them
-	 * send the further, `choices`-empty event that carries `usage`; without it, only
-	 * `finish_reason` arrives.
+	 * Sends `stream_options: { include_usage: true }`, confirmed live against LM Studio (see
+	 * milestone 0's de-risk gate for https://github.com/webai-at-home/webai-at-home/issues/150) to
+	 * be what makes it send the further, `choices`-empty event that carries `usage`; without it,
+	 * only `finish_reason` arrives.
 	 *
 	 * @param modelId The model to ask for, exactly as the local server names it.
 	 * @param promptOrConversation The prompt to answer, or the whole conversation to continue when
@@ -188,11 +188,12 @@ export class OpenaiApiClient {
 	 * Every one of the five is native here, which is what makes this task type the one that
 	 * honours all of them. Milestone 0's de-risk gate for
 	 * https://github.com/webai-at-home/webai-at-home/issues/151 proved all five live against
-	 * Ollama 0.32.5 serving `llama3.2:3b`, one at a time: `temperature: 0` repeated one answer word
-	 * for word three times where `temperature: 1.6` gave three different answers, `top_p: 0.01`
-	 * collapsed `temperature: 1.6` back onto that same answer, `max_tokens: 8` cut the answer at
-	 * eight completion tokens and reported `finish_reason: length`, `stop: ["3"]` cut `"1 2 3 4 5
-	 * 6 7 8 9"` down to `"1 2 "`, and `seed: 42` repeated an answer that `seed: 43` changed.
+	 * LM Studio 0.4.20 serving `llama-3.2-3b-instruct`, one at a time: `temperature: 0` repeated one
+	 * answer word for word three times where `temperature: 1.6` gave three different answers,
+	 * `top_p: 0.01` collapsed `temperature: 1.6` back onto that same answer, `max_tokens: 8` cut
+	 * the answer at eight completion tokens and reported `finish_reason: length`, `stop: ["3"]` cut
+	 * `"1 2 3 4 5 6 7 8 9"` down to `"1 2 "`, and `seed: 42` repeated an answer that `seed: 43`
+	 * changed.
 	 *
 	 * A setting the consumer did not state produces no field at all, rather than a field set to
 	 * `null`, so that the local server applies its own default exactly as it did before this

@@ -260,9 +260,10 @@ export class GenerationControlProber {
 		}
 
 		// An endpoint that ignored `max_completion_tokens` may still read `max_tokens`, this
-		// interface's older spelling of the same control — Ollama 0.32.5 does. Reporting which
-		// spelling an endpoint reads is worth one more request, and is the difference between a
-		// useful finding and a false negative.
+		// interface's older spelling of the same control. LM Studio 0.4.20 reads both, but an
+		// endpoint reading only the older one does honour this control, and reporting which spelling
+		// it reads is worth one more request: it is the difference between a useful finding and a
+		// false negative.
 		const oldSpelling = await GenerationControlProber._ask(options, { temperature: 0, max_tokens: smallOutputTokenCount }, prompts.long);
 		const answers = [newSpelling.text, unlimited.text, oldSpelling.text];
 		if (oldSpelling.failureMessage !== undefined) {

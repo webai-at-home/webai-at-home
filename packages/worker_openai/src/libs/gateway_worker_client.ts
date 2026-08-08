@@ -68,7 +68,7 @@ export type GatewayWorkerClientOptions = {
 	requestedStageNames: readonly string[];
 	/** The client for the local server that holds the model. */
 	openaiApiClient: OpenaiApiClient;
-	/** The model this worker was told to serve, such as `llama3.2:3b`. */
+	/** The model this worker was told to serve, such as `llama-3.2-3b-instruct`. */
 	modelId: string;
 	/**
 	 * This worker's own account key pair, when it has one.

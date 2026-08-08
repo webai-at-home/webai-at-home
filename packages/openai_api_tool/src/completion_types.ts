@@ -284,9 +284,10 @@ export type GenerationControls = {
 	/**
 	 * The older spelling of `max_completion_tokens` on this interface.
 	 *
-	 * Both spellings are sent because an endpoint may read one and not the other: Ollama 0.32.5
-	 * ignores `max_completion_tokens` and honours `max_tokens`, which the `generation_controls`
-	 * probe finds and reports rather than concluding the endpoint honours neither.
+	 * Both spellings are sent because an endpoint may read one and not the other. LM Studio 0.4.20
+	 * reads both; an endpoint that reads only the older one still honours this control, which the
+	 * `generation_controls` probe finds and reports rather than concluding the endpoint honours
+	 * neither.
 	 */
 	readonly max_tokens?: number;
 	/** The pieces of text that end the answer as soon as the model writes one of them. */

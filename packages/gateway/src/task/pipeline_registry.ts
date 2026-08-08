@@ -151,7 +151,7 @@ export const builtinPipelineSpecifications: PipelineSpecification[] = [
 	},
 	{
 		// Llama 3.2 3B is held complete on one device by a local server that speaks the
-		// OpenAI-compatible Chat Completions API, such as Ollama or LM Studio, and the worker that
+		// OpenAI-compatible Chat Completions API, such as LM Studio, and the worker that
 		// runs this stage is a Node.js process that forwards the prompt to that server rather than
 		// a browser tab running the model itself
 		// (https://github.com/webai-at-home/webai-at-home/issues/100). The shape is otherwise the

@@ -1,8 +1,8 @@
 # `@webai/worker-openai`
 
 A native worker that runs a model by forwarding its assigned stage to a locally running server
-that speaks the OpenAI-compatible Chat Completions API, such as [Ollama](https://ollama.com) or
-[LM Studio](https://lmstudio.ai). Unlike `@webai/worker-webpage`, this worker is a Node.js
+that speaks the OpenAI-compatible Chat Completions API, such as [LM Studio](https://lmstudio.ai).
+Unlike `@webai/worker-webpage`, this worker is a Node.js
 command line process rather than a browser tab: it never downloads or runs a model itself, and
 instead reaches whichever local server, and whichever model that server already has loaded, the
 person running it has chosen. See
@@ -11,18 +11,11 @@ plan in [issue #103](https://github.com/webai-at-home/webai-at-home/issues/103).
 
 ## Running it
 
-There is one ready-made script per local server. Each one passes the base URL and the model
-name that server uses, so nothing else has to be given on the command line.
+There is a ready-made script that passes the base URL and the model name LM Studio uses, so
+nothing else has to be given on the command line.
 
-With Ollama, pull the model first if it is not already there, then start the worker:
-
-```sh
-ollama pull llama3.2:3b
-npm run sample:ollama --workspace @webai/worker-openai
-```
-
-With LM Studio, start its local server from the LM Studio application or with `lms server
-start`, then start the worker:
+Start LM Studio's local server from the LM Studio application or with `lms server start`, then
+start the worker:
 
 ```sh
 npm run sample:lmstudio --workspace @webai/worker-openai
@@ -48,8 +41,8 @@ npm run start --workspace @webai/worker-openai
 | `-u, --url <url>` | `ws://localhost:8787` | The central gateway's WebSocket URL. Falls back to the `GATEWAY_WS_URL` environment variable. |
 | `-a, --auth-token <token>` | `development-token` | The bearer token the gateway requires. Falls back to the `GATEWAY_AUTH_TOKEN` environment variable. |
 | `-n, --worker_name <name>` | `openai-worker` | The worker name shown in the gateway's device list. |
-| `-b, --base-url <url>` | `http://localhost:1234/v1` | The base URL of the local server's OpenAI-compatible API. That default is LM Studio's; Ollama's is `http://localhost:11434/v1`. |
-| `-m, --model <model>` | `llama-3.2-3b-instruct` | The model the local server is asked for, exactly as that server names it. LM Studio and Ollama name the same model differently, so this has to change with the base URL. |
+| `-b, --base-url <url>` | `http://localhost:1234/v1` | The base URL of the local server's OpenAI-compatible API. That default is LM Studio's; another server listens elsewhere. |
+| `-m, --model <model>` | `llama-3.2-3b-instruct` | The model the local server is asked for, exactly as that server names it. Two servers name the same model differently, so this has to change with the base URL. |
 | `-s, --stage-names <name...>` | every stage this worker can run | Restrict this worker to particular stages. |
 | `-c, --config_dir <path>` | `data/worker_openai_config` | The directory holding this worker's own account key pair, as `default.account_key.json`, relative to this checkout of the repository, so the stages it completes earn credits for that account. A directory with no key pair in it means no account, and the stages it completes earn credits for nobody. See [`docs/accounting_system.md`](../../docs/accounting_system.md). |
 

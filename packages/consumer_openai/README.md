@@ -64,7 +64,7 @@ A model identifier is the cluster's task type name without the leading `task_typ
 | `llm_qwen3_0_6b_sharded` | The Qwen3-0.6B model split into three shards, one per worker browser tab. | Worker browser tabs offering all three shard stages, and the shard files generated first. |
 | `llm_gemma_nano_chrome_full` | The Gemma Nano language model built into the Chrome browser. | One worker browser tab in a recent Chrome whose own language model is ready. |
 | `llm_qwen3_5_0_8b_full` | The complete Qwen3.5-0.8B model, downloaded from Hugging Face and held by one worker browser tab. | One worker browser tab with WebGPU and 16-bit float shader support, and enough free storage for the roughly 600 MB download. |
-| `llm_llama3_2_3b_full` | The complete Llama 3.2 3B model, held and run by a server on the worker's own device that speaks the OpenAI-compatible API, such as Ollama or LM Studio. | One worker process from `@webai/worker-openai`, and a local server that already has the model. No browser tab, and no download by this project. |
+| `llm_llama3_2_3b_full` | The complete Llama 3.2 3B model, held and run by a server on the worker's own device that speaks the OpenAI-compatible API, such as LM Studio. | One worker process from `@webai/worker-openai`, and a local server that already has the model. No browser tab, and no download by this project. |
 
 [`docs/tasks_and_stages.md`](../../docs/tasks_and_stages.md) describes each of these tasks in full, and [`docs/naming_scheme.md`](../../docs/naming_scheme.md) is the authoritative account of how the names are built.
 
@@ -118,7 +118,7 @@ Rule 1: `usage` is present on a chat completion response only when the worker th
 | Model | Reports `usage` |
 | --- | --- |
 | `llm_qwen3_5_0_8b_full` | Always — an exact prompt count from the model's own chat template, and an exact completion count counted as it generates. |
-| `llm_llama3_2_3b_full` | Whenever the local OpenAI-compatible server (Ollama, LM Studio) reports it, which both do. |
+| `llm_llama3_2_3b_full` | Whenever the local OpenAI-compatible server reports it, which LM Studio does. |
 | `llm_gemma_nano_chrome_full` | Never — this engine has no prompt/completion token count to report, only a cumulative context-window usage number in its own unit. |
 | `dev_formula`, `llm_qwen3_0_6b_sharded` | Never — neither task type carries a language model with token counts to report. |
 
@@ -140,7 +140,7 @@ The four language-model task types sit on four engines with four different sets 
 
 | Model | Honours |
 | --- | --- |
-| `llm_llama3_2_3b_full` | All five. The local OpenAI-compatible server (Ollama, LM Studio) is native for every one of them. |
+| `llm_llama3_2_3b_full` | All five. The local OpenAI-compatible server is native for every one of them, proved live against LM Studio 0.4.20 serving `llama-3.2-3b-instruct`. |
 | `llm_qwen3_5_0_8b_full`, `llm_gemma_nano_chrome_full`, `llm_qwen3_0_6b_sharded` | None yet. Two of the three do not sample at all today, so honouring a temperature on either means turning sampling on for the first time and changing the answer every existing caller already receives; that is milestone 3 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151). |
 | `dev_formula` | None — it answers with one number and generates no text. |
 

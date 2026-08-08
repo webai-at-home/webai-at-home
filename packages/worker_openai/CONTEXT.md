@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A worker that runs a model by forwarding its assigned stage to a locally running server that speaks the OpenAI-compatible Chat Completions API, such as Ollama or LM Studio. Unlike `@webai/worker-webpage`, this worker is a Node.js command line process rather than a browser tab: it never downloads or runs a model itself.
+A worker that runs a model by forwarding its assigned stage to a locally running server that speaks the OpenAI-compatible Chat Completions API, such as LM Studio. Unlike `@webai/worker-webpage`, this worker is a Node.js command line process rather than a browser tab: it never downloads or runs a model itself.
 
 ## Key Exports & Entry Points
 
@@ -15,9 +15,9 @@ A worker that runs a model by forwarding its assigned stage to a locally running
 
 ## Local Rules & Boundaries
 
-- Which local server runs the model — Ollama, LM Studio, or another — is a command line option of this process, never part of a stage or task type name. The stage is named `full` because the model is held complete on one device, following [`docs/naming_scheme.md`](../../docs/naming_scheme.md).
+- Which local server runs the model — LM Studio, or another — is a command line option of this process, never part of a stage or task type name. The stage is named `full` because the model is held complete on one device, following [`docs/naming_scheme.md`](../../docs/naming_scheme.md).
 - Adding a stage means adding one `src/stages/stage_helper_<stage name>.ts` file named after the stage.
 - Message shapes come from `@webai/protocol`. Do not restate a wire shape here.
 - The worker side of the protocol is implemented twice, here and in [`packages/worker_webpage`](../worker_webpage), because one runs in Node.js and the other in a browser tab. Keep the two in step when the protocol changes.
 - `stage_helper_llm_llama3_2_3b_full.ts` reports the exact `promptTokenCount`, `completionTokenCount`, and `stopReason` the local server sends on its Chat Completions stream, read by `openai_api_client.ts`'s `chatCompletionStream` (which asks for them with `stream_options: { include_usage: true }`). A `finish_reason` the local server sends that this stage does not recognise is left untranslated, never guessed at. See milestone 3 of [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150).
-- `openai_api_client.ts`'s `chatCompletionStream` carries the five generation controls of `GenerationSettings` into the request body under their OpenAI names — `temperature`, `top_p`, `max_tokens`, `stop`, and `seed` — and leaves a control the consumer did not ask for out of the body entirely rather than sending it as `null`. This is the only task type that honours all five, which milestone 0's de-risk gate for [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151) proved live against Ollama 0.32.5 serving `llama3.2:3b`.
+- `openai_api_client.ts`'s `chatCompletionStream` carries the five generation controls of `GenerationSettings` into the request body under their OpenAI names — `temperature`, `top_p`, `max_tokens`, `stop`, and `seed` — and leaves a control the consumer did not ask for out of the body entirely rather than sending it as `null`. This is the only task type that honours all five, which milestone 0's de-risk gate for [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151) proved live against LM Studio 0.4.20 serving `llama-3.2-3b-instruct`.

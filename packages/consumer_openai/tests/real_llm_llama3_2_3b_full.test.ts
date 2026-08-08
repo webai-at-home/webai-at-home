@@ -25,9 +25,9 @@ import { RealTestHelper } from './real_test_helper.js';
 //
 //   lms server start
 //
-// Set WEBAI_LOCAL_MODEL_BASE_URL to point at a different server, for example http://localhost:11434/v1 for
-// Ollama, and WEBAI_LOCAL_MODEL to ask for a different model. Both must agree with each other: the worker
-// refuses to advertise its stage unless the server named actually holds the model named.
+// Set WEBAI_LOCAL_MODEL_BASE_URL to point at a different local server, and WEBAI_LOCAL_MODEL to ask for a
+// different model. Both must agree with each other: the worker refuses to advertise its stage unless the
+// server named actually holds the model named.
 //
 // No mock stands in for the local server or for its inference: this test exercises the real gateway, the real
 // worker process, the real local model server, and the real OpenAI-compatible consumer path.

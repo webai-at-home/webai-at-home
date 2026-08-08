@@ -11,7 +11,7 @@ import OpenAI, { APIError } from 'openai';
 //
 // The model `llm_llama3_2_3b_full` is the complete Llama 3.2 3B language model, held and run by a
 // server already running on the worker's own device that speaks the OpenAI-compatible Chat
-// Completions API, such as Ollama or LM Studio. Nothing about the model is downloaded, held, or
+// Completions API, such as LM Studio. Nothing about the model is downloaded, held, or
 // run by this project.
 //
 // Unlike every other model here, its worker is not a browser tab. It needs the gateway running

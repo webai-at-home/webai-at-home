@@ -84,7 +84,7 @@ type TaskGenerationState = {
 
 /**
  * Runs the complete Llama 3.2 3B model by forwarding the stage's prompt to a locally running
- * server that speaks the OpenAI-compatible Chat Completions API, such as Ollama or LM Studio.
+ * server that speaks the OpenAI-compatible Chat Completions API, such as LM Studio.
  *
  * The model is held complete on one device by that server, which also loads it, quantizes it,
  * and drives the hardware, so this helper only has to send a prompt and read the answer back.
@@ -137,7 +137,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * offers a stage that downloads a model.
 	 *
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
-	 * @param modelId The model this worker was told to serve, such as `llama3.2:3b`.
+	 * @param modelId The model this worker was told to serve, such as `llama-3.2-3b-instruct`.
 	 * @returns Whether the stage can be run, and why not when it cannot.
 	 */
 	static async readiness(openaiApiClient: OpenaiApiClient, modelId: string): Promise<LocalModelReadiness> {
@@ -457,7 +457,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * why generation stopped.
 	 *
 	 * Milestone 0's de-risk gate for https://github.com/webai-at-home/webai-at-home/issues/150
-	 * found both Ollama and LM Studio distinguish `"stop"` from `"length"` already, in OpenAI's
+	 * found LM Studio distinguishes `"stop"` from `"length"` already, in OpenAI's
 	 * own spelling. Confirmed by that gate: forcing a length cutoff never produced `"stop"`. Any
 	 * other value, including none reported at all, is left untranslated — Rule 1 of that issue
 	 * forbids inventing a value nobody reported.

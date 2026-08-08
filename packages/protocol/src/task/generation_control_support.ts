@@ -34,7 +34,8 @@ export type GenerationControlName =
  * engine's documentation claims:
  *
  * - `task_type_llm_llama3_2_3b_full` runs on a local server speaking the OpenAI-compatible Chat
- *   Completions interface, and all five were proved against Ollama 0.32.5 serving `llama3.2:3b`:
+ *   Completions interface, and all five were proved against LM Studio 0.4.20 serving
+ *   `llama-3.2-3b-instruct`:
  *   `temperature: 0` repeated one answer word for word three times where a high temperature gave
  *   three different answers, `topP` at `0.01` collapsed a high temperature back onto that same
  *   answer, `maximumOutputTokenCount` cut the answer short and reported `length`, a stop sequence

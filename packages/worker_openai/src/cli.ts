@@ -63,7 +63,7 @@ export class Cli {
 	 */
 	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
 		const program = new Commander.Command('worker_openai')
-			.description('A worker that runs its assigned stage by calling a local server speaking the OpenAI-compatible Chat Completions API, such as Ollama or LM Studio')
+			.description('A worker that runs its assigned stage by calling a local server speaking the OpenAI-compatible Chat Completions API, such as LM Studio')
 			.option('-u, --url <url>', `central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment variable, then to ${defaultGatewayUrl})`)
 			.option('-a, --auth-token <token>', 'bearer token for the central gateway (falls back to the GATEWAY_AUTH_TOKEN environment variable, then to a development default)')
 			.option('-n, --worker_name <name>', 'worker name, which the gateway shows in its device list', 'openai-worker')

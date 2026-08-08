@@ -2,7 +2,7 @@
 
 The command line tool that exercises and measures a server speaking the OpenAI-compatible API, from the outside.
 
-It sends chat completion requests to an endpoint, times when the first and the last character of each answer arrived, and reports what answered. It reaches this project's own [`@webai/consumer-openai`](../consumer_openai/) server and any other such server alike — LM Studio and Ollama among them — which is what makes it the way the Web AI at Home cluster is compared against a model running on one machine.
+It sends chat completion requests to an endpoint, times when the first and the last character of each answer arrived, and reports what answered. It reaches this project's own [`@webai/consumer-openai`](../consumer_openai/) server and any other such server alike — LM Studio among them — which is what makes it the way the Web AI at Home cluster is compared against a model running on one machine.
 
 It holds the two programs that used to live inside `@webai/consumer-openai`, as `examples/chat_completion.ts` and `scripts/benchmark_openai_api.ts`. Both sent a chat completion request and timed it, through two separate transports, so the move gave them one shared implementation and one command line program. It is the work described by [issue #147](https://github.com/webai-at-home/webai-at-home/issues/147).
 
@@ -149,7 +149,7 @@ A generation control that is accepted and quietly ignored looks exactly like a c
 | --- | --- |
 | `temperature` | The same prompt at `0` several times, then at `1.6` several times. Honoured when every answer at `0` is identical and the high-temperature answers are not. Either half alone proves nothing, since a model can be deterministic for reasons that have nothing to do with the temperature it was given. |
 | `top_p` | The same prompt at `1.6` with `top_p` narrowed to `0.01`, several times. Honoured when every answer is identical, because narrowing the probability mass to the most likely token is what makes a high temperature stop mattering. |
-| `max_completion_tokens` | A long-answer prompt with a budget of 8 tokens, against the same prompt with no budget. Honoured when the endpoint reports `finish_reason: length`. An endpoint that ignores `max_completion_tokens` is then asked again with `max_tokens`, this interface's older spelling of the same control, and the report says which spelling it reads — Ollama 0.32.5 reads only the older one. |
+| `max_completion_tokens` | A long-answer prompt with a budget of 8 tokens, against the same prompt with no budget. Honoured when the endpoint reports `finish_reason: length`. An endpoint that ignores `max_completion_tokens` is then asked again with `max_tokens`, this interface's older spelling of the same control, and the report says which spelling it reads. LM Studio 0.4.20 reads both; an endpoint reading only the older one is reported as honouring the control under that spelling rather than as ignoring it. |
 | `stop` | `Count from 1 to 9` with `stop: ["3"]`, against the same prompt without it. Honoured when the answer stops before `3` and the unstopped answer wrote straight past it. The second half is what makes the first mean anything. |
 | `seed` | The same prompt at `1.6` with seed `42` twice, then with seed `43`. Honoured when the two runs of `42` agree and `43` does not. |
 
@@ -176,10 +176,10 @@ Summary:
 
 `-f/--format markdown` and `-f/--format json` also carry every answer each probe produced, so a reader can check a conclusion against the text it was drawn from rather than taking it on trust.
 
-Convenience scripts run it against Ollama directly and against the cluster, for a model that honours all five and one that honours none:
+Convenience scripts run it against LM Studio directly and against the cluster, for a model that honours all five and one that honours none:
 
 ```sh
-npm run generation_controls:ollama:llama3.2_3b --workspace @webai/openai-api-tool
+npm run generation_controls:lm_studio:llama-3.2-3b-instruct --workspace @webai/openai-api-tool
 ```
 
 ```sh

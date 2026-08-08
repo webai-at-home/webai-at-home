@@ -11,7 +11,7 @@ import OpenAI from 'openai';
 //
 // The model `llm_llama3_2_3b_full` is the complete Llama 3.2 3B language model, held and run by a
 // server already running on the worker's own device that speaks the OpenAI-compatible Chat
-// Completions API, such as Ollama or LM Studio.
+// Completions API, such as LM Studio.
 //
 // Unlike every other model here, its worker is not a browser tab. It needs the gateway running
 // and one worker process from `@webai/worker-openai`, started with:
