@@ -14,7 +14,7 @@ It holds the two programs that used to live inside `@webai/consumer-openai`, as 
 npm run build:dependencies --workspace @webai/openai-api-tool
 ```
 
-The four subcommands are then reachable through `tsx`, with no build of this package needed:
+The five subcommands are then reachable through `tsx`, with no build of this package needed:
 
 ```sh
 npx tsx ./src/cli.ts completion --model dev_formula --nostream
