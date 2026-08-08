@@ -23,7 +23,7 @@ npx tsx ./src/cli.ts completion --model dev_formula --nostream
 `src/cli.ts` is executable on its own, with the shebang `#!/usr/bin/env -S npx tsx`:
 
 ```sh
-././src/cli.ts history --model llm_llama3_2_3b_full
+././src/cli.ts history --model llm_qwen3_5_0_8b_full
 ```
 
 Once this package has been built (`npm run build --workspace @webai/openai-api-tool`), the binary is linked into the repository's own `node_modules/.bin`:
@@ -37,7 +37,7 @@ npx openai_api_tool completion --model all
 | Subcommand | What it does |
 | --- | --- |
 | `completion` | Sends one prompt per model and per mode, and reports which ones answered. Every model has its own default prompt: `5` for `dev_formula`, which accepts only a number, and a plain question for every other model. |
-| `history` | Sends a two-turn conversation, then checks that the second turn's answer recalls both facts the first turn stated. Only `llm_qwen3_5_0_8b_full` and `llm_llama3_2_3b_full` accept a whole conversation rather than only one prompt, so only those two are swept. |
+| `history` | Sends a two-turn conversation, then checks that the second turn's answer recalls both facts the first turn stated. Only `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` accept a whole conversation rather than only one prompt, so only those two are swept. |
 | `benchmark` | Measures the latency of one endpoint, one model at a time, over repeated requests, and prints a report as text, markdown, or JSON. |
 | `usage` | Sends one prompt per model and per mode, the same sweep `completion` runs, and reports each answer's `usage` — whether it was present, and its `prompt_tokens`/`completion_tokens`/`total_tokens` when it was — and its `finish_reason`. The streamed mode asks for its final, choice-less usage chunk with `stream_options: { include_usage: true }`. |
 
@@ -99,26 +99,26 @@ Convenience scripts run the benchmark against the endpoints this project measure
 npm run benchmark:lm_studio:llama-3.2-3b-instruct --workspace @webai/openai-api-tool
 ```
 ```sh
-npm run benchmark:webai_at_home:llm_llama3_2_3b_full --workspace @webai/openai-api-tool
+npm run benchmark:webai_at_home:llm_llama3_2_1b_full --workspace @webai/openai-api-tool
 ```
 ```sh
 npm run benchmark:webai_at_home:llm_qwen3_0_6b_sharded --workspace @webai/openai-api-tool
 ```
 
-Convenience scripts run `history` against the same LM Studio endpoint, and against the cluster's `llm_llama3_2_3b_full` — one of the two models `taskTypeNamesAcceptingConversation` names, so it is the one of the pair `history` can sweep on the cluster:
+Convenience scripts run `history` against the same LM Studio endpoint, and against the cluster's `llm_llama3_2_1b_full` — one of the two models `taskTypeNamesAcceptingConversation` names, so it is the one of the pair `history` can sweep on the cluster:
 
 ```sh
 npm run history:lm_studio:llama-3.2-3b-instruct --workspace @webai/openai-api-tool
 ```
 ```sh
-npm run history:webai_at_home:llm_llama3_2_3b_full --workspace @webai/openai-api-tool
+npm run history:webai_at_home:llm_llama3_2_1b_full --workspace @webai/openai-api-tool
 ```
 
 ## What `usage` reports
 
 `usage` sweeps every model of `taskTypeNames`, in both modes, the same sweep `completion` runs, but instead of reporting which pair answered, it reports what each answer's `usage` and `finish_reason` actually were. In the nostream mode it reads `usage` straight from the response body; in the streamed mode it sends `stream_options: { include_usage: true }` and reads `usage` off the final, choice-less chunk the endpoint sends after the chunk that carried `finish_reason` and before `data: [DONE]`, described in [`packages/consumer_openai/README.md`](../consumer_openai/README.md#usage--the-token-counts-and-why-an-answer-stopped).
 
-`usage` is present on an answer only when the worker that produced it reported both its prompt and completion token counts — never estimated, and never filled with `0` for a count nobody reported. Which models report it depends on the worker: this project's `llm_qwen3_5_0_8b_full` and `llm_llama3_2_3b_full` do, `llm_gemma_nano_chrome_full` and `dev_formula`/`llm_qwen3_0_6b_sharded` do not. `usage` turns writing that table by hand into one repeatable command:
+`usage` is present on an answer only when the worker that produced it reported both its prompt and completion token counts — never estimated, and never filled with `0` for a count nobody reported. Which models report it depends on the worker: this project's `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` do, `llm_gemma_nano_chrome_full` and `dev_formula`/`llm_qwen3_0_6b_sharded` do not. `usage` turns writing that table by hand into one repeatable command:
 
 ```sh
 npx tsx ./src/cli.ts usage --model all --format markdown
@@ -157,33 +157,12 @@ Each probe reports one of five conclusions: `honoured`, `not_honoured` (accepted
 
 Because three of the five probes need a temperature beside the control they are measuring, each control is first asked about on its own, with no other control in the request. Without that, an endpoint refusing more than one control would name whichever it checked first, and every control would be reported as refused for the wrong reason.
 
-```sh
-npx tsx ./src/cli.ts generation_controls --model llm_llama3_2_3b_full --nostream
-```
-
-```
-llm_llama3_2_3b_full (nostream) temperature: honoured — 3 answers at temperature 0 were identical, and 3 at 1.6 were not
-llm_llama3_2_3b_full (nostream) top_p: honoured — 3 answers at temperature 1.6 with top_p 0.01 were identical, so narrowing the probability mass removed the variation that temperature added
-llm_llama3_2_3b_full (nostream) max_completion_tokens: honoured — asking for at most 8 tokens stopped the answer with finish_reason length, 8 completion tokens
-llm_llama3_2_3b_full (nostream) stop: honoured — the answer stopped before "3", which the same prompt wrote straight past without a stop sequence
-llm_llama3_2_3b_full (nostream) seed: honoured — seed 42 gave the same answer twice at a high temperature, and seed 43 gave a different one
-
-Summary:
-  llm_llama3_2_3b_full (nostream): honours temperature, top_p, max_completion_tokens, stop, seed
-
-5/5 honoured, 0 refused, 0 not honoured, 0 inconclusive, 0 failed
-```
-
-`-f/--format markdown` and `-f/--format json` also carry every answer each probe produced, so a reader can check a conclusion against the text it was drawn from rather than taking it on trust.
+`-f/--format markdown` and `-f/--format json` carry every answer each probe produced, so a reader can check a conclusion against the text it was drawn from rather than taking it on trust.
 
 Convenience scripts run it against LM Studio directly and against the cluster, for a model that honours all five and one that honours none:
 
 ```sh
 npm run generation_controls:lm_studio:llama-3.2-3b-instruct --workspace @webai/openai-api-tool
-```
-
-```sh
-npm run generation_controls:webai_at_home:llm_llama3_2_3b_full --workspace @webai/openai-api-tool
 ```
 
 ```sh
