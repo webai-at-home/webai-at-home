@@ -37,8 +37,7 @@
 		"usage:webai_at_home:llm_qwen3_5_0_8b_full": "tsx src/cli.ts usage --base_url http://localhost:8788/v1 --model llm_qwen3_5_0_8b_full",
 		"pregeneration_controls": "npm run build:dependencies",
 		"generation_controls": "tsx src/cli.ts generation_controls",
-		"generation_controls:lm_studio:llama-3.2-3b-instruct": "tsx src/cli.ts generation_controls --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct --nostream",
-		"generation_controls:webai_at_home:llm_llama3_2_3b_full": "tsx src/cli.ts generation_controls --base_url http://localhost:8788/v1 --model llm_llama3_2_3b_full --nostream",
+		"generation_controls:lm_studio:qwen_qwen3.5-0.8b": "tsx src/cli.ts generation_controls --base_url http://localhost:1234/v1 --model qwen_qwen3.5-0.8b --nostream",
 		"generation_controls:webai_at_home:llm_qwen3_5_0_8b_full": "tsx src/cli.ts generation_controls --base_url http://localhost:8788/v1 --model llm_qwen3_5_0_8b_full --nostream"
 	},
 	"dependencies": {
