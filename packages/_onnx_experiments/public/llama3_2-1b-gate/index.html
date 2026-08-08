@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Llama 3.2 1B Instruct · ONNX de-risk gate (issue #154)</title>
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      .phase { color: #6cf; }
+      .fail { color: #f66; }
+    </style>
+  </head>
+  <body>
+    <h1>Llama 3.2 1B Instruct usage metadata de-risk gate — issue #154 milestone 0</h1>
+    <p>Loads the exact pinned export a real stage helper would run (<code>onnx-community/Llama-3.2-1B-Instruct-ONNX</code>,
+      revision <code>14007543b6dc92de88daf96a9aa85d2f95ace6ef</code>, <code>q4f16</code>) and runs six phases to answer:
+      does this ungated repository download and load on WebGPU without a Hugging Face access token, does the
+      tokenizer give an exact token count for a prompt and an answer, can reaching the generation cap, the
+      end-of-sequence token, and an interruption be told apart afterwards, and does a system message in a
+      conversation actually reach the model?</p>
+    <button id="run-button" type="button" disabled>Loading model…</button>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/llama3_2-1b-gate/src/main.ts"></script>
+  </body>
+</html>
