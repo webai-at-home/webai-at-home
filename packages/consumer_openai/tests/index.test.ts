@@ -4,14 +4,15 @@ import Os from 'node:os';
 import Path from 'node:path';
 import Test from 'node:test';
 import Express from 'express';
-import { protocolVersion } from '@webai/protocol';
-import type { TaskSocket } from '@webai/consumer-cli';
+import { protocolVersion, type GenerationSettings } from '@webai/protocol';
+import type { TaskSocket, TaskTypeName } from '@webai/consumer-cli';
 import { ClusterTaskRunner, type ClusterTaskRunnerOptions } from '../src/libs/cluster_task_runner.js';
 import { CurlStyleTransactionLogger } from '../src/http/curl_style_transaction_logger.js';
 import { ModelCatalog } from '../src/api/model_catalog.js';
 import { OpenaiError } from '../src/api/openai_error.js';
 import { OpenaiRoutes } from '../src/http/openai_routes.js';
 import { ConversationBuilder } from '../src/api/conversation_builder.js';
+import { GenerationSettingsBuilder } from '../src/api/generation_settings_builder.js';
 import { ChatCompletionRequestSchema, type ChatCompletionResponse } from '../src/api/openai_types.js';
 import { FinishReasonTranslator } from '../src/api/finish_reason_translator.js';
 import { PromptFlattener } from '../src/api/prompt_flattener.js';
@@ -63,18 +64,28 @@ Test('carries a developer message as a system message, since no worker chat temp
 	Assert.deepEqual(conversation, { messages: [{ role: 'system', content: 'Answer in one short sentence.' }] });
 });
 
-Test('reads the fields it uses and ignores every other generation setting', () => {
+Test('reads the five generation controls, and ignores every other field of the request', () => {
 	const parsed = ChatCompletionRequestSchema.safeParse({
-		model: 'llm_gemma_nano_chrome_full',
+		model: 'llm_llama3_2_3b_full',
 		messages: [{ role: 'user', content: 'hello' }],
 		temperature: 0.7,
 		top_p: 0.9,
 		max_tokens: 64,
+		stop: ['\nUser:'],
+		seed: 42,
 		n: 3,
 		tools: [{ type: 'function' }],
 	});
 	Assert.equal(parsed.success, true);
-	Assert.deepEqual(parsed.success === true ? parsed.data : undefined, { model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }] });
+	Assert.deepEqual(parsed.success === true ? parsed.data : undefined, {
+		model: 'llm_llama3_2_3b_full',
+		messages: [{ role: 'user', content: 'hello' }],
+		temperature: 0.7,
+		top_p: 0.9,
+		max_tokens: 64,
+		stop: ['\nUser:'],
+		seed: 42,
+	});
 });
 
 Test('refuses a body it cannot read', () => {
@@ -90,6 +101,110 @@ Test('refuses a body it cannot read', () => {
 Test('reads whether the request asks for the answer to be streamed', () => {
 	const parsed = ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages: [{ role: 'user', content: '5' }], stream: true });
 	Assert.equal(parsed.success === true ? parsed.data.stream : undefined, true);
+});
+
+Test('refuses a generation control whose value is outside the range this interface states for it', () => {
+	const messages = [{ role: 'user', content: 'hello' }];
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, temperature: 2.5 }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, top_p: 1.5 }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, max_tokens: 0 }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, stop: ['a', 'b', 'c', 'd', 'e'] }).success, false);
+	// A client holding no value for a control commonly sends the field set to `null` rather than
+	// leaving it out, and both mean the same thing.
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'llm_llama3_2_3b_full', messages, temperature: null, top_p: null, max_tokens: null, stop: null, seed: null }).success, true);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The Generation Controls Of A Request
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Builds the generation settings for one request body, reading it through the request schema
+ * first so the test exercises exactly what a real request goes through.
+ *
+ * @param body The request body a client would send.
+ * @param taskTypeName The task type the request's model names.
+ * @param isStreaming Whether the caller asked for the answer in pieces.
+ * @returns The settings the request would submit its task with.
+ */
+const generationSettingsOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName, isStreaming = false): GenerationSettings | undefined => {
+	const parsed = ChatCompletionRequestSchema.parse(body);
+	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming);
+};
+
+Test('carries every generation control to a model that honours all five', () => {
+	const settings = generationSettingsOf({
+		model: 'llm_llama3_2_3b_full',
+		messages: [{ role: 'user', content: 'hello' }],
+		temperature: 0,
+		top_p: 0.9,
+		max_tokens: 20,
+		stop: '\nUser:',
+		seed: 42,
+	}, 'llm_llama3_2_3b_full', true);
+	// `stop` is allowed to be one piece of text rather than a list, and becomes a list of one.
+	Assert.deepEqual(settings, {
+		isStreaming: true,
+		temperature: 0,
+		topP: 0.9,
+		maximumOutputTokenCount: 20,
+		stopSequences: ['\nUser:'],
+		randomSeed: 42,
+	});
+});
+
+Test('prefers max_completion_tokens over its older spelling max_tokens', () => {
+	const both = generationSettingsOf({ model: 'llm_llama3_2_3b_full', messages: [{ role: 'user', content: 'hello' }], max_tokens: 20, max_completion_tokens: 30 }, 'llm_llama3_2_3b_full');
+	Assert.deepEqual(both, { maximumOutputTokenCount: 30 });
+	const older = generationSettingsOf({ model: 'llm_llama3_2_3b_full', messages: [{ role: 'user', content: 'hello' }], max_tokens: 20 }, 'llm_llama3_2_3b_full');
+	Assert.deepEqual(older, { maximumOutputTokenCount: 20 });
+});
+
+Test('submits no settings block at all for a request that asked for nothing', () => {
+	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }] }, 'llm_qwen3_5_0_8b_full'), undefined);
+	// This interface's own defaults are `1` for both `temperature` and `top_p`, an empty `stop`
+	// names no text to stop at, and `null` says a client holds no value. None of the four asks a
+	// model for anything, so none of the four is refused by a model that honours nothing.
+	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_qwen3_5_0_8b_full'), undefined);
+});
+
+/**
+ * Runs {@link generationSettingsOf} and returns the refusal it raised.
+ *
+ * @param body The request body a client would send.
+ * @param taskTypeName The task type the request's model names.
+ * @returns The refusal, so the test can read its status, code, and field.
+ * @throws If the request was accepted rather than refused.
+ */
+const refusalOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName): OpenaiError => {
+	try {
+		generationSettingsOf(body, taskTypeName);
+	} catch (error: unknown) {
+		if (error instanceof OpenaiError) {
+			return error;
+		}
+		throw error;
+	}
+	throw new Error('The request was accepted, where it should have been refused.');
+};
+
+Test('refuses a generation control the model named cannot honour, rather than dropping it', () => {
+	// Every control is refused by every model but `llm_llama3_2_3b_full`, which is the only one
+	// of the four language-model task types that honours any of them today. See issue #151.
+	for (const [field, value] of [['temperature', 0], ['top_p', 0.9], ['max_tokens', 20], ['stop', ['\nUser:']], ['seed', 42]] as const) {
+		const refusal = refusalOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_qwen3_5_0_8b_full');
+		Assert.equal(refusal.status, 400);
+		Assert.equal(refusal.code, 'unhonourable_generation_control');
+		// `max_tokens` is refused under the newer name of the same control, which is the name the
+		// sender should use when it sends the request again.
+		Assert.equal(refusal.param, field === 'max_tokens' ? 'max_completion_tokens' : field);
+		Assert.match(refusal.message, /honours are none/);
+	}
+	// The refusal names the model and the control in words, so the sender learns what went wrong
+	// without having to read a code.
+	Assert.match(refusalOf({ model: 'dev_formula', messages: [{ role: 'user', content: '5' }], seed: 42 }, 'dev_formula').message, /The model dev_formula cannot honour seed/);
 });
 
 ///////////////////////////////////////////////////////////////////////////////

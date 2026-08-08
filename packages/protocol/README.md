@@ -45,7 +45,7 @@ through the entry point.
 - `@webai/protocol/task_projection`
 - `@webai/protocol/session_renewal`
 
-The current protocol version is `3`, and it is the only version the gateway
+The current protocol version is `6`, and it is the only version the gateway
 accepts. The built-in task types are `task_type_dev_formula`,
 `task_type_llm_qwen3_0_6b_sharded`,
 `task_type_llm_gemma_nano_chrome_full`,

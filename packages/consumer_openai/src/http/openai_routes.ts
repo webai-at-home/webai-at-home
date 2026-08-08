@@ -16,6 +16,7 @@ import type {
 	TransactionResponseType,
 } from './curl_style_transaction_logger.js';
 import { ConversationBuilder } from '../api/conversation_builder.js';
+import { GenerationSettingsBuilder } from '../api/generation_settings_builder.js';
 import { ModelCatalog } from '../api/model_catalog.js';
 import { OpenaiError } from '../api/openai_error.js';
 import { FinishReasonTranslator } from '../api/finish_reason_translator.js';
@@ -218,21 +219,17 @@ export class OpenaiRoutes {
 			? ConversationBuilder.build(body.messages)
 			: PromptFlattener.flatten(body.messages);
 		const isStreaming = body.stream === true;
+		// Asking the cluster for the answer in pieces is what makes it report them, and it is
+		// asked only when the caller asked, because a task answered in pieces costs a scheduling
+		// round for every piece. The five generation controls join it here, and this is also where
+		// a request asking a model for a control it cannot honour is refused rather than answered
+		// as though nothing had been asked for.
+		const generationSettings = GenerationSettingsBuilder.build(body, taskTypeName, isStreaming);
 		let taskInput: TaskInput;
 		try {
-			// Asking the cluster for the answer in pieces is what makes it report them, and it is
-			// asked only when the caller asked, because a task answered in pieces costs a
-			// scheduling round for every piece. A request that does not ask for a stream submits
-			// exactly what it did before generation settings existed.
-			taskInput = TaskInputFactory.createTaskInput(
-				taskTypeName,
-				promptOrConversation,
-				isStreaming
-					? {
-							isStreaming: true,
-						}
-					: undefined,
-			);
+			// A request that asked for nothing submits exactly what it did before generation
+			// settings existed: no settings block at all.
+			taskInput = TaskInputFactory.createTaskInput(taskTypeName, promptOrConversation, generationSettings);
 		} catch (error: unknown) {
 			throw OpenaiError.unusableMessages(
 				`The model ${body.model} cannot take this request: ` +

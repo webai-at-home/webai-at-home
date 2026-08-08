@@ -51,11 +51,23 @@ import type { GatewayMessage } from './gateway_message.js';
  * refuses these fields before this version, so a worker built after the change is refused by a
  * gateway built before it at the moment it authenticates, rather than having its first result
  * refused for a shape that gateway's stage payload schema does not allow.
+ *
+ * Version 6 widened what a consumer may ask for about how its answer is generated.
+ * `GenerationSettingsSchema` now carries `temperature`, `topP`, `maximumOutputTokenCount`,
+ * `stopSequences`, and `randomSeed` beside `isStreaming`, and `task_type_llm_llama3_2_3b_full`
+ * honours all five. See milestone 1 of
+ * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151). Every earlier version
+ * is refused because this is the first version in which a stage acts on a generation setting at
+ * all: a gateway built before this version has no such field on its task input, its task input
+ * members are not strict, and it therefore drops the whole block and answers as though nothing
+ * had been asked for. Refusing that peer at authentication time is the point — it is what stops a
+ * consumer that asked for `temperature: 0` from being answered by a worker that never received
+ * the request.
  */
-export const protocolVersion = 5;
+export const protocolVersion = 6;
 
 /** The protocol versions the gateway accepts. No earlier version is accepted. */
-export const supportedProtocolVersions: number[] = [5];
+export const supportedProtocolVersions: number[] = [6];
 
 /**
  * The wrapper around every frame sent in either direction.

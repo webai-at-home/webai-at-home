@@ -1,4 +1,4 @@
-import type { ConversationInput } from '@webai/protocol';
+import type { ConversationInput, GenerationSettings } from '@webai/protocol';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -67,6 +67,23 @@ type OutgoingMessage = {
 };
 
 /**
+ * The generation controls of one request to the local server, each spelled the way the OpenAI
+ * Chat Completions interface spells it on the connection.
+ *
+ * These four spellings and `temperature` are part of the format the local server reads, so they
+ * are not renamed to match this repository's own naming rules, and every field is left out
+ * entirely rather than sent as `null` when the consumer asked for nothing, so that a server's own
+ * default is what applies.
+ */
+type OutgoingGenerationControls = {
+	temperature?: number;
+	top_p?: number;
+	max_tokens?: number;
+	stop?: string[];
+	seed?: number;
+};
+
+/**
  * Talks to one locally running server that speaks the OpenAI-compatible API, such as Ollama or
  * LM Studio.
  *
@@ -128,6 +145,9 @@ export class OpenaiApiClient {
 	 * @param abortController Aborts the request when the answer is no longer wanted. The stream's
 	 * own `cancel` calls this, so cancelling the reader stops the request to the local server
 	 * rather than only stopping this side from reading it.
+	 * @param generationSettings What the consumer asked for about how the answer is generated. Its
+	 * five generation controls become the fields of the same meaning in the request body; a
+	 * setting the consumer did not state is left out of the body entirely.
 	 * @returns The stream of text pieces the model produces, in order, and the usage object that
 	 * is filled in as the stream is read and is only complete once the stream has closed.
 	 * @throws If the server cannot be reached, or answers with a failure status.
@@ -136,6 +156,7 @@ export class OpenaiApiClient {
 		modelId: string,
 		promptOrConversation: string | ConversationInput,
 		abortController: AbortController,
+		generationSettings?: GenerationSettings,
 	): Promise<{ stream: ReadableStream<string>; usage: ChatCompletionStreamUsage }> {
 		const response = await fetch(`${this.baseUrl}/chat/completions`, {
 			method: 'POST',
@@ -145,6 +166,7 @@ export class OpenaiApiClient {
 				stream: true,
 				stream_options: { include_usage: true },
 				messages: OpenaiApiClient.messagesOf(promptOrConversation),
+				...OpenaiApiClient.generationControlsOf(generationSettings),
 			}),
 			signal: abortController.signal,
 		}).catch((error: unknown) => {
@@ -158,6 +180,49 @@ export class OpenaiApiClient {
 		}
 		const usage: ChatCompletionStreamUsage = { promptTokenCount: undefined, completionTokenCount: undefined, finishReason: undefined };
 		return { stream: OpenaiApiClient.textPiecesOf(response.body, abortController, usage), usage };
+	}
+
+	/**
+	 * Builds the generation controls of the request body, from what the consumer asked for.
+	 *
+	 * Every one of the five is native here, which is what makes this task type the one that
+	 * honours all of them. Milestone 0's de-risk gate for
+	 * https://github.com/webai-at-home/webai-at-home/issues/151 proved all five live against
+	 * Ollama 0.32.5 serving `llama3.2:3b`, one at a time: `temperature: 0` repeated one answer word
+	 * for word three times where `temperature: 1.6` gave three different answers, `top_p: 0.01`
+	 * collapsed `temperature: 1.6` back onto that same answer, `max_tokens: 8` cut the answer at
+	 * eight completion tokens and reported `finish_reason: length`, `stop: ["3"]` cut `"1 2 3 4 5
+	 * 6 7 8 9"` down to `"1 2 "`, and `seed: 42` repeated an answer that `seed: 43` changed.
+	 *
+	 * A setting the consumer did not state produces no field at all, rather than a field set to
+	 * `null`, so that the local server applies its own default exactly as it did before this
+	 * cluster carried any of these controls.
+	 *
+	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
+	 * nothing.
+	 * @returns The fields to spread into the request body, empty when no control was asked for.
+	 */
+	private static generationControlsOf(generationSettings: GenerationSettings | undefined): OutgoingGenerationControls {
+		const controls: OutgoingGenerationControls = {};
+		if (generationSettings === undefined) {
+			return controls;
+		}
+		if (generationSettings.temperature !== undefined) {
+			controls.temperature = generationSettings.temperature;
+		}
+		if (generationSettings.topP !== undefined) {
+			controls.top_p = generationSettings.topP;
+		}
+		if (generationSettings.maximumOutputTokenCount !== undefined) {
+			controls.max_tokens = generationSettings.maximumOutputTokenCount;
+		}
+		if (generationSettings.stopSequences !== undefined) {
+			controls.stop = [...generationSettings.stopSequences];
+		}
+		if (generationSettings.randomSeed !== undefined) {
+			controls.seed = generationSettings.randomSeed;
+		}
+		return controls;
 	}
 
 	/**

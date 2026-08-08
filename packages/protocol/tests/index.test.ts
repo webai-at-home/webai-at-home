@@ -198,7 +198,16 @@ Test('validates every inbound client message shape', () => {
 	// a dropped setting would change the answer without telling the consumer anything.
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { isStreaming: true } } }).success, true);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: {} } }).success, true);
-	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { isStreaming: true, temperature: 0.7 } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { isStreaming: true, presencePenalty: 0.7 } } }).success, false);
+	// Protocol version 6 added the five generation controls beside `isStreaming`, each within the
+	// range the OpenAI Chat Completions interface states for it, so a value outside that range is
+	// refused at submission rather than sent to a worker that would have to decide what to do
+	// with it. See issue #151.
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { temperature: 0, topP: 0.9, maximumOutputTokenCount: 20, stopSequences: ['\nUser:'], randomSeed: 42 } } }).success, true);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { temperature: 2.5 } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { topP: 0 } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { maximumOutputTokenCount: 0 } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_llama3_2_3b_full', input: 'hello', generationSettings: { stopSequences: [] } } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { isStreaming: 'yes' } } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', input: { taskType: 'task_type_dev_formula', input: 5 } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'stage.result', taskId: 'task-1', stage: 'stage_dev_formula_multiply', value: 10 }).success, false);

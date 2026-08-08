@@ -61,6 +61,8 @@ export type {
 	TaskUpdate,
 	TaskUpdateAssignment,
 } from './task/task_types.js';
+export { GenerationControlSupport } from './task/generation_control_support.js';
+export type { GenerationControlName } from './task/generation_control_support.js';
 export { PipelineSpecificationSchema, PipelineStageSchema, StageName } from './task/pipeline_types.js';
 export type { PipelineSpecification, PipelineStage } from './task/pipeline_types.js';
 export { TaskProjection } from './task/task_projection.js';

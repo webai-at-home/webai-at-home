@@ -43,8 +43,17 @@ export type TaskType = z.infer<typeof TaskType>;
  * That holds only where both sides know this block exists. A gateway built before it did has
  * no `generationSettings` field on its task input at all, and its task input members are not
  * strict, so it drops the whole block silently and answers as though nothing had been asked
- * for. Nothing catches that today, because no stage yet honours a setting and so no answer yet
- * differs; the moment one does, the protocol version is what has to say so.
+ * for. That is what protocol version 6 exists to state: from that version onward a stage does
+ * honour a setting other than `isStreaming`, so an answer produced by a peer that never
+ * received the setting really does differ from the answer that was asked for, and the version
+ * refusal at authentication time is what stops that answer from being produced at all. See
+ * milestone 1 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+ *
+ * Every control below is carried exactly as the consumer asked for it, and is never translated
+ * for the engine that will run the task. What `temperature` means to a stage that drives the
+ * browser's built-in language model and what it means to a stage that runs one shard of a model
+ * this project ships are that stage helper's business, not this block's. Which task type honours
+ * which control is written down once, in `generation_control_support.ts`.
  */
 export const GenerationSettingsSchema = z.object({
 	/**
@@ -56,6 +65,55 @@ export const GenerationSettingsSchema = z.object({
 	 * with the fewest messages the pipeline can manage.
 	 */
 	isStreaming: z.boolean().optional(),
+	/**
+	 * How much the model is allowed to prefer a less likely next token, from `0` for none at all
+	 * to `2` for a great deal.
+	 *
+	 * The range is the one the OpenAI Chat Completions interface states, because that is the range
+	 * every consumer of this cluster already writes its numbers in. A task that asks for nothing
+	 * here is generated the way that task type has always generated, which for two of the four
+	 * language-model task types means no sampling whatsoever rather than sampling at a low
+	 * temperature.
+	 */
+	temperature: z.number().min(0).max(2).optional(),
+	/**
+	 * The share of the probability mass the next token is drawn from, from just above `0` for the
+	 * single most likely token to `1` for every token the model considered.
+	 *
+	 * Named `topP` here for the sampling method it selects, nucleus sampling, which the OpenAI
+	 * Chat Completions interface spells `top_p`. A value of `0` is refused rather than accepted,
+	 * because it names no tokens at all to draw from.
+	 */
+	topP: z.number().gt(0).max(1).optional(),
+	/**
+	 * The largest number of tokens the whole answer may be generated as.
+	 *
+	 * This is a budget for the answer, not for one run of a stage. A language-model pipeline
+	 * repeats its stage once per piece of the answer, and each of those runs already has a
+	 * per-run ceiling of its own that the worker sets and a consumer cannot; this number is
+	 * counted across every run of the task instead, so that a consumer asking for at most 20
+	 * tokens receives at most 20 tokens however many runs produced them.
+	 */
+	maximumOutputTokenCount: z.number().int().positive().optional(),
+	/**
+	 * The pieces of text that end the answer as soon as the model writes one of them, with the
+	 * piece itself left out of the answer.
+	 *
+	 * A stop sequence is applied where the tokens are produced, and never by a consumer dropping
+	 * pieces of the answer as it forwards them: a stop sequence can straddle two pieces, arriving
+	 * one character in one piece and the rest in the next, so a consumer filtering whole pieces
+	 * would never see it.
+	 */
+	stopSequences: z.array(z.string().min(1)).min(1).max(4).optional(),
+	/**
+	 * The number that decides every random choice made while the answer is generated, so that the
+	 * same task submitted twice with the same seed is answered the same way twice.
+	 *
+	 * Reproducibility is an offer rather than a promise, exactly as it is on the OpenAI Chat
+	 * Completions interface: a task type that honours the seed is answered the same way twice on
+	 * the same worker with the same model, and nothing here says two different workers agree.
+	 */
+	randomSeed: z.number().int().optional(),
 }).strict();
 /** What a consumer asks for about how its answer is generated. */
 export type GenerationSettings = z.infer<typeof GenerationSettingsSchema>;

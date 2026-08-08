@@ -124,6 +124,38 @@ export class OpenaiError extends Error {
 	}
 
 	/**
+	 * The request asks for a generation control the model it named cannot honour, at a value that
+	 * is not this interface's own default for that control.
+	 *
+	 * Refusing is the middle of the three possible answers, and the one this server gives. Ignoring
+	 * the control returns an answer generated some other way and reports nothing, which is a wrong
+	 * answer with no error; answering and reporting which controls were honoured needs the client
+	 * to read a field it was never written to read. A request that asks for this interface's own
+	 * default is never refused, because a client that always sends `temperature: 1` is asking for
+	 * nothing unusual. See milestone 4 of
+	 * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+	 *
+	 * @param field The request field at fault, spelled the way this interface spells it, such as
+	 * `top_p`.
+	 * @param modelId The model the request asked for.
+	 * @param honouredFields The fields that model does honour, spelled the same way, so the sender
+	 * learns what it may ask for instead of only what it may not.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static unhonourableGenerationControl(field: string, modelId: string, honouredFields: readonly string[]): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			`The model ${modelId} cannot honour ${field}, and this server refuses a request it would have to ` +
+				'ignore rather than answering it as though nothing had been asked for. The generation controls ' +
+				`${modelId} honours are ${honouredFields.length === 0 ? 'none' : honouredFields.join(', ')}. Send the ` +
+				`request again without ${field}, or send it to a model that honours it.`,
+			field,
+			'unhonourable_generation_control',
+		);
+	}
+
+	/**
 	 * This server was started with a required key, and the request presented no key or a key
 	 * that does not match.
 	 *

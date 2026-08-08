@@ -39,17 +39,30 @@ export type ChatCompletionMessage = z.infer<typeof ChatCompletionMessageSchema>;
 /**
  * The body of a request to `POST /v1/chat/completions`.
  *
- * Only the three fields named here are read. Every other field an OpenAI client may send —
- * `temperature`, `top_p`, `max_tokens`, `n`, `stop`, `tools`, `logprobs`, and the rest — is
- * accepted and then ignored, because a task in this cluster carries only a prompt and the
- * generation limits belong to the worker browser that runs the model. The schema therefore
+ * The five generation controls — `temperature`, `top_p`, `max_completion_tokens` and its older
+ * spelling `max_tokens`, `stop`, and `seed` — are read here and carried to the cluster as
+ * generation settings, for whichever task types honour them. See
+ * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+ *
+ * Every other field an OpenAI client may send — `n`, `tools`, `logprobs`, `presence_penalty`,
+ * `frequency_penalty`, and the rest — is still accepted and then ignored, so the schema
  * deliberately does not refuse unknown fields.
+ *
+ * Each control accepts `null` as well as being absent, because an OpenAI client that holds no
+ * value for a control commonly sends the field set to `null` rather than leaving it out, and both
+ * mean the same thing: nothing was asked for.
  */
 export const ChatCompletionRequestSchema = z.object({
 	model: z.string().min(1),
 	messages: z.array(ChatCompletionMessageSchema).min(1),
 	stream: z.boolean().optional(),
 	stream_options: z.object({ include_usage: z.boolean().optional() }).optional(),
+	temperature: z.number().min(0).max(2).nullish(),
+	top_p: z.number().gt(0).max(1).nullish(),
+	max_tokens: z.number().int().positive().nullish(),
+	max_completion_tokens: z.number().int().positive().nullish(),
+	stop: z.union([z.string(), z.array(z.string()).max(4)]).nullish(),
+	seed: z.number().int().nullish(),
 });
 /** The body of a request to `POST /v1/chat/completions`. */
 export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;

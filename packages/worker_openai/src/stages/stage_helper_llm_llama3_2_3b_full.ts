@@ -168,9 +168,13 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * is the one allowed to release the answer it is reading.
 	 * @param payload The prompt or conversation submitted with the task, or, on a run that carries
 	 * an answer on, a value saying so and nothing else.
-	 * @param generationSettings What the consumer asked for. Only `isStreaming` is read: set, one
+	 * @param generationSettings What the consumer asked for. `isStreaming` is read here: set, one
 	 * run returns one piece and leaves the request open for the run that follows; absent, one run
-	 * returns the whole answer.
+	 * returns the whole answer. The five generation controls are read by
+	 * {@link OpenaiApiClient.chatCompletionStream} instead, and only on the run that starts the
+	 * answer, because one request to the local server produces the whole answer however many runs
+	 * read it back — which is also what makes `maximumOutputTokenCount`, a budget for the whole
+	 * answer, expressible here as `max_tokens` on that one request.
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
 	 * @param modelId The model to ask the local server for.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
@@ -195,7 +199,7 @@ export class StageHelperLlmLlama3_2_3bFull {
 		// finished answer, and every failure — releases it.
 		let leavesAnswerOpen = false;
 		try {
-			const reader = state.reader ?? await StageHelperLlmLlama3_2_3bFull.startGeneration(state, payload.conversation ?? payload.text ?? '', openaiApiClient, modelId);
+			const reader = state.reader ?? await StageHelperLlmLlama3_2_3bFull.startGeneration(state, payload.conversation ?? payload.text ?? '', openaiApiClient, modelId, generationSettings);
 			while (state.pieceCount < MAXIMUM_ANSWER_PIECES) {
 				const piece = await reader.read();
 				if (state.isReleased === true) {
@@ -367,6 +371,8 @@ export class StageHelperLlmLlama3_2_3bFull {
 	 * @param promptOrConversation The prompt or conversation submitted with the task.
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
 	 * @param modelId The model to ask the local server for.
+	 * @param generationSettings What the consumer asked for, whose five generation controls become
+	 * fields of this one request to the local server.
 	 * @returns The reader that delivers the answer.
 	 * @throws If the prompt or conversation is empty, if the request fails, or if the assignment
 	 * was taken away while the request was starting.
@@ -376,13 +382,14 @@ export class StageHelperLlmLlama3_2_3bFull {
 		promptOrConversation: string | ConversationInput,
 		openaiApiClient: OpenaiApiClient,
 		modelId: string,
+		generationSettings: GenerationSettings | undefined,
 	): Promise<ReadableStreamDefaultReader<string>> {
 		if (StageHelperLlmLlama3_2_3bFull.isEmpty(promptOrConversation)) {
 			throw new Error('A prompt is needed to start an answer.');
 		}
 		const abortController = new AbortController();
 		state.abortController = abortController;
-		const { stream, usage } = await openaiApiClient.chatCompletionStream(modelId, promptOrConversation, abortController);
+		const { stream, usage } = await openaiApiClient.chatCompletionStream(modelId, promptOrConversation, abortController, generationSettings);
 		// A release that arrives while the request is still connecting leaves this flag and
 		// nothing else, since no reader exists yet to cancel; reading it here is what stops this
 		// worker reading a whole answer for a task that was already given up on.

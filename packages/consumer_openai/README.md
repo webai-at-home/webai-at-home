@@ -132,6 +132,26 @@ curl -N http://localhost:8788/v1/chat/completions -H 'Content-Type: application/
 
 A caller that hangs up mid-answer is told nothing, because the connection it would have been told on is the one it closed. The cluster still learns the task was cancelled — that path already works, through this server cancelling the task — but a cancelled answer reports no usage to anybody.
 
+## The generation controls — `temperature`, `top_p`, `max_completion_tokens`, `stop`, and `seed`
+
+These five fields of a request are read and carried to the cluster, for whichever models honour them. `max_completion_tokens` is a budget for the whole answer rather than for one stage run, and its older spelling `max_tokens` is accepted too; a request that sends both means the newer one. `stop` is accepted as either one piece of text or a list of up to four, and is applied where the tokens are produced rather than by this server dropping pieces of the answer as it forwards them, since a stop sequence can straddle two pieces.
+
+The four language-model task types sit on four engines with four different sets of controls they can act on, so which ones a request may ask for depends on the model it names:
+
+| Model | Honours |
+| --- | --- |
+| `llm_llama3_2_3b_full` | All five. The local OpenAI-compatible server (Ollama, LM Studio) is native for every one of them. |
+| `llm_qwen3_5_0_8b_full`, `llm_gemma_nano_chrome_full`, `llm_qwen3_0_6b_sharded` | None yet. Two of the three do not sample at all today, so honouring a temperature on either means turning sampling on for the first time and changing the answer every existing caller already receives; that is milestone 3 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151). |
+| `dev_formula` | None — it answers with one number and generates no text. |
+
+**A control a model cannot honour is refused, not dropped.** Ignoring it would return an answer generated some other way and report nothing, which is a wrong answer with no error. The refusal is an HTTP 400 whose `code` is `unhonourable_generation_control` and whose `param` names the field at fault, and its message lists the controls that model does honour.
+
+A request that asks for this interface's own default is never refused, whatever model it names: `temperature: 1`, `top_p: 1`, an empty `stop` list, and a control sent as `null` all ask for nothing unusual, so a client that always sends `temperature: 1` works against every model as it always did.
+
+```sh
+curl http://localhost:8788/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"llm_llama3_2_3b_full","messages":[{"role":"user","content":"Write one short sentence about a cat."}],"temperature":0,"seed":42,"max_completion_tokens":20,"stop":["\nUser:"]}'
+```
+
 ## `X-Webai-*` response headers — what has no OpenAI field
 
 Rule 3: a value the OpenAI Chat Completions interface has no field for travels in an `X-Webai-*` response header, or not at all — never as an added member of a response body, since that would risk breaking a client that reads the body strictly. An OpenAI client ignores a header it does not recognise, so these break nothing.
@@ -145,7 +165,7 @@ Rule 3: a value the OpenAI Chat Completions interface has no field for travels i
 
 This is a first version. It serves the two endpoints above rather than the whole OpenAI completion interface, and the following are left out on purpose rather than by oversight:
 
-- **It ignores every generation setting except `stream` and `stream_options`.** `temperature`, `top_p`, `max_tokens`, `n`, `stop`, `tools`, `logprobs`, and the rest are accepted in the body and then ignored, because the cluster's task input carries only a prompt and whether the answer is wanted in pieces. The generation limits are the worker browser tab's own: 160 tokens for the sharded Qwen3-0.6B task, and 400 pieces of an answer for the Chrome built-in task.
+- **It ignores every field of a request outside `stream`, `stream_options`, and the five generation controls above.** `n`, `tools`, `logprobs`, `presence_penalty`, `frequency_penalty`, and the rest are accepted in the body and then ignored. A model that honours none of the five generation controls still generates under the worker browser tab's own limits: 160 tokens for the sharded Qwen3-0.6B task, and 400 pieces of an answer for the Chrome built-in task.
 - **It refuses a message whose content is a list of parts**, which is what a request carrying an image or audio sends, rather than joining the parts together. It also refuses the `tool` role, because it ignores the tool settings of a request and so could not continue a conversation containing the answer of a tool.
 - **It keeps no conversation state.** One request is one cluster task, and the whole conversation is sent with every request.
 
@@ -157,6 +177,7 @@ Every failure is answered with the OpenAI error shape, `{ "error": { "message", 
 | --- | --- | --- |
 | The body is not valid JSON, a field is missing, or a message's content is not a single piece of text | 400 | none |
 | The chosen model cannot take the text of the request, such as text that is not a number for `dev_formula` | 400 | none |
+| The request asks for a generation control the chosen model cannot honour, at a value other than this interface's own default | 400 | `unhonourable_generation_control` |
 | A key is required and the request did not present it | 401 | `invalid_api_key` |
 | The request names a model this server does not offer | 404 | `model_not_found` |
 | This server already has as many tasks in flight as it holds at once | 429 | `too_many_tasks_in_flight` |
@@ -265,6 +286,7 @@ The tests cover reading a request, the models on offer, the failure mapping, the
 - [`src/libs/cluster_task_runner.ts`](./src/libs/cluster_task_runner.ts) — the one gateway connection, and one promise per submitted task.
 - [`src/api/model_catalog.ts`](./src/api/model_catalog.ts) — the models on offer, and the task type behind each one.
 - [`src/api/prompt_flattener.ts`](./src/api/prompt_flattener.ts) — turning a conversation into the single piece of text a task carries.
+- [`src/api/generation_settings_builder.ts`](./src/api/generation_settings_builder.ts) — the five generation controls of a request, turned into the settings a task carries, or refused.
 - [`src/api/openai_error.ts`](./src/api/openai_error.ts) — every way a request can fail, with its status and its body.
 - [`src/api/openai_types.ts`](./src/api/openai_types.ts) — the request bodies accepted and the response bodies returned.
 - [`src/http/curl_style_transaction_logger.ts`](./src/http/curl_style_transaction_logger.ts) — records every chat completion request to the transaction log described above.

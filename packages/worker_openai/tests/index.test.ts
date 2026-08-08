@@ -1,10 +1,11 @@
 import Assert from 'node:assert/strict';
+import Http from 'node:http';
 import Test from 'node:test';
-import { protocolVersion, type ClientMessage, type GatewayMessage } from '@webai/protocol';
+import { protocolVersion, type ClientMessage, type GatewayMessage, type GenerationSettings } from '@webai/protocol';
 import { GatewayWorkerClient, type WorkerSocket } from '../src/libs/gateway_worker_client.js';
 import { WorkerStageOffer } from '../src/libs/worker_stage_offer.js';
 import { StageHelperLlmLlama3_2_3bFull } from '../src/stages/stage_helper_llm_llama3_2_3b_full.js';
-import type { ChatCompletionStreamUsage, OpenaiApiClient } from '../src/libs/openai_api_client.js';
+import { OpenaiApiClient, type ChatCompletionStreamUsage } from '../src/libs/openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -70,6 +71,43 @@ const fakeChatClient = (
 		},
 	};
 	return { client: client as unknown as OpenaiApiClient, state };
+};
+
+/**
+ * Runs one real Chat Completions request through {@link OpenaiApiClient} against a local HTTP
+ * server, and returns the request body that server received.
+ *
+ * A local server is used rather than a fake client because what is being checked is the request
+ * body this client builds, which no fake client would build.
+ *
+ * @param generationSettings What the consumer asked for, passed to the client unchanged.
+ * @returns The parsed request body the local server received.
+ */
+const requestBodyOf = async (generationSettings: GenerationSettings | undefined): Promise<Record<string, unknown>> => {
+	let receivedBody = '';
+	const server = Http.createServer((request, response) => {
+		request.on('data', (piece: Buffer) => {
+			receivedBody += piece.toString();
+		});
+		request.on('end', () => {
+			response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+			response.end('data: [DONE]\n');
+		});
+	});
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const address = server.address();
+	const port = typeof address === 'object' && address !== null ? address.port : 0;
+	try {
+		const client = new OpenaiApiClient(`http://127.0.0.1:${port}/v1`);
+		const { stream } = await client.chatCompletionStream('llama3.2:3b', 'hello', new AbortController(), generationSettings);
+		const reader = stream.getReader();
+		while ((await reader.read()).done === false) {
+			continue;
+		}
+	} finally {
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+	}
+	return JSON.parse(receivedBody) as Record<string, unknown>;
 };
 
 /** The pipelines a gateway with the built-in specifications would answer `pipelines.get` with. */
@@ -178,6 +216,38 @@ Test('reads the whole answer in one run when the consumer asked for nothing', as
 		'task-a', 'assignment-a', { text: 'What is the capital of France?' }, undefined, client, 'llama3.2:3b',
 	);
 	Assert.deepEqual(result, { text: 'Paris is the capital.', done: true });
+});
+
+Test('sends every generation control the consumer asked for to the local server, under its OpenAI name', async () => {
+	const body = await requestBodyOf({
+		isStreaming: true,
+		temperature: 0,
+		topP: 0.9,
+		maximumOutputTokenCount: 20,
+		stopSequences: ['\nUser:'],
+		randomSeed: 42,
+	});
+	Assert.equal(body.temperature, 0);
+	Assert.equal(body.top_p, 0.9);
+	Assert.equal(body.max_tokens, 20);
+	Assert.deepEqual(body.stop, ['\nUser:']);
+	Assert.equal(body.seed, 42);
+	// `isStreaming` is not a generation control the local server is told about: it decides how
+	// many stage runs read the answer, and this client always reads the answer as a stream.
+	Assert.equal(body.stream, true);
+});
+
+Test('sends no generation control field at all when the consumer asked for none, so the local server applies its own defaults', async () => {
+	const askedForNothing = await requestBodyOf(undefined);
+	Assert.deepEqual(Object.keys(askedForNothing).sort(), ['messages', 'model', 'stream', 'stream_options']);
+	// A control left out of the settings block is left out of the body, rather than sent as
+	// `null`, one control at a time as well as all five at once.
+	const askedForOne = await requestBodyOf({ temperature: 0 });
+	Assert.equal(askedForOne.temperature, 0);
+	Assert.equal('top_p' in askedForOne, false);
+	Assert.equal('max_tokens' in askedForOne, false);
+	Assert.equal('stop' in askedForOne, false);
+	Assert.equal('seed' in askedForOne, false);
 });
 
 Test('reports the usage and finish reason the local server sent, translated into this worker\'s own stopReason vocabulary', async () => {
