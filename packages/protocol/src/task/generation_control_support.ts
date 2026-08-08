@@ -48,6 +48,10 @@ export type GenerationControlName =
  *   turning sampling on for the first time and changing the answer every existing consumer
  *   already receives. That is milestone 3 of the issue, and it waits on a de-risk gate of its own
  *   run in a real browser tab.
+ * - `task_type_llm_llama3_2_1b_full` honours none of the five either, for the same reason as
+ *   `task_type_llm_qwen3_5_0_8b_full`: its stage helper also calls `generate()` with
+ *   `do_sample: false`. See milestone 2 of
+ *   [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154).
  * - `task_type_dev_formula` generates no text at all, so no control applies to it.
  */
 const controlsByTaskType: Record<TaskType, readonly GenerationControlName[]> = {
@@ -56,6 +60,7 @@ const controlsByTaskType: Record<TaskType, readonly GenerationControlName[]> = {
 	task_type_llm_gemma_nano_chrome_full: [],
 	task_type_llm_qwen3_5_0_8b_full: [],
 	task_type_llm_llama3_2_3b_full: ['temperature', 'topP', 'maximumOutputTokenCount', 'stopSequences', 'randomSeed'],
+	task_type_llm_llama3_2_1b_full: [],
 };
 
 /** Which task type honours which generation control. */

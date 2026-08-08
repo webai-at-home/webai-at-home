@@ -32,9 +32,10 @@ import type { GatewayMessage } from './gateway_message.js';
  * `taskRevision` and `deviceListRevision`. No earlier version is accepted.
  *
  * Version 4 widened the value a language-model task carries. `TaskInput.input` now accepts a whole
- * conversation as well as one piece of text, for the two task types whose stage helper can hand a
- * message list to its model — `task_type_llm_qwen3_5_0_8b_full` and
- * `task_type_llm_llama3_2_3b_full` — and the first stage value of such a task carries that
+ * conversation as well as one piece of text, for the task types whose stage helper can hand a
+ * message list to its model — `task_type_llm_qwen3_5_0_8b_full`, `task_type_llm_llama3_2_3b_full`,
+ * and, since [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154),
+ * `task_type_llm_llama3_2_1b_full` — and the first stage value of such a task carries that
  * conversation in the new `conversation` field of `LlmStagePayload`. Both `TaskInput` and
  * `StagePayloadSchema` refuse that shape before this version, so a consumer or worker built after
  * the change is refused by a gateway built before it at the moment it authenticates. That refusal
