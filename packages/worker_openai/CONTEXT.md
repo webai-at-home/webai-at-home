@@ -11,7 +11,6 @@ A worker that runs a model by forwarding its assigned stage to a locally running
 - `src/libs/openai_api_client.ts`: the calls to the local OpenAI-compatible server.
 - `src/libs/worker_stage_offer.ts` and `src/libs/lease_heartbeat.ts`: advertising the stages this worker can run and keeping a stage assignment alive.
 - `src/stages/stage_helper_llm_llama3_2_1b_full.ts`: the one stage this worker runs today.
-- `examples/lmstudio_direct_history.ts` and `examples/lmstudio_direct_tools.ts`: calls straight to LM Studio, with no gateway involved.
 
 ## Local Rules & Boundaries
 

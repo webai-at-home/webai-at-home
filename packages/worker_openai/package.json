@@ -22,8 +22,6 @@
     "lmstudio:server:start": "lms server start",
     "lmstudio:server:stop": "lms server stop",
     "lmstudio:server:status": "lms server status",
-    "example:lmstudio_direct_history": "npx tsx examples/lmstudio_direct_history.ts",
-    "example:lmstudio_direct_tools": "npx tsx examples/lmstudio_direct_tools.ts",
     "test": "npx tsx --test tests/index.test.ts"
   },
   "dependencies": {
@@ -34,7 +32,6 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
-    "openai": "^4.77.0",
     "typescript": "^5.7.2"
   }
 }

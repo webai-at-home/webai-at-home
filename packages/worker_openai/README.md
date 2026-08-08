@@ -73,51 +73,15 @@ downloading and running the model itself (see
 fulfil it: this worker forwards the prompt to a local server that already holds the model, and
 does not download anything itself.
 
-## Testing what a model behind LM Studio can do on its own
+## What a model behind LM Studio can do on its own
 
-The two examples in `examples/` measure what a model served by LM Studio can do, so that what this worker offers to the cluster can be decided from a measurement rather than from a guess. They talk to LM Studio directly through the OpenAI SDK: they do not go through the gateway and they do not go through this worker, so what they report is the model's own behaviour and nothing else. See [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119).
-
-Start LM Studio's server, load at least one chat model in the LM Studio application, then run either example:
+What this worker offers to the cluster was decided from a measurement of what a model served by LM Studio can do on its own, rather than from a guess. Two programs, `examples/lmstudio_direct_history.ts` and `examples/lmstudio_direct_tools.ts`, talked to LM Studio directly through the OpenAI SDK — not through the gateway and not through this worker — and reported the model's own behaviour and nothing else. See [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119). Both programs have since been removed; the two-turn conversation check they ran is the `history` subcommand of [`@webai/openai-api-tool`](../openai_api_tool/README.md), which measures any server speaking the OpenAI-compatible API, LM Studio among them:
 
 ```sh
-npm run lmstudio:server:start --workspace @webai/worker-openai
-npm run example:lmstudio_direct_history --workspace @webai/worker-openai
-npm run example:lmstudio_direct_tools --workspace @webai/worker-openai
+npm run history:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
 ```
 
-- `examples/lmstudio_direct_history.ts` holds a two-turn conversation: the first turn states a name and a favourite programming language, the second turn sends the whole conversation back, including the model's own first answer, and asks the model to repeat both facts.
-- `examples/lmstudio_direct_tools.ts` runs a whole tool round trip: the model is asked a question it cannot answer without a declared tool, the tool call and a made-up tool result are added to the conversation, and the conversation is sent back for a final answer. A model that answers in words instead of calling the tool is still put through the two steps that follow, with a tool call the example writes itself, because emitting a tool call and reading one back out of a conversation are two different abilities.
-
-Each example ends with one row per model, so several models can be compared in one run.
-
-### Switching models
-
-Switching models is one option and nothing else. With no `--model` at all, both models this README records results for are run, one after the other, each loaded by LM Studio on demand.
-
-| What to run | What it runs against |
-| --- | --- |
-| `npm run example:lmstudio_direct_history --workspace @webai/worker-openai` | `llama-3.2-3b-instruct` and `qwen3.5-2b-mlx`, one after the other. |
-| `… -- --model qwen3.5-2b-mlx` | That one model and no other. |
-| `… -- --model llama-3.2-3b-instruct qwen3.5-2b-mlx` | Those models, one after the other. |
-| `… -- --model all` | Every chat model LM Studio has downloaded, each loaded on demand. |
-| `… -- --model loaded` | Every chat model LM Studio currently holds in memory. |
-| `… -- --base-url http://localhost:1234/v1` | A LM Studio server somewhere other than the default. |
-
-To run either example against Qwen3.5 2B and nothing else:
-
-```sh
-npm run example:lmstudio_direct_history --workspace @webai/worker-openai -- --model qwen3.5-2b-mlx
-npm run example:lmstudio_direct_tools --workspace @webai/worker-openai -- --model qwen3.5-2b-mlx
-```
-
-`LMSTUDIO_MODEL` and `LMSTUDIO_BASE_URL` set the same two things from the environment. Naming a model LM Studio does not have is not refused: LM Studio answers it with whichever model it currently holds in memory, so both examples read back the model identifier LM Studio reported and say in the results row when it is not the model that was asked for.
-
-To add a model to the comparison, download it and run the examples again:
-
-```sh
-lms get https://huggingface.co/lmstudio-community/Qwen3.5-2B-MLX-8bit -y
-npm run example:lmstudio_direct_tools --workspace @webai/worker-openai -- --model all
-```
+The tool round trip check has no equivalent there: no subcommand of `@webai/openai-api-tool` declares a tool, reads a tool call back, or writes a `role: "tool"` message. Nothing in this project calls a tool today.
 
 ### Results so far
 
@@ -128,7 +92,7 @@ Measured on 4 August 2026, against LM Studio's server on `http://localhost:1234/
 | `llama-3.2-3b-instruct` | yes | no | yes | yes |
 | `qwen3.5-2b-mlx` | yes | yes | yes | yes |
 
-`qwen3.5-2b-mlx` is the 8-bit MLX build of Qwen3.5 2B from [lmstudio-community/Qwen3.5-2B-MLX-8bit](https://huggingface.co/lmstudio-community/Qwen3.5-2B-MLX-8bit), 2.69 GB on disk. LM Studio reports its kind as `vlm` rather than `llm`, because it can also be given images, so both kinds count as chat models when the examples work out which models to run.
+`qwen3.5-2b-mlx` is the 8-bit MLX build of Qwen3.5 2B from [lmstudio-community/Qwen3.5-2B-MLX-8bit](https://huggingface.co/lmstudio-community/Qwen3.5-2B-MLX-8bit), 2.69 GB on disk. LM Studio reports its kind as `vlm` rather than `llm`, because it can also be given images, and it answers a text-only chat request the same way a model of kind `llm` does.
 
 What that means for this worker:
 
