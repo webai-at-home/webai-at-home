@@ -1025,7 +1025,7 @@ Test('a task is refused at once when only some of its required stages have a con
 	const [reply] = drive('consumer-1', { type: 'task.submit', taskRequestId: 'request-1', input: devFormulaInput(5) });
 	Assert.equal(reply?.type, 'error');
 	Assert.equal((reply as { code: string }).code, 'CAPACITY_EXHAUSTED');
-	Assert.deepEqual((reply as { details: { missingStageNames: string[] } }).details.missingStageNames, ['stage_dev_formula_add']);
+	Assert.deepEqual((reply as unknown as { details: { missingStageNames: string[] } }).details.missingStageNames, ['stage_dev_formula_add']);
 });
 
 Test('a task is accepted and queued, rather than refused, when the only worker offering its stage is merely busy', () => {
