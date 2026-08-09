@@ -33,7 +33,10 @@ version="$(node -p "require('./packages/gateway/package.json').version")"
 
 git add packages/gateway/package.json package-lock.json
 git commit -m "Release version ${version}"
-git tag "v${version}"
+# The tag is annotated, with --annotate, because "git push --follow-tags" below pushes annotated
+# tags only and silently leaves a lightweight tag behind on this machine. A tag that never reaches
+# GitHub never starts the Deploy to Coolify workflow, and nothing reports that it did not.
+git tag --annotate --message "Release version ${version}" "v${version}"
 git push --follow-tags
 
 echo "Pushed v${version}. The Deploy to Coolify workflow now asks Coolify to deploy."
