@@ -151,3 +151,15 @@ docker stop webai-at-home
 Or with the npm scripts: `npm run stop --workspace @webai/docker-server`.
 
 The entrypoint script forwards `SIGTERM` to the gateway and the worker page's static file server, and the gateway already closes its own connections and servers on `SIGTERM` (see `Cli.shutdown` in [`packages/gateway/src/cli.ts`](../gateway/src/cli.ts)).
+
+## Deploying this image to the public server
+
+The public deployment runs this image on a virtual private server, managed by Coolify, and Coolify rebuilds it from a branch of this repository named `production`. Pushing to `main` deploys nothing. Deploying is one command, run when you decide the tip of `main` should go live:
+
+```bash
+git push origin main:production
+```
+
+Coolify receives the push through its GitHub webhook, rebuilds the image, and restarts the container.
+
+Deployment is a deliberate step, and not something every push does, because restarting the container disconnects every worker browser tab connected to the gateway, and a worker browser tab does not connect again on its own — see [issue #149](https://github.com/webai-at-home/webai-at-home/issues/149) for the problem and [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158) for the automatic reconnection that would make a deployment cheap. The gateway's own durable state survives the restart, because the task state file, the account profile file, and the accounting ledger file all live on the `/data` volume described in [Start](#start).
