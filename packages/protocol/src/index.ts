@@ -8,7 +8,8 @@
 // file of its own subject, and code inside this package imports from that file directly rather
 // than through here. Other packages import this entry point as `@webai/protocol`, or one of the
 // subpaths `@webai/protocol/envelope`, `@webai/protocol/message_logger`,
-// `@webai/protocol/task_projection`, and `@webai/protocol/session_renewal`.
+// `@webai/protocol/task_projection`, `@webai/protocol/session_renewal`, and
+// `@webai/protocol/reconnect_backoff`.
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

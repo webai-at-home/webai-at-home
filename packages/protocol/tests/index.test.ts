@@ -30,6 +30,7 @@ import type { LogEntry } from '../src/message/message_logger.js';
 import { TaskProjection } from '../src/task/task_projection.js';
 import { Envelope } from '../src/message/envelope.js';
 import { SessionRenewal } from '../src/session_renewal.js';
+import { ReconnectBackoff } from '../src/reconnect_backoff.js';
 import { AccountIdentityFile } from '../src/accounting/account_identity_file.js';
 import { AccountKeyFile } from '../src/accounting/account_key_file.js';
 
@@ -497,6 +498,47 @@ Test('a long-lived client renews halfway through its session', () => {
 	Assert.equal(SessionRenewal.renewAfterMs('2026-07-29T11:00:00.000Z', now), 1_000);
 	Assert.equal(SessionRenewal.renewAfterMs('2026-07-29T12:00:00.000Z', now), 1_000);
 	Assert.equal(SessionRenewal.renewAfterMs('not a date', now), 1_000);
+});
+
+Test('a client that lost its connection waits longer after each attempt, up to one minute', () => {
+	// No random extra, so the wait each attempt produces is exactly the doubling itself.
+	const backoff = new ReconnectBackoff(() => 0);
+
+	Assert.equal(backoff.attemptCount, 0);
+	Assert.deepEqual(
+		[backoff.nextDelayMs(), backoff.nextDelayMs(), backoff.nextDelayMs(), backoff.nextDelayMs(), backoff.nextDelayMs()],
+		[1_000, 2_000, 4_000, 8_000, 16_000],
+	);
+	Assert.equal(backoff.attemptCount, 5);
+
+	// The doubling stops at one minute, so a gateway that is down for hours is not asked more
+	// often than that, however many attempts have already been made.
+	Assert.deepEqual([backoff.nextDelayMs(), backoff.nextDelayMs(), backoff.nextDelayMs()], [32_000, 60_000, 60_000]);
+	for (let attempt = 0; attempt < 50; attempt += 1) {
+		Assert.equal(backoff.nextDelayMs(), 60_000);
+	}
+
+	// A client that holds a usable connection again starts from the first wait, so the next
+	// connection it loses is retried after one second rather than after a minute.
+	backoff.reset();
+	Assert.equal(backoff.attemptCount, 0);
+	Assert.equal(backoff.nextDelayMs(), 1_000);
+});
+
+Test('the wait a client hands out carries a random extra, so a whole cluster does not come back at one instant', () => {
+	// The largest random extra is 30 per cent of the wait it is added to.
+	Assert.equal(new ReconnectBackoff(() => 0.999_999).nextDelayMs(), 1_300);
+	Assert.equal(new ReconnectBackoff(() => 0.5).nextDelayMs(), 1_150);
+
+	// The extra is taken from the wait the rule is currently on, including the one-minute
+	// ceiling, so no wait is ever shorter than that wait or more than 30 per cent longer.
+	const backoff = new ReconnectBackoff(Math.random);
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const delayMs = backoff.nextDelayMs();
+		const delayWithoutExtraMs = Math.min(1_000 * 2 ** attempt, 60_000);
+		Assert.ok(delayMs >= delayWithoutExtraMs, `${String(delayMs)} is shorter than ${String(delayWithoutExtraMs)}`);
+		Assert.ok(delayMs <= delayWithoutExtraMs * 1.3, `${String(delayMs)} is more than 30 per cent longer than ${String(delayWithoutExtraMs)}`);
+	}
 });
 
 ///////////////////////////////////////////////////////////////////////////////

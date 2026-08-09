@@ -3,6 +3,7 @@ import Http from 'node:http';
 import Test from 'node:test';
 import { protocolVersion, type ClientMessage, type GatewayMessage, type GenerationSettings } from '@webai/protocol';
 import { GatewayWorkerClient, type WorkerSocket } from '../src/libs/gateway_worker_client.js';
+import { GatewayConnectionSupervisor } from '../src/libs/gateway_connection_supervisor.js';
 import { WorkerStageOffer } from '../src/libs/worker_stage_offer.js';
 import { StageHelperLlmLlama3_2_1bFull } from '../src/stages/stage_helper_llm_llama3_2_1b_full.js';
 import { OpenaiApiClient, type ChatCompletionStreamUsage } from '../src/libs/openai_api_client.js';
@@ -422,4 +423,127 @@ Test('accepts an assignment, and reports a computation it cannot run as a stage 
 	const failed = socket.sent.at(-1);
 	Assert.equal(failed?.type, 'stage.failed');
 	Assert.match(failed?.type === 'stage.failed' ? failed.error : '', /implements no computation named dev_formula_add/);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Connecting To The Central Gateway Again
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Builds a supervisor whose connections and waits are under the test's control.
+ *
+ * @param isAutomaticReconnectionEnabled Whether a connection that closes is opened again.
+ * @returns The supervisor, the connections it opened in order, and the waits it asked for.
+ */
+const supervisorUnderTest = (isAutomaticReconnectionEnabled = true): {
+	supervisor: GatewayConnectionSupervisor;
+	openedSockets: ReturnType<typeof fakeSocket>[];
+	requestedDelaysMs: number[];
+	makePendingAttempt: () => void;
+} => {
+	const openedSockets: ReturnType<typeof fakeSocket>[] = [];
+	const requestedDelaysMs: number[] = [];
+	let pendingAttempt: (() => void) | undefined;
+	const supervisor = new GatewayConnectionSupervisor(
+		{
+			gatewayUrl: 'ws://localhost:8787',
+			isAutomaticReconnectionEnabled,
+		},
+		{
+			name: 'test-worker',
+			authenticationToken: 'development-token',
+			requestedStageNames: [],
+			openaiApiClient: fakeOpenaiApiClient(['llama-3.2-1b-instruct']),
+			modelId: 'llama-3.2-1b-instruct',
+		},
+		{},
+		() => {
+			const socket = fakeSocket();
+			openedSockets.push(socket);
+			return socket;
+		},
+		(delayMs, makeAttempt) => {
+			requestedDelaysMs.push(delayMs);
+			pendingAttempt = makeAttempt;
+			return (): void => {
+				pendingAttempt = undefined;
+			};
+		},
+	);
+	return {
+		supervisor,
+		openedSockets,
+		requestedDelaysMs,
+		makePendingAttempt: (): void => {
+			const attempt = pendingAttempt;
+			pendingAttempt = undefined;
+			attempt?.();
+		},
+	};
+};
+
+Test('opens a connection again after one closes, waiting longer each time', () => {
+	const { supervisor, openedSockets, requestedDelaysMs, makePendingAttempt } = supervisorUnderTest();
+	supervisor.start();
+	Assert.equal(openedSockets.length, 1);
+
+	// A gateway that has gone away closes the connection without this worker asking for it.
+	openedSockets[0].onclose?.();
+	Assert.equal(requestedDelaysMs.length, 1);
+	makePendingAttempt();
+	Assert.equal(openedSockets.length, 2);
+
+	// The second attempt also fails to produce a usable connection, so the wait grows.
+	openedSockets[1].onclose?.();
+	makePendingAttempt();
+	Assert.equal(openedSockets.length, 3);
+	Assert.equal(requestedDelaysMs.length, 2);
+	Assert.ok(requestedDelaysMs[1] > requestedDelaysMs[0], `${String(requestedDelaysMs[1])} is not longer than ${String(requestedDelaysMs[0])}`);
+
+	supervisor.stop();
+});
+
+Test('goes back to the first wait once a connection has registered, and stops for good when told to', () => {
+	const { supervisor, openedSockets, requestedDelaysMs, makePendingAttempt } = supervisorUnderTest();
+	supervisor.start();
+
+	// Two attempts that produced no usable connection, so the wait has grown.
+	openedSockets[0].onclose?.();
+	makePendingAttempt();
+	openedSockets[1].onclose?.();
+	makePendingAttempt();
+	Assert.equal(openedSockets.length, 3);
+	const grownDelayMs = requestedDelaysMs[1];
+
+	// The third connection registers, which is the first moment it is known to be usable.
+	openedSockets[2].onopen?.();
+	receive(openedSockets[2], { type: 'deviceAuthenticated', expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
+	receive(openedSockets[2], { type: 'pipelines', pipelines: loadedPipelines });
+	return new Promise<void>((resolve) => {
+		setImmediate(() => {
+			receive(openedSockets[2], { type: 'deviceRegistered', deviceId: 'device-test' });
+			openedSockets[2].onclose?.();
+			// Back to the first wait, rather than to the wait the earlier outage had grown to.
+			Assert.equal(requestedDelaysMs.length, 3);
+			Assert.ok(requestedDelaysMs[2] < grownDelayMs, `${String(requestedDelaysMs[2])} is not shorter than ${String(grownDelayMs)}`);
+
+			// Stopping closes what is held and opens nothing further, however many closes arrive.
+			supervisor.stop();
+			makePendingAttempt();
+			Assert.equal(openedSockets.length, 3);
+			resolve();
+		});
+	});
+});
+
+Test('opens no connection again when automatic reconnection is turned off', () => {
+	const { supervisor, openedSockets, requestedDelaysMs } = supervisorUnderTest(false);
+	supervisor.start();
+	Assert.equal(openedSockets.length, 1);
+	openedSockets[0].onclose?.();
+	Assert.deepEqual(requestedDelaysMs, []);
+	Assert.equal(openedSockets.length, 1);
+	supervisor.stop();
 });

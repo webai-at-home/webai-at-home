@@ -66,6 +66,16 @@ The page connects to the central gateway as soon as it loads, and keeps that con
 
 Switching to another browser tab is not the same thing as leaving the page: a worker page in a background tab keeps its connection and keeps running the work it has been given.
 
+## Connecting again after the connection is lost
+
+A connection the page did not ask to lose — the gateway was deployed again, its container restarted, the network was interrupted — is opened again on its own, with nobody touching the device. The page waits one second before the first attempt, and longer after each attempt that finds no gateway: two seconds, four, eight, and so on up to one minute, plus a random extra of up to 30 per cent so that every volunteer that was connected to the same gateway does not come back at the same instant. There is no limit on the number of attempts, because a worker browser tab is meant to be left open for hours and the gateway is expected to come back. While it waits, the status badge reads **Connection lost. Trying again in N second(s) (attempt K)**, counting down, so the page is visibly working rather than looking broken.
+
+Both buttons mean something while the page is waiting. **Connect** makes the pending attempt now instead of waiting out the rest of the wait. **Disconnect** stops the page trying at all and leaves this browser disconnected until **Connect** is pressed. A device that gets its network back also makes the pending attempt at once, rather than sitting out a wait that was chosen while there was no network.
+
+Two closes are not followed by another attempt, because trying again would find exactly the same thing and keep finding it once a minute for as long as the tab stays open: a browser that can run none of the stages the loaded pipelines define, and a browser whose model shards could not be loaded. Both leave the page disconnected with **Connect** as the way to ask for another look. See [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158).
+
+The wait itself comes from `ReconnectBackoff` in [`@webai/protocol`](../protocol/README.md), shared with [`@webai/worker-openai`](../worker_openai/README.md) and [`@webai/consumer-openai`](../consumer_openai/README.md), so all three lean on one gateway in the same way.
+
 ## Quiet tone
 
 A hidden browser tab runs the language model several times slower than one left on screen. The `qwen3_generation_log` experiment in [`@webai/idle-experiments`](../_idle_experiments/README.md), built for [issue #83](https://github.com/webai-at-home/webai-at-home/issues/83), measured about 8.4 tokens per second in a hidden tab against 22.7 on screen — and found that playing a very quiet, continuous tone removes the slowdown entirely, holding 25.7 tokens per second across several minutes hidden.

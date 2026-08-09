@@ -8,6 +8,7 @@ import { StageHelperLlmQwen3_5_0_8bFull } from './stages/stage_helper_llm_qwen3_
 import { StageHelperLlmLlama3_2_1bFull } from './stages/stage_helper_llm_llama3_2_1b_full';
 import { GatewayConfig } from './connection/gateway_config';
 import { GatewayLink } from './connection/gateway_link';
+import { GatewayReconnection } from './connection/gateway_reconnection';
 import { LeaseHeartbeat } from './connection/lease_heartbeat';
 import { DiagnosticsReporter } from './connection/diagnostics_reporter';
 import { PageElements } from './page/page_elements';
@@ -157,6 +158,18 @@ export class WorkerPage {
 	 */
 	private isReconnectRequested = false;
 	/**
+	 * Whether a connection that closes should be opened again on its own after a wait.
+	 *
+	 * It is `true` for as long as the volunteer wants this browser to be contributing, and it is
+	 * the one thing that tells a connection the page did not ask to lose — a gateway restarted, a
+	 * network interruption — apart from a connection the page or the volunteer deliberately
+	 * ended. The close code cannot be used for this: a gateway that goes away produces `1006` in
+	 * one situation and `1001` in another, and neither says whether coming back is wanted.
+	 */
+	private isAutomaticReconnectionAllowed = true;
+	/** Waits, counts the wait down on the page, and asks for the next attempt. */
+	private readonly gatewayReconnection: GatewayReconnection;
+	/**
 	 * The stages this worker browser advertises, decided once the gateway has sent its
 	 * pipelines. It stays empty until then, because which stage names exist is decided by the
 	 * pipelines the gateway has loaded rather than by a list built into this page.
@@ -195,6 +208,29 @@ export class WorkerPage {
 		this.startOverlayEl = PageElements.getButton('#start-overlay');
 		this.commitShaEl = PageElements.getElement('#commit-sha');
 		this.requestedStageNames = WorkerStageOffer.requestedStageNamesFromUrl(location.search);
+		this.gatewayReconnection = new GatewayReconnection({
+			onWaiting: (secondsRemaining: number, attemptNumber: number): void => {
+				this.statusEl.textContent = `Connection lost. Trying again in ${String(secondsRemaining)} second(s) (attempt ${String(attemptNumber)})`;
+				this.statusEl.className = 'badge text-bg-warning';
+			},
+			onAttempt: (attemptNumber: number): void => {
+				// A connection lost while this browser was still downloading and loading its model
+				// files leaves the preparation running, and `connectToGateway` refuses to open a
+				// connection while it is. Waiting again is what keeps such a browser coming back,
+				// rather than having this one refused attempt be the last one ever made.
+				if (this.isPreparing) {
+					this.gatewayReconnection.scheduleAttempt();
+					return;
+				}
+				this.eventLog.add({
+					direction: 'local',
+					type: 'worker.reconnect_attempt',
+					timestamp: new Date().toISOString(),
+					message: `Opening a connection to the central gateway again, attempt ${String(attemptNumber)}`,
+				});
+				this.connectToGateway();
+			},
+		});
 	}
 
 	/** Starts the worker browser user interface and opens the first connection. */
@@ -214,8 +250,17 @@ export class WorkerPage {
 		this.renderStages();
 		this.eventLog.render();
 
-		/** Opens a WebSocket connection when the connect button is clicked. */
+		/**
+		 * Opens a WebSocket connection when the connect button is clicked.
+		 *
+		 * Pressing it while the page is waiting to connect again means "try now": the wait is
+		 * dropped and the attempt is made at once. Pressing it after the disconnect button was
+		 * pressed is what lets this browser contribute again, so it allows the automatic
+		 * reconnection as well.
+		 */
 		this.connectButtonEl.addEventListener('click', (): void => {
+			this.isAutomaticReconnectionAllowed = true;
+			this.gatewayReconnection.stopAndReset();
 			this.connectToGateway();
 		});
 
@@ -284,11 +329,23 @@ export class WorkerPage {
 			this.startOverlayEl.classList.add('d-none');
 		});
 
-		/** Closes the WebSocket connection when the disconnect button is clicked. */
+		/**
+		 * Closes the WebSocket connection when the disconnect button is clicked, and keeps this
+		 * browser disconnected.
+		 *
+		 * This is the volunteer saying they no longer want this browser to be contributing, so it
+		 * also stops the page from connecting again on its own. Pressing it while the page is
+		 * waiting to connect again — when there is no connection to close — is what stops that
+		 * waiting.
+		 */
 		this.disconnectButtonEl.addEventListener('click', (): void => {
+			this.isAutomaticReconnectionAllowed = false;
+			this.gatewayReconnection.stopAndReset();
 			if (this.socket !== undefined) {
 				this.socket.close(1000, 'Disconnected by worker');
+				return;
 			}
+			this.showDisconnectedControls();
 		});
 
 		// Leaving a page does not always destroy it. A browser tab that navigates away keeps the
@@ -303,6 +360,10 @@ export class WorkerPage {
 		// visible to the gateway. The connection is not reopened here, because the page may never
 		// be displayed again.
 		window.addEventListener('pagehide', (): void => {
+			// A page put away while it was waiting to connect again must not make that attempt: it
+			// may never be displayed again, and the attempt would register a worker nobody is
+			// watching. A page that is displayed again connects from the `pageshow` handler below.
+			this.gatewayReconnection.stop();
 			if (this.socket === undefined) {
 				return;
 			}
@@ -323,7 +384,17 @@ export class WorkerPage {
 			// A page put away while its language-model shards were still loading left this set,
 			// which would refuse the reconnection below.
 			this.isPreparing = false;
+			this.isAutomaticReconnectionAllowed = true;
+			this.gatewayReconnection.stopAndReset();
 			this.connectToGateway();
+		});
+
+		// A device that lost its network — a laptop whose lid was closed, a phone that left
+		// coverage — chose its wait while there was no network at all. Sitting out the rest of a
+		// wait that has grown to a minute would leave the volunteer offering no work for no
+		// reason, so the network coming back makes the pending attempt at once.
+		window.addEventListener('online', (): void => {
+			this.gatewayReconnection.attemptNow();
 		});
 
 		// Connect automatically once the page controls and event handlers are ready.
@@ -417,18 +488,28 @@ export class WorkerPage {
 			// Posts whatever is still buffered, so the last messages before a disconnection are
 			// still recorded rather than lost with the page's state.
 			DiagnosticsReporter.stop();
-			this.statusEl.textContent = 'Disconnected';
-			this.statusEl.className = 'badge text-bg-danger';
-			this.connectButtonEl.classList.remove('d-none');
-			this.connectButtonEl.disabled = false;
-			this.disconnectButtonEl.classList.add('d-none');
-			this.nameInputEl.disabled = false;
 			this.socket = undefined;
-			if (this.isReconnectRequested === false) {
+			// The page asked for this close so that the next connection offers a stage this one
+			// could not, so it opens that connection at once rather than waiting.
+			if (this.isReconnectRequested) {
+				this.isReconnectRequested = false;
+				this.connectToGateway();
 				return;
 			}
-			this.isReconnectRequested = false;
-			this.connectToGateway();
+			// The volunteer pressed the disconnect button, or this browser found it can run none
+			// of the stages the loaded pipelines define. Neither is fixed by trying again.
+			if (this.isAutomaticReconnectionAllowed === false) {
+				this.showDisconnectedControls();
+				return;
+			}
+			this.eventLog.add({
+				direction: 'local',
+				type: 'worker.connection_lost',
+				timestamp: new Date().toISOString(),
+				message: 'The connection to the central gateway closed without this page asking for it',
+			});
+			this.showWaitingControls();
+			this.gatewayReconnection.scheduleAttempt();
 		});
 	}
 
@@ -590,6 +671,11 @@ export class WorkerPage {
 		}
 		if (message.type === 'deviceRegistered') {
 			this.isRegistered = true;
+			// This is the first moment the connection is known to be usable, rather than merely
+			// open, so it is the moment the wait goes back to one second. Resetting it as soon as
+			// the socket opened would let a gateway that accepts a connection and drops it again —
+			// a container coming up — be asked once a second for as long as that lasts.
+			this.gatewayReconnection.stopAndReset();
 			this.deviceIdEl.textContent = message.deviceId ?? 'Not assigned';
 			// Reporting can only start now: the gateway names the device the report is for,
 			// and it issues that name here.
@@ -654,6 +740,10 @@ export class WorkerPage {
 						timestamp: new Date().toISOString(),
 						message: 'This browser can run none of the stages the loaded pipelines define',
 					});
+					// Opening this connection again would find the same pipelines and the same
+					// browser, and close for the same reason once a minute for as long as the tab
+					// stays open. The connect button is how a volunteer asks for another look.
+					this.isAutomaticReconnectionAllowed = false;
 					this.socket.close(1000, 'No stage to run');
 					return;
 				}
@@ -682,6 +772,10 @@ export class WorkerPage {
 					timestamp: new Date().toISOString(),
 					message: error instanceof Error ? error.message : String(error),
 				});
+				// Every attempt would start the same download again, so a browser that cannot load
+				// its shards would download a large model once a minute for as long as the tab
+				// stays open. The connect button is how a volunteer asks for another attempt.
+				this.isAutomaticReconnectionAllowed = false;
 				this.socket?.close(1000, 'Shard loading failed');
 			});
 	}
@@ -917,6 +1011,10 @@ export class WorkerPage {
 					message: "The browser's built-in language model is ready",
 				});
 				if (this.socket === undefined) {
+					// The page may be waiting to connect again, and this browser now has something
+					// more to offer than it had when that wait was chosen, so it connects at once
+					// rather than sitting out the rest of the wait.
+					this.gatewayReconnection.stopAndReset();
 					this.connectToGateway();
 					return;
 				}
@@ -934,6 +1032,35 @@ export class WorkerPage {
 	//	Drawing
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Shows that this browser is disconnected and is not going to connect again on its own.
+	 *
+	 * The connect button is the only way out of this state, so it is the only one shown, and the
+	 * worker name can be changed before the volunteer presses it.
+	 */
+	private showDisconnectedControls(): void {
+		this.statusEl.textContent = 'Disconnected';
+		this.statusEl.className = 'badge text-bg-danger';
+		this.connectButtonEl.classList.remove('d-none');
+		this.connectButtonEl.disabled = false;
+		this.disconnectButtonEl.classList.add('d-none');
+		this.nameInputEl.disabled = false;
+	}
+
+	/**
+	 * Shows that this browser lost its connection and is waiting to open another one.
+	 *
+	 * Both buttons are shown, because both mean something here: the connect button makes the
+	 * pending attempt now, and the disconnect button stops the page trying at all. The status
+	 * text itself is written by the countdown, which says how long is left.
+	 */
+	private showWaitingControls(): void {
+		this.connectButtonEl.classList.remove('d-none');
+		this.connectButtonEl.disabled = false;
+		this.disconnectButtonEl.classList.remove('d-none');
+		this.nameInputEl.disabled = true;
+	}
 
 	/** Shows the stages this worker browser currently offers. */
 	private renderStages(): void {

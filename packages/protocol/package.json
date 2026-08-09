@@ -29,6 +29,10 @@
       "types": "./dist/session_renewal.d.ts",
       "default": "./dist/session_renewal.js"
     },
+    "./reconnect_backoff": {
+      "types": "./dist/reconnect_backoff.d.ts",
+      "default": "./dist/reconnect_backoff.js"
+    },
     "./account_key_file": {
       "types": "./dist/accounting/account_key_file.d.ts",
       "default": "./dist/accounting/account_key_file.js"

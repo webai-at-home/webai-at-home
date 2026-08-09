@@ -45,8 +45,24 @@ npm run start --workspace @webai/worker-openai
 | `-m, --model <model>` | `llama-3.2-1b-instruct` | The model the local server is asked for, exactly as that server names it. Two servers name the same model differently, so this has to change with the base URL. |
 | `-s, --stage-names <name...>` | every stage this worker can run | Restrict this worker to particular stages. |
 | `-c, --config_dir <path>` | `data/worker_openai_config` | The directory holding this worker's own account key pair, as `default.account_key.json`, relative to this checkout of the repository, so the stages it completes earn credits for that account. A directory with no key pair in it means no account, and the stages it completes earn credits for nobody. See [`docs/accounting_system.md`](../../docs/accounting_system.md). |
+| `--no-automatic-reconnection` | off, so this worker does connect again | Stop as soon as the connection to the central gateway closes, instead of opening a connection again after a wait. See [Connecting again after the connection is lost](#connecting-again-after-the-connection-is-lost). |
 
 `GATEWAY_WS_URL` and `GATEWAY_AUTH_TOKEN` are the same two names `packages/docker_server` uses for the same two settings, so one pair of exported variables points every program on this machine at the same gateway. See [`docs/environment_variables.md`](../../docs/environment_variables.md) for every variable this project reads and which programs read none.
+
+## Connecting again after the connection is lost
+
+A connection that closes without this worker asking for it — the gateway was deployed again, its container restarted, the network was interrupted — is opened again on its own. This worker waits one second before the first attempt, and longer after each attempt that finds no gateway: two seconds, four, eight, and so on up to one minute, plus a random extra of up to 30 per cent so that every worker that was connected to the same gateway does not come back at the same instant. There is no limit on the number of attempts, and the process keeps running throughout, printing each wait before it makes the next attempt:
+
+```text
+2026-08-09T09:51:58.005Z disconnected
+2026-08-09T09:51:58.006Z Opening a connection to the central gateway again in 1 second(s), attempt 1
+2026-08-09T09:51:59.042Z failure: The connection to the central gateway failed
+2026-08-09T09:51:59.042Z Opening a connection to the central gateway again in 2 second(s), attempt 2
+```
+
+Ctrl-C is the way out. `--no-automatic-reconnection` asks for the earlier behaviour, where the first connection to close ended the program; anything that drives this worker from a script and depends on it exiting should pass it.
+
+The wait itself comes from `ReconnectBackoff` in [`@webai/protocol`](../protocol/README.md), shared with [`@webai/worker-webpage`](../worker_webpage/README.md) and [`@webai/consumer-openai`](../consumer_openai/README.md), so all three lean on one gateway in the same way. See [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158).
 
 ## How an answer is generated
 

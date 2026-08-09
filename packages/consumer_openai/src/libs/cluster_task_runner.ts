@@ -5,6 +5,7 @@ import Crypto from 'node:crypto';
 import WebSocket from 'ws';
 import { ConsumerClient, type TaskSocket } from '@webai/consumer-cli';
 import type { MessageLogger } from '@webai/protocol/message_logger';
+import { ReconnectBackoff } from '@webai/protocol/reconnect_backoff';
 import type { AccountKeyPair, ProtocolError, StagePayload, TaskInput, TaskSnapshot, TaskState, TaskUpdate } from '@webai/protocol';
 
 // local imports
@@ -105,10 +106,6 @@ type RegistrationWaiter = {
 	timer: ReturnType<typeof setTimeout> | undefined;
 };
 
-/** How long this runner waits before opening the connection again the first time. */
-const initialReconnectDelayMs = 1_000;
-/** The longest this runner waits between attempts to open the connection again. */
-const maximumReconnectDelayMs = 30_000;
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -137,7 +134,14 @@ export class ClusterTaskRunner {
 	private client: ConsumerClient | undefined;
 	private isRegistered = false;
 	private isClosed = false;
-	private reconnectDelayMs = initialReconnectDelayMs;
+	/**
+	 * How long to wait before each attempt, and the rule that grows that wait.
+	 *
+	 * The rule is the one every long-lived client of this repository shares, so this server, a
+	 * worker browser tab, and the worker in `packages/worker_openai` all lean on one gateway in
+	 * the same way. See [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158).
+	 */
+	private readonly reconnectBackoff = new ReconnectBackoff();
 	private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly pendingByTaskRequestId = new Map<string, PendingTask>();
 	private readonly pendingByTaskId = new Map<string, PendingTask>();
@@ -318,7 +322,7 @@ export class ClusterTaskRunner {
 	/** Notes that the connection is usable, and lets every waiting request proceed. */
 	private _onRegistered(): void {
 		this.isRegistered = true;
-		this.reconnectDelayMs = initialReconnectDelayMs;
+		this.reconnectBackoff.reset();
 		for (const waiter of [...this.registrationWaiters]) {
 			this.registrationWaiters.delete(waiter);
 			if (waiter.timer !== undefined) {
@@ -350,8 +354,7 @@ export class ClusterTaskRunner {
 		if (this.reconnectTimer !== undefined) {
 			return;
 		}
-		const delayMs = this.reconnectDelayMs;
-		this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, maximumReconnectDelayMs);
+		const delayMs = this.reconnectBackoff.nextDelayMs();
 		this.reconnectTimer = setTimeout(() => {
 			this.reconnectTimer = undefined;
 			this._connect();
