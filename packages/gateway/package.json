@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "predev": "npm run build:dependencies",
     "dev": "tsx watch src/cli.ts",
-    "test": "npx tsx --test tests/index.test.ts"
+    "test": "npx tsx --test tests/index.test.ts",
+    "deploy": "./scripts/release-deploy.sh"
   },
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",
