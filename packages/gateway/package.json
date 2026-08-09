@@ -1,6 +1,6 @@
 {
   "name": "@webai/gateway",
-  "version": "0.1.2",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json",
@@ -10,8 +10,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "predev": "npm run build:dependencies",
     "dev": "tsx watch src/cli.ts",
-    "test": "npx tsx --test tests/index.test.ts",
-    "deploy": "./scripts/release-deploy.sh"
+    "test": "npx tsx --test tests/index.test.ts"
   },
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",
