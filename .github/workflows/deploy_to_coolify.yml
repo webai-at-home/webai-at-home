@@ -1,0 +1,25 @@
+# Deploys the gateway to Coolify, and only when a version tag is pushed.
+#
+# Automatic Deployment is turned off on the Coolify application, so a push to main no longer
+# redeploys the container and no longer disconnects every worker browser tab. See
+# https://github.com/webai-at-home/webai-at-home/issues/149.
+#
+# Coolify builds the tip of the branch configured on the application, which is main. It does not
+# build the tag. So tag the commit that is the tip of main, otherwise the deployed code is not the
+# code the tag names.
+name: Deploy to Coolify
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Coolify to deploy
+        run: |
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
+            "${{ secrets.COOLIFY_DEPLOY_WEBHOOK_URL }}"
