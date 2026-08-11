@@ -49,8 +49,8 @@ export type { AccountLedgerSummary, AccountSummaryRow, LedgerEntry } from './acc
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-export { ConversationInputSchema, ConversationMessageSchema } from './task/conversation_types.js';
-export type { ConversationInput, ConversationMessage } from './task/conversation_types.js';
+export { ConversationInputSchema, ConversationMessageSchema, ToolCallSchema, ToolDeclarationSchema } from './task/conversation_types.js';
+export type { ConversationInput, ConversationMessage, ToolCall, ToolDeclaration } from './task/conversation_types.js';
 export { GenerationSettingsSchema, StageAssignmentRetryReason, TaskInput, TaskState, TaskType, maximumSnapshotEventCount } from './task/task_types.js';
 export type {
 	GenerationSettings,

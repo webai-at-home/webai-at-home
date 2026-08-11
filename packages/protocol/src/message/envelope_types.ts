@@ -67,11 +67,29 @@ import type { GatewayMessage } from './gateway_message.js';
  * had been asked for. Refusing that peer at authentication time is the point — it is what stops a
  * consumer that asked for `temperature: 0` from being answered by a worker that never received
  * the request.
+ *
+ * Version 7 let a conversation declare tools, and let a task end by asking for one to be called
+ * rather than by writing an answer. `ConversationInputSchema` now carries `tools`, its messages
+ * accept the role `tool` and carry `toolCalls` on an assistant message, and `LlmStagePayload`
+ * carries `toolCalls` on the result that finishes the task. See
+ * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115). Every earlier version is
+ * refused because a gateway built before this one validates a task input with `StagePayloadSchema`
+ * and `ConversationInputSchema` as they were, both `.strict()`, and refuses the tool fields
+ * outright. Refusing that peer at authentication time is what stops a consumer that declared tools
+ * from being answered by a cluster that dropped the declarations and answered in words as though
+ * none had been sent.
+ *
+ * What version 7 deliberately does not carry is `tool_choice`, the OpenAI Chat Completions
+ * interface's way of saying how much choice the model is left about asking for a tool. Nothing
+ * could read it: enforcing it means constraining generation, which the chat template cannot express
+ * and `@huggingface/transformers` does not offer. Defining it anyway would repeat exactly what was
+ * added ahead of use and removed again in
+ * [`38aa026`](https://github.com/webai-at-home/webai-at-home/commit/38aa026).
  */
-export const protocolVersion = 6;
+export const protocolVersion = 7;
 
 /** The protocol versions the gateway accepts. No earlier version is accepted. */
-export const supportedProtocolVersions: number[] = [6];
+export const supportedProtocolVersions: number[] = [7];
 
 /**
  * The wrapper around every frame sent in either direction.

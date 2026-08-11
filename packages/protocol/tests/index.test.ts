@@ -18,6 +18,7 @@ import {
 	StagePayloadFactory,
 	StagePayloadSchema,
 	TaskInput,
+	ToolCallSchema,
 	TaskState,
 	maximumDiagnosticEntriesPerBatch,
 	maximumLedgerPageSize,
@@ -80,12 +81,64 @@ Test('accepts a conversation with several roles, and refuses one that is empty, 
 	// Every message says something. A message with no content at all is refused rather than
 	// travelling to a chat template that would render an empty turn.
 	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'assistant' }] }).success, false);
-	// A conversation carries messages and nothing else. Tool declarations were dropped along with
-	// tool calling, so a consumer that sends them is refused rather than having them quietly ignored.
+});
+
+Test('accepts a conversation declaring tools, and refuses a declaration missing what a model needs to use it', () => {
+	const weatherTool = {
+		name: 'get_current_weather',
+		description: 'Reports the current weather in one city.',
+		parametersJsonSchema: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+	};
 	Assert.equal(ConversationInputSchema.safeParse({
 		messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+		tools: [weatherTool],
+	}).success, true);
+	// The description is what the model reads when it decides whether to ask for a tool, but a tool
+	// whose name says enough on its own is allowed to leave it out.
+	Assert.equal(ConversationInputSchema.safeParse({
+		messages: [{ role: 'user', content: 'Hi' }],
+		tools: [{ name: 'get_current_weather', parametersJsonSchema: {} }],
+	}).success, true);
+	// A declaration with no arguments schema is refused: it is what a consumer converts the model's
+	// untyped argument text back into typed values with, so a tool without one cannot be completed.
+	Assert.equal(ConversationInputSchema.safeParse({
+		messages: [{ role: 'user', content: 'Hi' }],
 		tools: [{ name: 'get_current_weather' }],
 	}).success, false);
+	Assert.equal(ConversationInputSchema.safeParse({
+		messages: [{ role: 'user', content: 'Hi' }],
+		tools: [{ ...weatherTool, name: '' }],
+	}).success, false);
+	// Declaring tools is optional, and an empty list is refused rather than accepted as a way of
+	// saying "no tools" — leaving the field out is how that is said.
+	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'user', content: 'Hi' }], tools: [] }).success, false);
+});
+
+Test('carries a whole tool round trip: the call the model asked for, and the result sent back to it', () => {
+	const roundTrip = {
+		messages: [
+			{ role: 'user', content: 'What is the weather in Paris?' },
+			// A model that asks for a tool writes no text at all, so the empty content is what such a
+			// message really carries rather than a value that went missing.
+			{ role: 'assistant', content: '', toolCalls: [{ name: 'get_current_weather', argumentValues: { city: 'Paris' } }] },
+			{ role: 'tool', content: '{"celsius":31,"sky":"clear"}' },
+		],
+		tools: [{ name: 'get_current_weather', parametersJsonSchema: { type: 'object', properties: { city: { type: 'string' } } } }],
+	};
+	Assert.equal(ConversationInputSchema.safeParse(roundTrip).success, true);
+
+	// Every argument value is text, because the format the model writes them in carries no types at
+	// all: `llm_qwen3_5_0_8b_full` writes `<parameter=city>Paris</parameter>` and nothing that says
+	// what kind of value that is. A consumer converts them using the tool's own arguments schema.
+	Assert.equal(ToolCallSchema.safeParse({ name: 'get_current_weather', argumentValues: { city: 'Paris' } }).success, true);
+	Assert.equal(ToolCallSchema.safeParse({ name: 'set_temperature', argumentValues: { celsius: 31 } }).success, false);
+	// A tool call carries no identifier, because no model this project runs generates one. A consumer
+	// speaking the OpenAI Chat Completions interface mints one itself.
+	Assert.equal(ToolCallSchema.safeParse({ id: 'call_0', name: 'get_current_weather', argumentValues: {} }).success, false);
+	// A tool that takes no arguments asks for none, rather than being refused for asking for nothing.
+	Assert.equal(ToolCallSchema.safeParse({ name: 'get_server_time', argumentValues: {} }).success, true);
+	// An assistant message that asked for nothing leaves the field out rather than stating an empty list.
+	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'assistant', content: 'Hello.', toolCalls: [] }] }).success, false);
 });
 
 Test('restricts task states, and checks the shape of a stage name without listing them', () => {
@@ -132,6 +185,28 @@ Test('StagePayloadFactory builds each stage payload shape', () => {
 		}),
 		{ text: 'The capital of France is Paris.', done: true, promptTokenCount: 12, completionTokenCount: 7, stopReason: 'end_of_sequence' },
 	);
+});
+
+Test('a task can end by asking for a tool instead of by writing an answer', () => {
+	const toolCalls = [{ name: 'get_current_weather', argumentValues: { city: 'Paris' } }];
+	// The answer text is empty rather than absent, because a model that asks for a tool writes no
+	// text at all. Stating it is what lets every reader of a finished task go on reading `text`
+	// without first working out which of the two kinds of ending it received.
+	Assert.deepEqual(StagePayloadFactory.llmToolCalls(toolCalls), { text: '', toolCalls, done: true });
+	Assert.deepEqual(
+		StagePayloadFactory.llmToolCalls(toolCalls, { promptTokenCount: 320, completionTokenCount: 27, stopReason: 'interrupted' }),
+		{ text: '', toolCalls, done: true, promptTokenCount: 320, completionTokenCount: 27, stopReason: 'interrupted' },
+	);
+	// A worker that stopped as soon as a complete tool call had been written reports `interrupted`,
+	// which is what it did — it did not reach an end-of-sequence token and did not hit its cap.
+	Assert.throws(() => StagePayloadFactory.llmToolCalls([]), /says nothing at all/);
+
+	Assert.equal(StagePayloadSchema.safeParse({ text: '', toolCalls, done: true }).success, true);
+	Assert.equal(StagePayloadSchema.safeParse({ text: '', toolCalls: [], done: true }).success, false);
+	Assert.equal(StagePayloadSchema.safeParse({ text: '', toolCalls: [{ name: 'x', argumentValues: { n: 1 } }], done: true }).success, false);
+	// The tool call travels back on the stage result the same way it travels out on a conversation,
+	// under one schema, so what a worker returned can be put straight back into the next submission.
+	Assert.equal(ToolCallSchema.safeParse(toolCalls[0]).success, true);
 });
 
 Test('StagePayloadSchema accepts and refuses the usage fields milestone 2 of issue #150 added', () => {

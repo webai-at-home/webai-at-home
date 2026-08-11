@@ -1,4 +1,4 @@
-import type { ConversationInput } from '../task/conversation_types.js';
+import type { ConversationInput, ToolCall } from '../task/conversation_types.js';
 import type { TaskInput } from '../task/task_types.js';
 import type { EncodedTensor, LlmStagePayload, StagePayload } from './stage_payload_types.js';
 
@@ -148,6 +148,43 @@ export class StagePayloadFactory {
 		usage?: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' },
 	): LlmStagePayload {
 		const payload: LlmStagePayload = { text, ...StagePayloadFactory.piece(newText), done: true };
+		if (usage?.promptTokenCount !== undefined) {
+			payload.promptTokenCount = usage.promptTokenCount;
+		}
+		if (usage?.completionTokenCount !== undefined) {
+			payload.completionTokenCount = usage.completionTokenCount;
+		}
+		if (usage?.stopReason !== undefined) {
+			payload.stopReason = usage.stopReason;
+		}
+		return payload;
+	}
+
+	/**
+	 * Builds the payload a stage returns once the model has asked for a tool instead of writing an
+	 * answer.
+	 *
+	 * This ends the task exactly as {@link llmDone} does, and carries no answer text, because there
+	 * is none: a model that asks for a tool writes nothing else. The empty `text` is what says so,
+	 * rather than the field being left out, so that every reader of a finished task's result can go
+	 * on reading `text` without first checking which of the two kinds of ending it received.
+	 *
+	 * @param toolCalls The tools the model asked to have called, in the order it asked for them.
+	 * @param usage The token counts and the reason generation stopped, when the worker's engine can
+	 * report them. A worker that stopped generating as soon as a complete tool call had been written
+	 * reports `interrupted`, which is what it did.
+	 * @returns The stage payload that ends the task with a request to call a tool.
+	 * @throws {Error} If no tool call is given, since a result that asks for no tool and carries no
+	 * answer says nothing at all.
+	 */
+	static llmToolCalls(
+		toolCalls: ToolCall[],
+		usage?: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' },
+	): LlmStagePayload {
+		if (toolCalls.length === 0) {
+			throw new Error('A stage result that asks for no tool and carries no answer text says nothing at all.');
+		}
+		const payload: LlmStagePayload = { text: '', toolCalls, done: true };
 		if (usage?.promptTokenCount !== undefined) {
 			payload.promptTokenCount = usage.promptTokenCount;
 		}

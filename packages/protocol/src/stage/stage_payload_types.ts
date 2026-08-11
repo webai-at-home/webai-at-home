@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ConversationInputSchema, type ConversationInput } from '../task/conversation_types.js';
+import { ConversationInputSchema, ToolCallSchema, type ConversationInput, type ToolCall } from '../task/conversation_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,10 +45,24 @@ export type LlmStagePayload = {
 	 * the slot that template already has for its role, instead of a flattened transcript arriving
 	 * as a single user message.
 	 *
-	 * It never appears on a result. What a stage produces is text, whether it is the whole answer
-	 * or one piece of one.
+	 * It never appears on a result. What a stage produces is text, or a request to call a tool.
 	 */
 	conversation?: ConversationInput;
+	/**
+	 * The tools the model asked to have called, on the result that finishes the task.
+	 *
+	 * Present only when the model asked for a tool instead of writing an answer, which is the whole
+	 * of what such a result is: a model that asks for a tool produces no text, so a result carrying
+	 * these carries no `text` worth reading. A task whose conversation declared no tool never
+	 * carries this at all.
+	 *
+	 * The cluster does not run the tool, and never will: it generates the request and stops there.
+	 * Running it belongs to the calling program, for the reason set out in
+	 * [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) — a caller's tool run on
+	 * a volunteer's machine, network address, and signed-in browser session is a security problem
+	 * before it is an engineering one.
+	 */
+	toolCalls?: ToolCall[];
 	/**
 	 * The text this one stage run produced, beyond everything the runs before it produced.
 	 *
@@ -124,6 +138,7 @@ export const StagePayloadSchema = z.union([
 		tensors: z.record(z.string().max(500), z.object({ dims: z.array(z.number().int()).max(8), type: z.string().max(100), dataBase64: z.string().max(8_000_000) })).optional(),
 		text: z.string().max(100_000).optional(),
 		conversation: ConversationInputSchema.optional(),
+		toolCalls: z.array(ToolCallSchema).min(1).max(16).optional(),
 		newText: z.string().max(100_000).optional(),
 		inputIds: z.array(z.number().int()).max(100_000).optional(),
 		position: z.number().int().nonnegative().optional(),
