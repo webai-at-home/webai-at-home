@@ -26,6 +26,12 @@ Worker pages can receive multiple enabled stages through repeated URL parameters
 
 When no enabled stages are provided, the worker advertises all available formula and language-model stages.
 
+## About panel
+
+**About** in the navigation bar opens a panel naming which build of the worker webpage this browser tab is running: the version number of `@webai/worker-webpage`, read from its own `package.json` at build time, and the git commit the build was made from. The panel also links to the `/health` route of the central gateway this page is connected to — the gateway named by `?gatewayUrl=` — whose JSON body carries the gateway's own git commit.
+
+It is a panel that opens over the worker webpage rather than a page of its own, so a volunteer whose browser tab is running a stage never leaves that tab. See [issue #159](https://github.com/webai-at-home/webai-at-home/issues/159).
+
 ## Qwen3 model shards
 
 The three Qwen3-0.6B ONNX model shards are stored in the public [Hugging Face model repository](https://huggingface.co/jerome-etienne/webai-at-home-qwen3-0.6b-shards), rather than in the Worker web build or the central gateway. The Worker downloads only the shard assigned to its stage and stores downloaded shard bytes in the browser's IndexedDB cache.

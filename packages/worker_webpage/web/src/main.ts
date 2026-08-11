@@ -18,6 +18,7 @@ import { WorkerStageOffer } from './connection/worker_stage_offer';
 import { WorkerAccount } from './connection/worker_account';
 import { ThemeToggle } from './page/theme_toggle.js';
 import { HelpTooltips } from './page/help_tooltips.js';
+import { AboutPanel } from './page/about_panel.js';
 import { AudioKeepalive, type AudioKeepaliveState } from './page/audio_keepalive.js';
 import { ScreenWakeLock, type ScreenWakeLockState } from './page/screen_wake_lock.js';
 
@@ -136,8 +137,6 @@ export class WorkerPage {
 	private readonly fullPowerButtonEl: HTMLButtonElement;
 	/** The large play button shown over the whole page until the reader starts full power. */
 	private readonly startOverlayEl: HTMLButtonElement;
-	/** Shows the git commit this build was made from. */
-	private readonly commitShaEl: HTMLElement;
 
 	private readonly eventLog = new WorkerEventLog();
 	/** The stages the page URL restricts this worker browser to, if it names any. */
@@ -206,7 +205,6 @@ export class WorkerPage {
 		this.screenWakeLockStateEl = PageElements.getElement('#screen-wake-lock-state');
 		this.fullPowerButtonEl = PageElements.getButton('#full-power');
 		this.startOverlayEl = PageElements.getButton('#start-overlay');
-		this.commitShaEl = PageElements.getElement('#commit-sha');
 		this.requestedStageNames = WorkerStageOffer.requestedStageNamesFromUrl(location.search);
 		this.gatewayReconnection = new GatewayReconnection({
 			onWaiting: (secondsRemaining: number, attemptNumber: number): void => {
@@ -237,6 +235,7 @@ export class WorkerPage {
 	start(): void {
 		ThemeToggle.setup();
 		HelpTooltips.setup();
+		AboutPanel.setup(GatewayConfig.assetUrl('/health'));
 
 		// Use the URL-provided name for embedded worker pages, and generate a random
 		// name for standalone pages so multiple workers can still be opened safely.
@@ -246,7 +245,6 @@ export class WorkerPage {
 			? `browser-worker-${RandomUuid.generate().slice(0, 8)}`
 			: (workerNameFromUrl ?? '');
 		this.workerNameEl.textContent = this.nameInputEl.value;
-		this.commitShaEl.textContent = __COMMIT_SHA__;
 		this.renderStages();
 		this.eventLog.render();
 

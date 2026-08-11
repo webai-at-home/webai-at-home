@@ -128,9 +128,15 @@ export class Cli {
 		);
 
 		const isProduction = process.env.NODE_ENV === 'production';
+		// The configuration file is named rather than left to Vite to discover, because Vite looks
+		// for it in the root directory it is given — `web` — and this package keeps it one level
+		// above that, next to `package.json`. Without naming it, a page would be served in
+		// development without the `define` values the production build bakes in, and every page
+		// script that reads one would fail with a ReferenceError. See issue #159.
 		const pageDevServer: PageDevServer | undefined = isProduction
 			? undefined
 			: await (await import('vite')).createServer({
+				configFile: Path.join(Path.dirname(Url.fileURLToPath(import.meta.url)), '../vite.config.ts'),
 				root: Path.join(Path.dirname(Url.fileURLToPath(import.meta.url)), '../web'),
 				server: { middlewareMode: true },
 				appType: 'custom',

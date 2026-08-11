@@ -17,6 +17,16 @@ const require = createRequire(import.meta.url);
 const commitSha = process.env.COMMIT_SHA ?? execSync('git rev-parse --short HEAD').toString().trim();
 
 /**
+ * The version number of `@webai/worker-webpage`, baked into the browser bundle as
+ * `__PACKAGE_VERSION__` (see `web/src/global.d.ts`) so the About panel reports which build is
+ * running (see issue #159). It is read from this package's own `package.json` at build time
+ * rather than written into the markup by hand, so bumping the version in one place is enough.
+ */
+const packageVersion = (
+	JSON.parse(Fs.readFileSync(Path.resolve(import.meta.dirname, 'package.json'), 'utf-8')) as { version: string }
+).version;
+
+/**
  * `stage_helper_llm_qwen3_0_6b_sharded.ts` sets `env.wasm.wasmPaths = "/assets/"`, a literal string prefix.
  * Once `wasmPaths` is a plain string, onnxruntime-web builds every runtime file's URL as
  * `wasmPaths + fileName` (see its `wasm-factory.ts`), bypassing the `import.meta.url`-relative
@@ -49,6 +59,7 @@ export default defineConfig({
 	base: process.env.WORKER_BASE_PATH ?? '/',
 	define: {
 		__COMMIT_SHA__: JSON.stringify(commitSha),
+		__PACKAGE_VERSION__: JSON.stringify(packageVersion),
 	},
 	plugins: [
 		{

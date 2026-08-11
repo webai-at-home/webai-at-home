@@ -56,4 +56,19 @@ export class PageElements {
 		}
 		return element;
 	}
+
+	/**
+	 * Finds a required HTML anchor element.
+	 *
+	 * @param selector CSS selector for the required anchor element.
+	 * @returns The matching HTML anchor element.
+	 * @throws If the selector does not match an HTML anchor element.
+	 */
+	static getAnchor(selector: string): HTMLAnchorElement {
+		const element: Element | null = document.querySelector(selector);
+		if ((element instanceof HTMLAnchorElement) === false) {
+			throw new Error(`Anchor ${selector} was not found`);
+		}
+		return element;
+	}
 }

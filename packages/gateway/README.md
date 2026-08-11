@@ -54,7 +54,7 @@ A ledger line the gateway cannot read stops it, naming the line, rather than bei
 
 Each HTML page and its assets are stored in its own directory under `web/`. Browser TypeScript files use `src/main.ts`, and stylesheets use `css/main.css`.
 
-- `/` or `/home` — gateway landing page.
+- `/` or `/home` — gateway landing page. **About** in its navigation bar opens a panel naming which build of the gateway this server is running: the version number of `@webai/gateway`, read from its own `package.json` at build time rather than written into the markup by hand, and a link to `/health`, whose JSON body carries the git commit this build was made from. See [issue #159](https://github.com/webai-at-home/webai-at-home/issues/159).
 - `/monitor` — live gateway monitor showing connected devices, tasks, stages, and recent events.
 - `/ledger` — what every account has earned and spent, highest balance first. It is the one cluster-wide accounting view: every other accounting message answers for the asking connection's own account and no other, so this page connects as an observer, which is the only connection the gateway answers `accounting.summaries.get` for.
 - `/debug` — index of the current gateway debug pages.

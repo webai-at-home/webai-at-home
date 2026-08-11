@@ -9,7 +9,7 @@ The browser page a volunteer opens to contribute computing time. The page connec
 - `web/index.html` and `web/src/main.ts`: the page itself. `npm run dev --workspace @webai/worker-webpage` serves it with Vite on port `8789`; `npm run build --workspace @webai/worker-webpage` builds the static files the Docker image serves.
 - `web/src/connection/`: `gateway_config.ts` reads the query parameters, `gateway_link.ts` holds the WebSocket connection, `gateway_reconnection.ts` opens a lost connection again after a growing wait, `worker_stage_offer.ts` advertises the stages, `lease_heartbeat.ts` keeps a stage assignment alive, `worker_account.ts` and `account_key_store.ts` hold the account key pair, and `diagnostics_reporter.ts` reports back.
 - `web/src/stages/`: one stage helper per stage the page can run — `stage_helper_dev_formula.ts`, `stage_helper_llm_qwen3_0_6b_sharded.ts`, `stage_helper_llm_qwen3_5_0_8b_full.ts`, `stage_helper_llm_llama3_2_1b_full.ts`, and `stage_helper_llm_gemma_nano_chrome_full.ts`.
-- `web/src/page/`: `page_markup.ts`, `page_elements.ts`, `worker_event_log.ts`, `theme_toggle.ts`, `audio_keepalive.ts`, which plays a quiet tone so a backgrounded tab is not throttled, and `screen_wake_lock.ts`, which asks the system to keep the screen on while the tab is visible.
+- `web/src/page/`: `page_markup.ts`, `page_elements.ts`, `worker_event_log.ts`, `theme_toggle.ts`, `about_panel.ts`, which names which build this browser tab is running, `audio_keepalive.ts`, which plays a quiet tone so a backgrounded tab is not throttled, and `screen_wake_lock.ts`, which asks the system to keep the screen on while the tab is visible.
 
 ## Local Rules & Boundaries
 

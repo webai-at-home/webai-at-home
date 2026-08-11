@@ -1,8 +1,23 @@
+import Fs from 'node:fs';
 import Path from 'node:path';
 import { defineConfig } from 'vite';
 
+/**
+ * The version number of `@webai/gateway`, baked into every gateway browser page as
+ * `__PACKAGE_VERSION__` (see `web/_shared/global.d.ts`) so the About panel on the home page reports
+ * which build is running (see issue #159). It is read from this package's own `package.json` at
+ * build time rather than written into the markup by hand, so bumping the version in one place is
+ * enough.
+ */
+const packageVersion = (
+	JSON.parse(Fs.readFileSync(Path.resolve(import.meta.dirname, 'package.json'), 'utf-8')) as { version: string }
+).version;
+
 export default defineConfig({
 	root: Path.resolve(import.meta.dirname, 'web'),
+	define: {
+		__PACKAGE_VERSION__: JSON.stringify(packageVersion),
+	},
 	build: {
 		rollupOptions: {
 			input: {
