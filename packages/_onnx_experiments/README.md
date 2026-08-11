@@ -38,6 +38,7 @@ Qwen3 experiment also needs the generated shard files; see
 - [`public/gemma4-e2b-it`](public/gemma4-e2b-it) — Gemma 4 E2B-it through Transformers.js.
 - [`public/qwen3_5-0.8b-gate`](public/qwen3_5-0.8b-gate) — Qwen3.5-0.8B through Transformers.js, issue #96 de-risk gate.
 - [`public/qwen3_5-2b`](public/qwen3_5-2b) — Qwen3.5-2B through Transformers.js.
+- [`public/qwen3_5-tool-calls-gate`](public/qwen3_5-tool-calls-gate) — Qwen3.5-0.8B tool calls through the chat template, issue #115 de-risk gate.
 
 The experiment pages are measurements and demonstrations, not production
 model-serving endpoints.

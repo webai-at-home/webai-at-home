@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qwen3.5-0.8B · tool calls de-risk gate (issue #115)</title>
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      .phase { color: #6cf; }
+      .pass { color: #6f6; }
+      .fail { color: #f66; }
+    </style>
+  </head>
+  <body>
+    <h1>Qwen3.5-0.8B tool calls de-risk gate — issue #115 milestone 0</h1>
+    <p>Loads the exact pinned export the real stage helper runs (<code>onnx-community/Qwen3.5-0.8B-ONNX</code>, revision
+      <code>c0d619322dad7c4441a8841a53fc59772ddddcc0</code>, <code>q4f16</code>) and answers the question that
+      <a href="https://github.com/webai-at-home/webai-at-home/issues/115">issue #115</a> rests on and that no
+      measurement has yet touched: <strong>this model generates tool calls when LM Studio serves it, but does it still
+      do so through Transformers.js, at this quantization, in a browser tab?</strong></p>
+    <p>LM Studio applies the chat template and parses the tool calls itself, and hands back structured
+      <code>tool_calls</code>. Here this project has to do both by hand, so three separate things could fail: the
+      bundled chat template might have no slot for tool declarations, the <code>q4f16</code> export might not generate
+      a call where the served build does, and whatever it writes has to be parseable back out of the streamed text.</p>
+    <button id="run-button" type="button" disabled>Loading model…</button>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/qwen3_5-tool-calls-gate/src/main.ts"></script>
+  </body>
+</html>
