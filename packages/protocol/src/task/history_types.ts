@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	ConversationTypes — the conversation a language-model task carries, in place of one prompt
+//	HistoryTypes — the history a language-model task carries, in place of one prompt
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -13,9 +13,9 @@ import { z } from 'zod';
 // this project's own naming.
 
 /**
- * The largest number of messages one conversation may carry.
+ * The largest number of messages one history may carry.
  *
- * A bound rather than a judgement about how long a conversation should be: every message travels
+ * A bound rather than a judgement about how long a history should be: every message travels
  * inside one gateway message on every submission, so an unbounded list is an unbounded frame.
  */
 const maximumMessageCount = 1000;
@@ -23,7 +23,7 @@ const maximumMessageCount = 1000;
 /** The largest one message's content may be, in characters, matching `StagePayloadSchema`'s own text bound. */
 const maximumContentLength = 100_000;
 
-/** The largest number of tools one conversation may declare. */
+/** The largest number of tools one history may declare. */
 const maximumToolCount = 64;
 
 /** The largest number of tool calls one assistant message may carry. */
@@ -33,7 +33,7 @@ const maximumToolCallCount = 16;
 const maximumNameLength = 200;
 
 /**
- * One tool a conversation declares, which the model may ask to have called.
+ * One tool a history declares, which the model may ask to have called.
  *
  * The tool is never run by this cluster. A worker generates the request to call it and nothing
  * more; running it belongs to the calling program, which is where the tool and the trust to run it
@@ -57,7 +57,7 @@ export const ToolDeclarationSchema = z.object({
 	 */
 	parametersJsonSchema: z.record(z.string().max(maximumNameLength), z.unknown()),
 }).strict();
-/** One tool a conversation declares, which the model may ask to have called. */
+/** One tool a history declares, which the model may ask to have called. */
 export type ToolDeclaration = z.infer<typeof ToolDeclarationSchema>;
 
 /**
@@ -99,7 +99,7 @@ export const ToolCallSchema = z.object({
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 
 /**
- * One message of a conversation.
+ * One message of a history.
  *
  * The four roles are the four a chat template has slots for. The OpenAI completion interface also
  * has a `developer` role, which is its newer name for what it used to call `system`; a consumer
@@ -112,7 +112,7 @@ export type ToolCall = z.infer<typeof ToolCallSchema>;
  * also all the chat template needs: `llm_qwen3_5_0_8b_full` renders a tool result as a
  * `<tool_response>` block in the turn following the call, and never reads an identifier.
  */
-export const ConversationMessageSchema = z.object({
+export const HistoryMessageSchema = z.object({
 	/** Who said this: the instructions, the caller, the model, or a tool the model asked for. */
 	role: z.enum(['system', 'user', 'assistant', 'tool']),
 	/**
@@ -125,18 +125,18 @@ export const ConversationMessageSchema = z.object({
 	/**
 	 * The tools this assistant message asked to have called, when it asked for any.
 	 *
-	 * Present only on an assistant message. It is what lets a conversation carrying a completed
+	 * Present only on an assistant message. It is what lets a history carrying a completed
 	 * tool round trip be submitted again: the chat template renders these back into the form the
 	 * model itself writes, so the model reads its own earlier request in the form it expects rather
 	 * than in a rewritten one.
 	 */
 	toolCalls: z.array(ToolCallSchema).min(1).max(maximumToolCallCount).optional(),
 }).strict();
-/** One message of a conversation. */
-export type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
+/** One message of a history. */
+export type HistoryMessage = z.infer<typeof HistoryMessageSchema>;
 
 /**
- * The whole conversation a language-model task carries, in place of one piece of text.
+ * The whole history a language-model task carries, in place of one piece of text.
  *
  * A task carried one prompt before this existed, and still may: `TaskInput` accepts either, so a
  * consumer with one prompt and nothing else to say submits a prompt. This shape exists for the
@@ -144,20 +144,20 @@ export type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
  * message.
  *
  * What this replaces is worth stating plainly, because the failure it removes is easy to miss.
- * Before it, a conversation was flattened into lines of `role: content` text and handed to the
+ * Before it, a history was flattened into lines of `role: content` text and handed to the
  * model as a single user message, so the model saw one turn whose content happened to be a
  * transcript, and every chat template wrapped one set of turn markers around the whole thing. A
  * system message became a line of text inside a user turn. Carrying the messages as messages is
  * what lets each one reach the slot its chat template already has for it.
  */
-export const ConversationInputSchema = z.object({
-	/** The messages of the conversation, oldest first. */
-	messages: z.array(ConversationMessageSchema).min(1).max(maximumMessageCount),
+export const HistoryInputSchema = z.object({
+	/** The messages of the history, oldest first. */
+	messages: z.array(HistoryMessageSchema).min(1).max(maximumMessageCount),
 	/**
 	 * The tools the model may ask to have called, when the consumer declared any.
 	 *
 	 * Absent rather than empty when the consumer declared none, so that a task asking for nothing
-	 * about tools sends the same conversation it always did.
+	 * about tools sends the same history it always did.
 	 *
 	 * There is deliberately no companion field saying how much choice the model is left about
 	 * asking for a tool — the OpenAI Chat Completions interface's `tool_choice`. Nothing could read
@@ -171,5 +171,5 @@ export const ConversationInputSchema = z.object({
 	 */
 	tools: z.array(ToolDeclarationSchema).min(1).max(maximumToolCount).optional(),
 }).strict();
-/** The whole conversation a language-model task carries, in place of one piece of text. */
-export type ConversationInput = z.infer<typeof ConversationInputSchema>;
+/** The whole history a language-model task carries, in place of one piece of text. */
+export type HistoryInput = z.infer<typeof HistoryInputSchema>;

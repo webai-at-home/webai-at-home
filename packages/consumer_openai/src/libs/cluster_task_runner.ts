@@ -43,7 +43,7 @@ export type TaskAnswer = {
 	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
 	/**
 	 * The tools the model asked to have called, `undefined` when it answered in words, which is
-	 * every task whose conversation declared no tool.
+	 * every task whose history declared no tool.
 	 *
 	 * Carried without an identifier and with every argument value as text, exactly as the worker
 	 * reported it. Supplying the identifier this cluster cannot generate, and the types this

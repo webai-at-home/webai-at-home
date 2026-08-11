@@ -8,7 +8,7 @@ An OpenAI-compatible server in front of the `webai-at-home` cluster. It accepts 
 
 - `src/cli.ts`: the `consumer_openai` command line program, with one subcommand, `server`, implemented in `src/commands/server_command.ts`.
 - `src/http/openai_routes.ts`: the HTTP routes, `/v1/models` and `/v1/chat/completions`. `src/http/curl_style_transaction_logger.ts` records each request and answer.
-- `src/api/`: `openai_types.ts`, `openai_error.ts`, `model_catalog.ts` (which task type each model name maps to), `conversation_builder.ts`, `prompt_flattener.ts`, `finish_reason_translator.ts`, and `generation_settings_builder.ts`.
+- `src/api/`: `openai_types.ts`, `openai_error.ts`, `model_catalog.ts` (which task type each model name maps to), `history_builder.ts`, `prompt_flattener.ts`, `finish_reason_translator.ts`, and `generation_settings_builder.ts`.
 - `src/libs/cluster_task_runner.ts`: submits the task and follows it, on top of `ConsumerClient` from `@webai/consumer-cli`.
 - `src/libs/server_settings.ts`: every command line option and environment variable this server reads.
 - `examples/`: one runnable example per task type and per calling style, named `chat_completion_<style>_<task type>.ts`.

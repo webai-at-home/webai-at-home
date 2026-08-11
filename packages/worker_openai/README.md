@@ -91,7 +91,7 @@ does not download anything itself.
 
 ## What a model behind LM Studio can do on its own
 
-What this worker offers to the cluster was decided from a measurement of what a model served by LM Studio can do on its own, rather than from a guess. Two programs, `examples/lmstudio_direct_history.ts` and `examples/lmstudio_direct_tools.ts`, talked to LM Studio directly through the OpenAI SDK — not through the gateway and not through this worker — and reported the model's own behaviour and nothing else. See [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119). Both programs have since been removed; the two-turn conversation check they ran is the `history` subcommand of [`@webai/openai-api-tool`](../openai_api_tool/README.md), which measures any server speaking the OpenAI-compatible API, LM Studio among them:
+What this worker offers to the cluster was decided from a measurement of what a model served by LM Studio can do on its own, rather than from a guess. Two programs, `examples/lmstudio_direct_history.ts` and `examples/lmstudio_direct_tools.ts`, talked to LM Studio directly through the OpenAI SDK — not through the gateway and not through this worker — and reported the model's own behaviour and nothing else. See [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119). Both programs have since been removed; the two-turn history check they ran is the `history` subcommand of [`@webai/openai-api-tool`](../openai_api_tool/README.md), which measures any server speaking the OpenAI-compatible API, LM Studio among them:
 
 ```sh
 npm run history:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
@@ -103,7 +103,7 @@ The tool round trip check has no equivalent there: no subcommand of `@webai/open
 
 Measured on 4 August 2026, against LM Studio's server on `http://localhost:1234/v1` (`lms` command line at commit `71bd99c`) through the `openai` SDK version 4.104.0.
 
-| Model | Multi-turn history | Generates a tool call | Accepts a tool result in the conversation | Answers from the tool result |
+| Model | Multi-turn history | Generates a tool call | Accepts a tool result in the history | Answers from the tool result |
 | --- | --- | --- | --- | --- |
 | `llama-3.2-3b-instruct` | yes | no | yes | yes |
 | `qwen3.5-2b-mlx` | yes | yes | yes | yes |
@@ -112,7 +112,7 @@ Measured on 4 August 2026, against LM Studio's server on `http://localhost:1234/
 
 What that means for this worker:
 
-- Both models carry a conversation across turns, which is what the `stage_llm_llama3_2_1b_full` stage this worker already offers needs. Each recalled both facts from the first turn word for word.
+- Both models carry a history across turns, which is what the `stage_llm_llama3_2_1b_full` stage this worker already offers needs. Each recalled both facts from the first turn word for word.
 - The Llama 3.2 3B model does not generate tool calls. It answered the question in words, explaining that it has no weather tool, and it wrote a made-up temperature of its own instead. Sending `tool_choice: "required"` did not change that: LM Studio still returned an empty `tool_calls` list. The working hypothesis in issue #119 is therefore confirmed for this model.
 - The Qwen3.5 2B model does generate tool calls. It answered with `get_current_weather({"city":"Paris"})` on the first turn, which is the whole first step passed, and it is the smaller of the two models on parameter count.
-- Both models read a tool result back out of the conversation. Given a tool call and a tool result, LM Studio accepted the conversation, and each model answered with the temperature the tool result carried rather than with one of its own. So a caller that decides by itself which tool to run can use either model to turn the result into an answer, while a caller that wants the model to choose the tool needs Qwen3.5 2B and not Llama 3.2 3B.
+- Both models read a tool result back out of the history. Given a tool call and a tool result, LM Studio accepted the history, and each model answered with the temperature the tool result carried rather than with one of its own. So a caller that decides by itself which tool to run can use either model to turn the result into an answer, while a caller that wants the model to choose the tool needs Qwen3.5 2B and not Llama 3.2 3B.

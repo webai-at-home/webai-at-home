@@ -22,7 +22,7 @@ import {
 export class ReportRenderer {
 	/**
 	 * Builds the analysis line for one swept model and mode pair. The raw answer, or the two
-	 * turns of a conversation, have already been written out as they were produced, so this line
+	 * turns of a history, have already been written out as they were produced, so this line
 	 * reads as commentary on text already shown rather than repeating it.
 	 *
 	 * @param outcome The outcome to describe.

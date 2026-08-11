@@ -76,7 +76,7 @@ export class ToolCallReader {
 	 * asked for something I could not read" is the only safe answer.
 	 *
 	 * @param generatedText The whole text the model wrote.
-	 * @param declaredTools The tools the conversation declared, used to refuse a call naming a tool
+	 * @param declaredTools The tools the history declared, used to refuse a call naming a tool
 	 * that was never offered.
 	 * @returns The tool calls, in the order the model wrote them. Empty when it wrote none, which is
 	 * the ordinary case of a model that answered in words.
@@ -100,7 +100,7 @@ export class ToolCallReader {
 				throw new Error(`The model asked for a tool with no name, in ${JSON.stringify(body)}.`);
 			}
 			if (declaredNames.has(name) === false) {
-				throw new Error(`The model asked for a tool named ${JSON.stringify(name)}, which this conversation never declared. The tools declared were ${[...declaredNames].join(', ') || 'none'}.`);
+				throw new Error(`The model asked for a tool named ${JSON.stringify(name)}, which this history never declared. The tools declared were ${[...declaredNames].join(', ') || 'none'}.`);
 			}
 			const argumentValues: Record<string, string> = {};
 			for (const parameterMatch of (functionMatch[2] ?? '').matchAll(/<parameter=([^>]*)>([\s\S]*?)(?:<\/parameter>|$)/g)) {
@@ -125,7 +125,7 @@ export class ToolCallReader {
 	}
 
 	/**
-	 * Builds the tool declarations to hand to the chat template, from the ones the conversation
+	 * Builds the tool declarations to hand to the chat template, from the ones the history
 	 * carried.
 	 *
 	 * The template renders these back out as JSON into the prompt, in the shape the OpenAI Chat
@@ -133,7 +133,7 @@ export class ToolCallReader {
 	 * one place in this worker where that interface's spelling is rebuilt, from this project's own
 	 * naming, on the way into a chat template rather than on the way out to a client.
 	 *
-	 * @param declaredTools The tools the conversation declared.
+	 * @param declaredTools The tools the history declared.
 	 * @returns The declarations in the shape `apply_chat_template` takes them.
 	 */
 	static toChatTemplateTools(declaredTools: readonly ToolDeclaration[]): Record<string, unknown>[] {

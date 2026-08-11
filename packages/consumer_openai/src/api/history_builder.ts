@@ -1,16 +1,16 @@
-import type { ConversationInput, ConversationMessage, ToolDeclaration } from '@webai/protocol';
+import type { HistoryInput, HistoryMessage, ToolDeclaration } from '@webai/protocol';
 import type { ChatCompletionMessage } from './openai_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	ConversationBuilder — turns a request's messages into the conversation a task carries
+//	HistoryBuilder — turns a request's messages into the history a task carries
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * Builds the `ConversationInput` a task carries, from the message list of a chat completion
- * request, for a model whose task type accepts a whole conversation rather than only one prompt
- * (see `TaskInputFactory.acceptsConversation` in `@webai/consumer-cli`).
+ * Builds the `HistoryInput` a task carries, from the message list of a chat completion
+ * request, for a model whose task type accepts a whole history rather than only one prompt
+ * (see `TaskInputFactory.acceptsHistory` in `@webai/consumer-cli`).
  *
  * This is what `PromptFlattener` was standing in for on these models. Flattening joined every
  * message into one piece of text and handed a worker a single user turn to make sense of; this
@@ -18,16 +18,16 @@ import type { ChatCompletionMessage } from './openai_types.js';
  * template already has for that role — a system message reaches the system slot rather than
  * becoming a line of text inside a user turn.
  */
-export class ConversationBuilder {
+export class HistoryBuilder {
 	/**
-	 * Builds the conversation to submit for one request.
+	 * Builds the history to submit for one request.
 	 *
 	 * @param messages The messages of the request, in the order they were sent.
-	 * @returns The conversation to submit as the task input.
+	 * @returns The history to submit as the task input.
 	 */
-	static build(messages: ChatCompletionMessage[], tools?: ToolDeclaration[]): ConversationInput {
+	static build(messages: ChatCompletionMessage[], tools?: ToolDeclaration[]): HistoryInput {
 		return {
-			messages: messages.map(ConversationBuilder.messageOf),
+			messages: messages.map(HistoryBuilder.messageOf),
 			// Left out entirely rather than stated as empty when the request declared no tool, so that
 			// a request that asked for nothing about tools submits exactly what it always did.
 			...(tools === undefined || tools.length === 0 ? {} : { tools }),
@@ -45,7 +45,7 @@ export class ConversationBuilder {
 	 * @param message One message of the request.
 	 * @returns The same message, in the protocol's own shape.
 	 */
-	private static messageOf(message: ChatCompletionMessage): ConversationMessage {
+	private static messageOf(message: ChatCompletionMessage): HistoryMessage {
 		return {
 			role: message.role === 'developer' ? 'system' : message.role,
 			// A model that asks for a tool writes no text, and an OpenAI client hands that message
@@ -62,7 +62,7 @@ export class ConversationBuilder {
 				: {
 					toolCalls: message.tool_calls.map((toolCall) => ({
 						name: toolCall.function.name,
-						argumentValues: ConversationBuilder.argumentValuesOf(toolCall.function.arguments),
+						argumentValues: HistoryBuilder.argumentValuesOf(toolCall.function.arguments),
 					})),
 				}),
 		};

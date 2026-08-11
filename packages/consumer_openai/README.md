@@ -78,9 +78,9 @@ npm run example:chat_completion_dev_formula --workspace @webai/consumer-openai
 
 The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `WEBAI_OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
 
-The two `history` examples are the ones to run to see a real conversation reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole conversation rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
+The two `history` examples are the ones to run to see a real history reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole history rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
 
-The sweep that sends one prompt to every model in one run, and the one that checks a two-turn conversation across the models accepting a conversation, moved out of this package into [`@webai/openai-api-tool`](../openai_api_tool/), where they are the `text_completion` and `conversation_history` subcommands. The examples above remain the ones to read first: each is a short, single-purpose file explaining one model in one mode.
+The sweep that sends one prompt to every model in one run, and the one that checks a two-turn history across the models accepting a history, moved out of this package into [`@webai/openai-api-tool`](../openai_api_tool/), where they are the `text_completion` and `history` subcommands. The examples above remain the ones to read first: each is a short, single-purpose file explaining one model in one mode.
 
 Without the `openai` package, the same two endpoints with `curl`:
 
@@ -92,9 +92,9 @@ curl http://localhost:8788/v1/models
 curl http://localhost:8788/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"dev_formula","messages":[{"role":"user","content":"5"}]}'
 ```
 
-## How a conversation becomes a prompt
+## How a history becomes a prompt
 
-A task in this cluster carries one piece of text, so a conversation of several messages has to become one piece of text before it can be submitted. Two rules do that:
+A task in this cluster carries one piece of text, so a history of several messages has to become one piece of text before it can be submitted. Two rules do that:
 
 - A request carrying one message sends that message's content unchanged, so the worker browser tab receives exactly what the caller wrote. This is also what makes `dev_formula` usable, because that task type accepts a number and nothing else.
 - A request carrying several messages sends them labelled with their roles, one message per line, followed by a final `assistant:` line that invites the answer.
@@ -165,8 +165,8 @@ Rule 3: a value the OpenAI Chat Completions interface has no field for travels i
 This is a first version. It serves the two endpoints above rather than the whole OpenAI completion interface, and the following are left out on purpose rather than by oversight:
 
 - **It ignores every field of a request outside `stream`, `stream_options`, and the five generation controls above.** `n`, `tools`, `logprobs`, `presence_penalty`, `frequency_penalty`, and the rest are accepted in the body and then ignored. A model that honours none of the five generation controls still generates under the worker browser tab's own limits: 160 tokens for the sharded Qwen3-0.6B task, and 400 pieces of an answer for the Chrome built-in task.
-- **It refuses a message whose content is a list of parts**, which is what a request carrying an image or audio sends, rather than joining the parts together. It also refuses the `tool` role, because it ignores the tool settings of a request and so could not continue a conversation containing the answer of a tool.
-- **It keeps no conversation state.** One request is one cluster task, and the whole conversation is sent with every request.
+- **It refuses a message whose content is a list of parts**, which is what a request carrying an image or audio sends, rather than joining the parts together. It also refuses the `tool` role, because it ignores the tool settings of a request and so could not continue a history containing the answer of a tool.
+- **It keeps no history state.** One request is one cluster task, and the whole history is sent with every request.
 
 ## How failures are answered
 
@@ -256,7 +256,7 @@ Outcome: completed
 
 The only thing held back is length: a body longer than 4096 characters is cut short and followed by `Body truncated (N characters omitted of M)`, so one very long prompt or answer cannot make a whole run's log unreadable.
 
-It follows that this file holds the keys presented to this server and every prompt and answer that went through it, in full. **It is as sensitive as the credentials and the conversations it records**; `logs/` is ignored by git for that reason, and the file should be treated the same way anywhere it is copied.
+It follows that this file holds the keys presented to this server and every prompt and answer that went through it, in full. **It is as sensitive as the credentials and the histories it records**; `logs/` is ignored by git for that reason, and the file should be treated the same way anywhere it is copied.
 
 A failure while writing to this log, including one while first creating the log directory, is caught and reported to this server's own output, so a caller is always given the answer or failure it was owed even when the log itself cannot be written to.
 
@@ -284,7 +284,7 @@ The tests cover reading a request, the models on offer, the failure mapping, the
 - [`src/http/openai_routes.ts`](./src/http/openai_routes.ts) — the endpoints, including reading and checking a request.
 - [`src/libs/cluster_task_runner.ts`](./src/libs/cluster_task_runner.ts) — the one gateway connection, and one promise per submitted task.
 - [`src/api/model_catalog.ts`](./src/api/model_catalog.ts) — the models on offer, and the task type behind each one.
-- [`src/api/prompt_flattener.ts`](./src/api/prompt_flattener.ts) — turning a conversation into the single piece of text a task carries.
+- [`src/api/prompt_flattener.ts`](./src/api/prompt_flattener.ts) — turning a history into the single piece of text a task carries.
 - [`src/api/generation_settings_builder.ts`](./src/api/generation_settings_builder.ts) — the five generation controls of a request, turned into the settings a task carries, or refused.
 - [`src/api/openai_error.ts`](./src/api/openai_error.ts) — every way a request can fail, with its status and its body.
 - [`src/api/openai_types.ts`](./src/api/openai_types.ts) — the request bodies accepted and the response bodies returned.

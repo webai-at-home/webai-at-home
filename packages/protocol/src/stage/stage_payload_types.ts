@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ConversationInputSchema, ToolCallSchema, type ConversationInput, type ToolCall } from '../task/conversation_types.js';
+import { HistoryInputSchema, ToolCallSchema, type HistoryInput, type ToolCall } from '../task/history_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,24 +36,24 @@ export type LlmStagePayload = {
 	 */
 	text?: string;
 	/**
-	 * The whole conversation to answer, on the value handed to a task's first stage, when the
-	 * consumer submitted a conversation rather than one prompt.
+	 * The whole history to answer, on the value handed to a task's first stage, when the
+	 * consumer submitted a history rather than one prompt.
 	 *
 	 * Exactly one of this and `text` carries the work on that first value: a task submitted with a
-	 * prompt carries `text`, and a task submitted with a conversation carries this. A stage helper
+	 * prompt carries `text`, and a task submitted with a history carries this. A stage helper
 	 * that receives this hands the messages to its model's chat template, so each message reaches
 	 * the slot that template already has for its role, instead of a flattened transcript arriving
 	 * as a single user message.
 	 *
 	 * It never appears on a result. What a stage produces is text, or a request to call a tool.
 	 */
-	conversation?: ConversationInput;
+	history?: HistoryInput;
 	/**
 	 * The tools the model asked to have called, on the result that finishes the task.
 	 *
 	 * Present only when the model asked for a tool instead of writing an answer, which is the whole
 	 * of what such a result is: a model that asks for a tool produces no text, so a result carrying
-	 * these carries no `text` worth reading. A task whose conversation declared no tool never
+	 * these carries no `text` worth reading. A task whose history declared no tool never
 	 * carries this at all.
 	 *
 	 * The cluster does not run the tool, and never will: it generates the request and stops there.
@@ -137,7 +137,7 @@ export const StagePayloadSchema = z.union([
 	z.object({
 		tensors: z.record(z.string().max(500), z.object({ dims: z.array(z.number().int()).max(8), type: z.string().max(100), dataBase64: z.string().max(8_000_000) })).optional(),
 		text: z.string().max(100_000).optional(),
-		conversation: ConversationInputSchema.optional(),
+		history: HistoryInputSchema.optional(),
 		toolCalls: z.array(ToolCallSchema).min(1).max(16).optional(),
 		newText: z.string().max(100_000).optional(),
 		inputIds: z.array(z.number().int()).max(100_000).optional(),

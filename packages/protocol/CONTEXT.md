@@ -7,7 +7,7 @@ The shared message, task, pipeline, account, and device definitions of `webai-at
 ## Key Exports & Entry Points
 
 - `src/index.ts`: the public entry point, imported by other packages as `@webai/protocol`. It states what the package offers and holds no definitions of its own. Five further subpaths exist: `@webai/protocol/envelope`, `@webai/protocol/message_logger`, `@webai/protocol/task_projection`, `@webai/protocol/session_renewal`, and `@webai/protocol/reconnect_backoff`.
-- `src/task/`: `task_types.ts` (`TaskInput`, `GenerationSettings`, `Task`, task state, task snapshot, task update, stage assignment, task events), `pipeline_types.ts` (`StageName`, `PipelineStage`, `PipelineSpecification`), `task_projection.ts`, `conversation_types.ts`, and `generation_control_support.ts`.
+- `src/task/`: `task_types.ts` (`TaskInput`, `GenerationSettings`, `Task`, task state, task snapshot, task update, stage assignment, task events), `pipeline_types.ts` (`StageName`, `PipelineStage`, `PipelineSpecification`), `task_projection.ts`, `history_types.ts`, and `generation_control_support.ts`.
 - `src/message/`: `client_message.ts`, `gateway_message.ts`, `envelope.ts`, `envelope_types.ts`, `message_logger.ts`, and `diagnostics.ts`.
 - `src/accounting/`: `account_types.ts`, `account_identity.ts`, `account_authentication.ts`, `account_key_file.ts`, `account_identity_file.ts`, and `ledger_types.ts`.
 - `src/stage/`: `stage_payload_types.ts`, `stage_payload_factory.ts`, and `generated_text.ts`.

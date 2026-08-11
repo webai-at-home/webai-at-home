@@ -2,7 +2,7 @@ import OpenAI, { APIError } from 'openai';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Carries a real conversation across two turns, with the complete Llama 3.2 1B Instruct model
+//	Carries a real history across two turns, with the complete Llama 3.2 1B Instruct model
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -10,17 +10,17 @@ import OpenAI, { APIError } from 'openai';
 //   npm run example:chat_completion_history_llm_llama3_2_1b_full --workspace @webai/consumer-openai
 //
 // The model `llm_llama3_2_1b_full` is one of the two models whose task type accepts a whole
-// conversation rather than only one prompt (`llm_qwen3_5_0_8b_full` is the other; see
+// history rather than only one prompt (`llm_qwen3_5_0_8b_full` is the other; see
 // `examples/chat_completion_history_llm_qwen3_5_0_8b_full.ts`). Sending several messages here does
 // not flatten them into lines of `role: content` text the way `llm_gemma_nano_chrome_full` and
 // `llm_qwen3_0_6b_sharded` still do — this server submits the messages as they are, and
 // `@huggingface/transformers` applies the model's own chat template to real turns.
 //
 // This example shows what that is worth: the first request states a fact and nothing else, the
-// second sends the whole conversation so far, including the model's own first answer, and asks a
+// second sends the whole history so far, including the model's own first answer, and asks a
 // question that can only be answered by recalling what the first turn said. A caller builds the
-// second request's `messages` array itself; this server keeps no conversation state between
-// requests, so every request still carries the whole conversation.
+// second request's `messages` array itself; this server keeps no history state between
+// requests, so every request still carries the whole history.
 //
 // It needs the gateway running and one worker browser tab open in a browser with WebGPU and
 // 16-bit float shader support, for example the page

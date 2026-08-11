@@ -410,8 +410,8 @@ export class ToolCallProber {
 	}
 
 	/**
-	 * Probes whether the model reads a tool's result back out of a conversation and answers from it:
-	 * a conversation already carrying the question, the assistant's tool call, and a message whose
+	 * Probes whether the model reads a tool's result back out of a history and answers from it:
+	 * a history already carrying the question, the assistant's tool call, and a message whose
 	 * role is `tool` holding a temperature no model could have known.
 	 *
 	 * Generating a tool call and reading one back are two different abilities, and a model can have
@@ -468,7 +468,7 @@ export class ToolCallProber {
 				options,
 				'reads_a_tool_result_back',
 				'unsupported',
-				`the conversation already carried the result and the model asked for ${ToolCallProber._namesOf([answer])} again rather than answering from it`,
+				`the history already carried the result and the model asked for ${ToolCallProber._namesOf([answer])} again rather than answering from it`,
 				[answer],
 			);
 		}
@@ -539,14 +539,14 @@ export class ToolCallProber {
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
-	 * Sends one conversation with one set of tools declared, and turns a failure into an answer
+	 * Sends one history with one set of tools declared, and turns a failure into an answer
 	 * rather than throwing, so that a refusal can be read as the endpoint's answer about tool
 	 * calling.
 	 *
 	 * @param options The client, the model identifier, and the mode.
 	 * @param tools The tools to declare.
 	 * @param toolChoice How much choice to leave the model.
-	 * @param messages The whole conversation to send.
+	 * @param messages The whole history to send.
 	 * @returns The answer, or the failure that came instead of it.
 	 */
 	private static async _ask(

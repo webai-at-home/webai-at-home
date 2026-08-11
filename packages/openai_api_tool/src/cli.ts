@@ -8,7 +8,7 @@ import Url from 'node:url';
 import { Command } from 'commander';
 
 // local imports
-import { taskTypeNames, taskTypeNamesAcceptingConversation } from '@webai/consumer-cli';
+import { taskTypeNames, taskTypeNamesAcceptingHistory } from '@webai/consumer-cli';
 import { BenchmarkCommand, type RawBenchmarkOptions } from './commands/benchmark_command.js';
 import { CompletionCommand, type RawCompletionOptions } from './commands/completion_command.js';
 import { GenerationControlsCommand, type RawGenerationControlsOptions } from './commands/generation_controls_command.js';
@@ -73,11 +73,11 @@ export class Cli {
 		const history = program
 			.command('history')
 			.description(
-				"Sends a two-turn conversation to a model that accepts one, and checks that the second turn's answer recalls what the first turn said.",
+				"Sends a two-turn history to a model that accepts one, and checks that the second turn's answer recalls what the first turn said.",
 			)
 			.option(
 				'-m, --model <name>',
-				`model identifier, a comma-separated list of identifiers, a pattern, all, or list to print the model identifiers — only ${taskTypeNamesAcceptingConversation.join(' and ')} accept a whole conversation`,
+				`model identifier, a comma-separated list of identifiers, a pattern, all, or list to print the model identifiers — only ${taskTypeNamesAcceptingHistory.join(' and ')} accept a whole history`,
 				'all',
 			);
 		SharedOptions.addModeOptions(history);

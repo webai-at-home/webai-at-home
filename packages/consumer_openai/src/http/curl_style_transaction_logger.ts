@@ -110,7 +110,7 @@ const transactionSeparator = '='.repeat(50);
  *
  * It follows that this file holds the keys presented to this server and every prompt and answer
  * that went through it, in full. It is therefore as sensitive as the credentials and the
- * conversations it records, and `logs/` is ignored by git for that reason.
+ * histories it records, and `logs/` is ignored by git for that reason.
  *
  * A failure while writing a transaction, including one while first creating the log directory,
  * is caught and reported to this server's own output rather than left to escape, so a caller

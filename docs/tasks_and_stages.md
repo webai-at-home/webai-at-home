@@ -216,7 +216,7 @@ npm run dev --workspace @webai/consumer-cli -- submit --type llm_qwen3_5_0_8b_fu
 
 **Name:** `task_type_llm_llama3_2_1b_full`, served by the pipeline whose identifier is `llm_llama3_2_1b_full`, at version 1. Added by [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154), which also retired `task_type_llm_llama3_2_3b_full`.
 
-**Input:** one text prompt, or a whole conversation — this is one of the two task types whose worker can hand a message list to its model's own chat template, the other being `task_type_llm_qwen3_5_0_8b_full`.
+**Input:** one text prompt, or a whole history — this is one of the two task types whose worker can hand a message list to its model's own chat template, the other being `task_type_llm_qwen3_5_0_8b_full`.
 
 **What it does:** it generates text with the complete Llama 3.2 1B Instruct language model, and is unique among this project's task types in being reachable by two different kinds of worker, following the `naming_scheme.md` rule that `full` names an arrangement rather than which program holds the model:
 
@@ -238,7 +238,7 @@ A worker browser tab stops generation on one of the model's own three `eos_token
 
 | Order | Stage name | Computation | Input schema | Output schema | Encoding | What this stage does |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `stage_llm_llama3_2_1b_full` | `llm_llama3_2_1b_full` | `llm@1` | `llm@1` | `inline-json` | It generates an answer to the submitted prompt or conversation — downloading and loading the model first, for a worker browser tab whose first task this is, or asking the local server for one, for a native worker — or, on a run that carries an answer on, finds the answer already held open. It then reads either every remaining piece or one piece, according to what the consumer asked for, stopping at the safety bounds above. It returns one piece with the answer marked unfinished, or the complete answer marked finished. |
+| 1 | `stage_llm_llama3_2_1b_full` | `llm_llama3_2_1b_full` | `llm@1` | `llm@1` | `inline-json` | It generates an answer to the submitted prompt or history — downloading and loading the model first, for a worker browser tab whose first task this is, or asking the local server for one, for a native worker — or, on a run that carries an answer on, finds the answer already held open. It then reads either every remaining piece or one piece, according to what the consumer asked for, stopping at the safety bounds above. It returns one piece with the answer marked unfinished, or the complete answer marked finished. |
 
 The stage states a lease of 60000 milliseconds rather than using the gateway default, matching `stage_llm_qwen3_5_0_8b_full`: a worker browser tab downloading and loading the model, or a native worker whose local server is loading the model on the first request of a task, is far slower than the gateway's own default lease allows for. This is not sized from milestone 0's own de-risk gate measurement — that gate ran in a sandboxed browser environment whose WebGPU backend measured about 390 seconds to download and load the model and well under one token per second to generate, neither of which is representative of real worker hardware — so a true measurement on real hardware is still owed. What carries a run past even this lease is the stage heartbeat messages the worker sends while downloading, loading, or generating.
 

@@ -32,12 +32,12 @@ import type { GatewayMessage } from './gateway_message.js';
  * `taskRevision` and `deviceListRevision`. No earlier version is accepted.
  *
  * Version 4 widened the value a language-model task carries. `TaskInput.input` now accepts a whole
- * conversation as well as one piece of text, for the task types whose stage helper can hand a
+ * history as well as one piece of text, for the task types whose stage helper can hand a
  * message list to its model — `task_type_llm_qwen3_5_0_8b_full` and, since
  * [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154),
  * `task_type_llm_llama3_2_1b_full` (`task_type_llm_llama3_2_3b_full` accepted one too, from this
  * same version, until that task type was retired) — and the first stage value of such a task
- * carries that conversation in the new `conversation` field of `LlmStagePayload`. Both `TaskInput` and
+ * carries that history in the new `history` field of `LlmStagePayload`. Both `TaskInput` and
  * `StagePayloadSchema` refuse that shape before this version, so a consumer or worker built after
  * the change is refused by a gateway built before it at the moment it authenticates. That refusal
  * is the point: it is what stops a worker built before the change from receiving a first stage
@@ -68,13 +68,13 @@ import type { GatewayMessage } from './gateway_message.js';
  * consumer that asked for `temperature: 0` from being answered by a worker that never received
  * the request.
  *
- * Version 7 let a conversation declare tools, and let a task end by asking for one to be called
- * rather than by writing an answer. `ConversationInputSchema` now carries `tools`, its messages
+ * Version 7 let a history declare tools, and let a task end by asking for one to be called
+ * rather than by writing an answer. `HistoryInputSchema` now carries `tools`, its messages
  * accept the role `tool` and carry `toolCalls` on an assistant message, and `LlmStagePayload`
  * carries `toolCalls` on the result that finishes the task. See
  * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115). Every earlier version is
  * refused because a gateway built before this one validates a task input with `StagePayloadSchema`
- * and `ConversationInputSchema` as they were, both `.strict()`, and refuses the tool fields
+ * and `HistoryInputSchema` as they were, both `.strict()`, and refuses the tool fields
  * outright. Refusing that peer at authentication time is what stops a consumer that declared tools
  * from being answered by a cluster that dropped the declarations and answered in words as though
  * none had been sent.

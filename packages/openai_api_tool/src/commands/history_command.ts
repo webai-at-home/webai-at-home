@@ -2,7 +2,7 @@
 import type OpenAI from 'openai';
 
 // local imports
-import { taskTypeNamesAcceptingConversation } from '@webai/consumer-cli';
+import { taskTypeNamesAcceptingHistory } from '@webai/consumer-cli';
 import { CompletionSender } from '../completion_sender.js';
 import { reportFormats, type CompletionMode, type SweepOutcome, type SweepTurn } from '../completion_types.js';
 import { ModelSweeper } from '../model_sweeper.js';
@@ -13,16 +13,16 @@ import { SharedOptions, type RawSharedOptions } from '../shared_options.js';
 ///////////////////////////////////////////////////////////////////////////////
 //	HistoryCommand — checks that a second turn recalls what the first turn said
 //
-//	Sends a two-turn conversation and checks that the second turn's answer recalls both facts the
-//	first turn stated, across every model in `taskTypeNamesAcceptingConversation` — the only
-//	models whose task type accepts a whole conversation rather than only one prompt.
+//	Sends a two-turn history and checks that the second turn's answer recalls both facts the
+//	first turn stated, across every model in `taskTypeNamesAcceptingHistory` — the only
+//	models whose task type accepts a whole history rather than only one prompt.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /** The `history` subcommand's own options, exactly as commander parses them. */
 export type RawHistoryOptions = RawSharedOptions;
 
-/** Sends a two-turn conversation to a model that accepts one, and checks what the second turn recalls. */
+/** Sends a two-turn history to a model that accepts one, and checks what the second turn recalls. */
 export class HistoryCommand {
 	/** The first turn, stating a fact and nothing else. */
 	private static readonly _firstMessage = 'My name is Ada and my favorite programming language is Lisp. Please just say hello back.';
@@ -34,8 +34,8 @@ export class HistoryCommand {
 	 * Runs the `history` subcommand: sweeps every requested model and mode pair, one at a time,
 	 * prints the two turns and one analysis line per pair, and finishes with a summary table.
 	 *
-	 * `-m/--model list` prints `taskTypeNamesAcceptingConversation` rather than every model on
-	 * offer, since only those models accept a whole conversation.
+	 * `-m/--model list` prints `taskTypeNamesAcceptingHistory` rather than every model on
+	 * offer, since only those models accept a whole history.
 	 *
 	 * `-f/--format text`, the default, streams each turn live and prints its analysis line as it
 	 * finishes. `-f/--format markdown` or `-f/--format json` runs the sweep silently and prints
@@ -47,14 +47,14 @@ export class HistoryCommand {
 	 */
 	static async run(rawOptions: RawHistoryOptions): Promise<void> {
 		if (rawOptions.model === 'list') {
-			SharedOptions.printModelIds(taskTypeNamesAcceptingConversation);
+			SharedOptions.printModelIds(taskTypeNamesAcceptingHistory);
 			return;
 		}
 		if (ReportRenderer.isReportFormat(rawOptions.format) === false) {
 			throw new Error(`--format must be one of ${reportFormats.join(', ')}`);
 		}
 
-		const modelIds = ModelSweeper.resolveModelIds(rawOptions.model, taskTypeNamesAcceptingConversation, 'accept');
+		const modelIds = ModelSweeper.resolveModelIds(rawOptions.model, taskTypeNamesAcceptingHistory, 'accept');
 		const modes = SharedOptions.resolveModes(rawOptions);
 		const client = CompletionSender.createClient(SharedOptions.buildTarget(rawOptions));
 		const isText = rawOptions.format === 'text';

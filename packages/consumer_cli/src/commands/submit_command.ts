@@ -45,7 +45,7 @@ export class SubmitCommand {
 		const taskInput = TaskInputFactory.createTaskInput(options.type, options.input, generationSettings);
 
 		// Read before the connection opens, so a key file this program cannot read stops the submission
-		// with that as the reason, rather than half-way through the conversation with the gateway.
+		// with that as the reason, rather than half-way through the history with the gateway.
 		const accountKeyPair = await AccountKeyFile.readIfPresent(options.keyFilePath);
 
 		const logsDirectory = Url.fileURLToPath(new URL('../../logs', import.meta.url));

@@ -50,7 +50,7 @@ export const ChatCompletionToolSchema = z.object({
 export type ChatCompletionTool = z.infer<typeof ChatCompletionToolSchema>;
 
 /**
- * One message of a conversation, as a chat completion request carries it.
+ * One message of a history, as a chat completion request carries it.
  *
  * The content must be a single piece of text. The OpenAI completion interface also allows a
  * list of content parts, for a request carrying images or audio, and such a request is
@@ -58,9 +58,9 @@ export type ChatCompletionTool = z.infer<typeof ChatCompletionToolSchema>;
  * carries one piece of text and nothing else.
  *
  * The `tool` role is accepted, since
- * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115): a conversation carrying
+ * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115): a history carrying
  * a tool's answer can now be continued, because a worker that can ask for a tool can also read the
- * answer of one back out of the conversation it is given. `content` may be absent on an assistant
+ * answer of one back out of the history it is given. `content` may be absent on an assistant
  * message carrying `tool_calls`, because a model that asks for a tool writes no text at all, and
  * an OpenAI client hands back the message it was given.
  */
@@ -71,7 +71,7 @@ export const ChatCompletionMessageSchema = z.object({
 	tool_calls: z.array(ChatCompletionToolCallSchema).optional(),
 	tool_call_id: z.string().optional(),
 });
-/** One message of a conversation, as a chat completion request carries it. */
+/** One message of a history, as a chat completion request carries it. */
 export type ChatCompletionMessage = z.infer<typeof ChatCompletionMessageSchema>;
 
 /**

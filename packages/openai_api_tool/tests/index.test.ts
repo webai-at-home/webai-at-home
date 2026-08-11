@@ -1027,7 +1027,7 @@ function questionOf(body: ReceivedToolRequest): string {
 }
 
 /**
- * Reports whether the conversation received already carries a tool's result, which is what the
+ * Reports whether the history received already carries a tool's result, which is what the
  * `reads_a_tool_result_back` probe sends and no other probe does.
  *
  * @param body The request body received.
@@ -1106,7 +1106,7 @@ async function startToolCallServer(answerOf: (body: ReceivedToolRequest) => Stan
 /**
  * Answers the way a model that really calls tools would: it asks for the tool that answers the
  * question, fills in the city the question named, answers in words once the tool's result is in the
- * conversation, and leaves the tool alone for a question that needs none.
+ * history, and leaves the tool alone for a question that needs none.
  *
  * @param body The request body received.
  * @returns What to answer with.

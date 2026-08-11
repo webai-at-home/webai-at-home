@@ -42,7 +42,7 @@ export class ToolTranslator {
 	 *
 	 * @param tools The `tools` field of the request, absent or `null` when it declared none.
 	 * @returns The declarations to carry, or `undefined` when none were declared, so that a request
-	 * declaring no tool submits exactly the conversation it did before tools existed.
+	 * declaring no tool submits exactly the history it did before tools existed.
 	 */
 	static toProtocolTools(tools: ChatCompletionTool[] | null | undefined): ToolDeclaration[] | undefined {
 		if (tools === null || tools === undefined || tools.length === 0) {

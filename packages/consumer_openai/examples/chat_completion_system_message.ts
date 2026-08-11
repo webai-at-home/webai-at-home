@@ -2,13 +2,13 @@ import OpenAI, { APIError } from 'openai';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Sends a conversation of several messages, and shows how they become one prompt
+//	Sends a history of several messages, and shows how they become one prompt
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with: npm run example:chat_completion_system_message --workspace @webai/consumer-openai
 //
-// A task in the cluster carries one piece of text, so a conversation of several messages has to
+// A task in the cluster carries one piece of text, so a history of several messages has to
 // become one piece of text before it can be submitted. The rule is:
 //
 // - one message: its content is sent unchanged;

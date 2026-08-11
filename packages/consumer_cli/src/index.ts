@@ -17,9 +17,9 @@ export { ConsumerClient, type ConsumerClientCallbacks, type TaskSocket } from '.
 export {
 	TaskInputFactory,
 	taskTypeNames,
-	taskTypeNamesAcceptingConversation,
+	taskTypeNamesAcceptingHistory,
 	taskTypeNamesAcceptingTools,
 	type TaskTypeName,
-	type TaskTypeNameAcceptingConversation,
+	type TaskTypeNameAcceptingHistory,
 	type TaskTypeNameAcceptingTools,
 } from './libs/task_input_factory.js';

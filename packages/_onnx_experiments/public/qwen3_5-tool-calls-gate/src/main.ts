@@ -364,23 +364,23 @@ button.addEventListener('click', async () => {
 		const abstained = plainCalls.length === 0;
 		log(`  answered without asking for a tool = ${abstained}`, abstained ? 'pass' : 'fail');
 
-		// Phase 6 — the other half of a round trip: a conversation that already carries a tool result.
+		// Phase 6 — the other half of a round trip: a history that already carries a tool result.
 		log('');
 		log('Phase 6 — does a tool result render, and does the model answer from it?', 'phase');
-		const conversationWithAResult = [
+		const historyWithAResult = [
 			{ role: 'user', content: weatherQuestion },
 			{ role: 'assistant', content: '', tool_calls: [{ type: 'function', function: { name: 'get_current_weather', arguments: { city: 'Paris' } } }] },
 			{ role: 'tool', name: 'get_current_weather', content: JSON.stringify({ city: 'Paris', celsius: 31, sky: 'clear' }) },
 		];
 		let resultPrompt = '';
 		try {
-			resultPrompt = renderPrompt(generator, conversationWithAResult, TOOLS);
+			resultPrompt = renderPrompt(generator, historyWithAResult, TOOLS);
 			log(`  rendered prompt carrying a tool result (${resultPrompt.length} characters):`);
 			log(resultPrompt);
 			const carriesTheResult = resultPrompt.includes('31');
 			log(`  rendered prompt contains the tool result value 31 = ${carriesTheResult}`, carriesTheResult ? 'pass' : 'fail');
 		} catch (error) {
-			log(`  the chat template refused a conversation carrying a tool result: ${error instanceof Error ? error.message : String(error)}`, 'fail');
+			log(`  the chat template refused a history carrying a tool result: ${error instanceof Error ? error.message : String(error)}`, 'fail');
 		}
 		if (resultPrompt !== '') {
 			const resultAnswer = await runGeneration(generator, resultPrompt, 256);

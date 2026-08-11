@@ -92,7 +92,7 @@ value using the type its tool declared.
 
 **A tool result is rendered as a `user` turn, not a turn of its own.** The template wraps it in
 `<tool_response>…</tool_response>` inside `<|im_start|>user`, and it renders an assistant message carrying `tool_calls`
-back into the same XML-like form. So a conversation carrying a tool result round trips through this template
+back into the same XML-like form. So a history carrying a tool result round trips through this template
 correctly, without this project having to write either half by hand.
 
 One measurement worth carrying forward: each of these answers took **22 to 29 seconds** for 2 to 27 generated tokens,

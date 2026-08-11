@@ -1,4 +1,4 @@
-import type { ConversationInput, ToolCall } from '../task/conversation_types.js';
+import type { HistoryInput, ToolCall } from '../task/history_types.js';
 import type { TaskInput } from '../task/task_types.js';
 import type { EncodedTensor, LlmStagePayload, StagePayload } from './stage_payload_types.js';
 
@@ -29,7 +29,7 @@ export class StagePayloadFactory {
 	static initial(input: TaskInput): StagePayload {
 		if (input.taskType === 'task_type_dev_formula') return StagePayloadFactory.formula(input.input);
 		if (typeof input.input === 'string') return StagePayloadFactory.llmPrompt(input.input);
-		return StagePayloadFactory.llmConversation(input.input);
+		return StagePayloadFactory.llmHistory(input.input);
 	}
 
 	/**
@@ -54,15 +54,15 @@ export class StagePayloadFactory {
 	}
 
 	/**
-	 * Builds the initial LLM stage payload for a task submitted with a whole conversation rather
-	 * than with one prompt, carrying that conversation for the stage helper to hand to its model's
+	 * Builds the initial LLM stage payload for a task submitted with a whole history rather
+	 * than with one prompt, carrying that history for the stage helper to hand to its model's
 	 * chat template.
 	 *
-	 * @param conversation The conversation submitted for the task.
+	 * @param history The history submitted for the task.
 	 * @returns The stage payload to assign to the task's first stage.
 	 */
-	static llmConversation(conversation: ConversationInput): LlmStagePayload {
-		return { conversation };
+	static llmHistory(history: HistoryInput): LlmStagePayload {
+		return { history };
 	}
 
 	/**

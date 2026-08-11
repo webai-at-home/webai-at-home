@@ -1,4 +1,4 @@
-import type { ConversationInput, GenerationSettings } from '@webai/protocol';
+import type { HistoryInput, GenerationSettings } from '@webai/protocol';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -140,7 +140,7 @@ export class OpenaiApiClient {
 	 * only `finish_reason` arrives.
 	 *
 	 * @param modelId The model to ask for, exactly as the local server names it.
-	 * @param promptOrConversation The prompt to answer, or the whole conversation to continue when
+	 * @param promptOrHistory The prompt to answer, or the whole history to continue when
 	 * the task carries one instead of a single prompt.
 	 * @param abortController Aborts the request when the answer is no longer wanted. The stream's
 	 * own `cancel` calls this, so cancelling the reader stops the request to the local server
@@ -154,7 +154,7 @@ export class OpenaiApiClient {
 	 */
 	async chatCompletionStream(
 		modelId: string,
-		promptOrConversation: string | ConversationInput,
+		promptOrHistory: string | HistoryInput,
 		abortController: AbortController,
 		generationSettings?: GenerationSettings,
 	): Promise<{ stream: ReadableStream<string>; usage: ChatCompletionStreamUsage }> {
@@ -165,7 +165,7 @@ export class OpenaiApiClient {
 				model: modelId,
 				stream: true,
 				stream_options: { include_usage: true },
-				messages: OpenaiApiClient.messagesOf(promptOrConversation),
+				messages: OpenaiApiClient.messagesOf(promptOrHistory),
 				...OpenaiApiClient.generationControlsOf(generationSettings),
 			}),
 			signal: abortController.signal,
@@ -227,21 +227,21 @@ export class OpenaiApiClient {
 	}
 
 	/**
-	 * Builds the message list to send to the local server, from either a prompt or a conversation.
+	 * Builds the message list to send to the local server, from either a prompt or a history.
 	 *
-	 * A single prompt becomes the one user message this client has always sent. A conversation
+	 * A single prompt becomes the one user message this client has always sent. A history
 	 * becomes its messages, each carrying the role it was given, so the local server's own chat
 	 * template can place a system message and an earlier assistant turn where they belong instead
 	 * of receiving one user message whose content happens to be a transcript.
 	 *
-	 * @param promptOrConversation The prompt or conversation submitted with the task.
+	 * @param promptOrHistory The prompt or history submitted with the task.
 	 * @returns The message list to send in the request body.
 	 */
-	private static messagesOf(promptOrConversation: string | ConversationInput): OutgoingMessage[] {
-		if (typeof promptOrConversation === 'string') {
-			return [{ role: 'user', content: promptOrConversation }];
+	private static messagesOf(promptOrHistory: string | HistoryInput): OutgoingMessage[] {
+		if (typeof promptOrHistory === 'string') {
+			return [{ role: 'user', content: promptOrHistory }];
 		}
-		return promptOrConversation.messages.map((message) => ({ role: message.role, content: message.content }));
+		return promptOrHistory.messages.map((message) => ({ role: message.role, content: message.content }));
 	}
 
 	/**

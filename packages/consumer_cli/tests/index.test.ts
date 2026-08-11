@@ -4,7 +4,7 @@ import Os from 'node:os';
 import Path from 'node:path';
 import Test from 'node:test';
 import { ConsumerClient, type TaskSocket } from '../src/gateway_connection/consumer_client.js';
-import { TaskInputFactory, taskTypeNames, taskTypeNamesAcceptingConversation } from '../src/libs/task_input_factory.js';
+import { TaskInputFactory, taskTypeNames, taskTypeNamesAcceptingHistory } from '../src/libs/task_input_factory.js';
 import { DeviceAvailability } from '../src/cluster_capacity/device_availability.js';
 import { CapacityCalculator } from '../src/cluster_capacity/capacity_calculator.js';
 import { ObserverClient } from '../src/gateway_connection/observer_client.js';
@@ -53,22 +53,22 @@ Test('builds the task input for every task type a consumer may submit', () => {
 	Assert.throws(() => TaskInputFactory.createTaskInput('llm_llama3_2_1b_full', '  '), /Input must be a non-empty string/);
 });
 
-Test('accepts a whole conversation for the two task types whose worker can hand one to its chat template, and refuses it for every other', () => {
-	Assert.deepEqual(taskTypeNamesAcceptingConversation, ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full']);
-	Assert.equal(TaskInputFactory.acceptsConversation('llm_qwen3_5_0_8b_full'), true);
-	Assert.equal(TaskInputFactory.acceptsConversation('llm_llama3_2_1b_full'), true);
-	Assert.equal(TaskInputFactory.acceptsConversation('llm_qwen3_0_6b_sharded'), false);
-	Assert.equal(TaskInputFactory.acceptsConversation('llm_gemma_nano_chrome_full'), false);
-	Assert.equal(TaskInputFactory.acceptsConversation('dev_formula'), false);
+Test('accepts a whole history for the two task types whose worker can hand one to its chat template, and refuses it for every other', () => {
+	Assert.deepEqual(taskTypeNamesAcceptingHistory, ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full']);
+	Assert.equal(TaskInputFactory.acceptsHistory('llm_qwen3_5_0_8b_full'), true);
+	Assert.equal(TaskInputFactory.acceptsHistory('llm_llama3_2_1b_full'), true);
+	Assert.equal(TaskInputFactory.acceptsHistory('llm_qwen3_0_6b_sharded'), false);
+	Assert.equal(TaskInputFactory.acceptsHistory('llm_gemma_nano_chrome_full'), false);
+	Assert.equal(TaskInputFactory.acceptsHistory('dev_formula'), false);
 
-	const conversation = { messages: [{ role: 'user' as const, content: 'What is the capital of France?' }] };
-	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_qwen3_5_0_8b_full', conversation), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation });
-	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_llama3_2_1b_full', conversation), { taskType: 'task_type_llm_llama3_2_1b_full', input: conversation });
-	// A task type that only takes a prompt refuses a conversation plainly, rather than reading
+	const history = { messages: [{ role: 'user' as const, content: 'What is the capital of France?' }] };
+	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_qwen3_5_0_8b_full', history), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history });
+	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_llama3_2_1b_full', history), { taskType: 'task_type_llm_llama3_2_1b_full', input: history });
+	// A task type that only takes a prompt refuses a history plainly, rather than reading
 	// some part of it or silently dropping the rest.
-	Assert.throws(() => TaskInputFactory.createTaskInput('llm_gemma_nano_chrome_full', conversation), /takes a single prompt, not a whole conversation/);
-	Assert.throws(() => TaskInputFactory.createTaskInput('llm_qwen3_0_6b_sharded', conversation), /takes a single prompt, not a whole conversation/);
-	Assert.throws(() => TaskInputFactory.createTaskInput('dev_formula', conversation), /takes a single prompt, not a whole conversation/);
+	Assert.throws(() => TaskInputFactory.createTaskInput('llm_gemma_nano_chrome_full', history), /takes a single prompt, not a whole history/);
+	Assert.throws(() => TaskInputFactory.createTaskInput('llm_qwen3_0_6b_sharded', history), /takes a single prompt, not a whole history/);
+	Assert.throws(() => TaskInputFactory.createTaskInput('dev_formula', history), /takes a single prompt, not a whole history/);
 });
 
 Test('carries the generation settings a consumer asked for, and refuses one the task type cannot honour', () => {
@@ -312,7 +312,7 @@ Test('requests and reports the registered pipelines when asked to', () => {
 // run first, the same requirement `@webai/consumer_openai` already has on this package.
 Test('exposes the reusable consumer symbols through the package entry point after a build', () => {
 	Assert.deepEqual(ConsumerCli.taskTypeNames, taskTypeNames);
-	Assert.deepEqual(ConsumerCli.taskTypeNamesAcceptingConversation, taskTypeNamesAcceptingConversation);
+	Assert.deepEqual(ConsumerCli.taskTypeNamesAcceptingHistory, taskTypeNamesAcceptingHistory);
 	Assert.deepEqual(ConsumerCli.TaskInputFactory.createTaskInput('dev_formula', '5'), { taskType: 'task_type_dev_formula', input: 5 });
 
 	const socket: TaskSocket = {

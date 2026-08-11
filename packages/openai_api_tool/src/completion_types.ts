@@ -95,7 +95,7 @@ export type CompletionResult = {
 /** How one swept model and mode pair turned out. */
 export type SweepStatus = 'ok' | 'failed' | 'skipped';
 
-/** One message of a conversation `history` sent, in the order it was sent. */
+/** One message of a history `history` sent, in the order it was sent. */
 export type SweepTurn = {
 	/** Who sent the message. */
 	readonly role: 'user' | 'assistant';
@@ -143,8 +143,8 @@ export type SweepOutcome = {
 	/** Why the pair failed or was skipped, `undefined` on success. */
 	readonly failureMessage: string | undefined;
 	/**
-	 * Every message of the conversation, in the order it was sent, as far as the sweep got. Only
-	 * `history` sets this, since it is the only subcommand that sends a whole conversation rather
+	 * Every message of the history, in the order it was sent, as far as the sweep got. Only
+	 * `history` sets this, since it is the only subcommand that sends a whole history rather
 	 * than one prompt; left out entirely for `completion`, rather than set to `undefined`, so it
 	 * does not appear in a `completion` sweep's JSON report.
 	 */
@@ -415,7 +415,7 @@ export type ChatCompletionToolCall = {
  *   hold the value the question named.
  * - `chooses_among_several_tools` — with more than one tool declared, it asks for the one that
  *   answers the question rather than one of the others.
- * - `reads_a_tool_result_back` — given a conversation that already contains a tool call and that
+ * - `reads_a_tool_result_back` — given a history that already contains a tool call and that
  *   tool's result, it answers from the result. Generating a call and reading one back are two
  *   different abilities, and a model can have the second without the first.
  * - `answers_without_a_call_when_none_is_needed` — with a tool declared and a question that needs

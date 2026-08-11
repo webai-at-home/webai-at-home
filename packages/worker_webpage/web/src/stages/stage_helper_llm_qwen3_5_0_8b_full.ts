@@ -1,5 +1,5 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, type Message, type TextGenerationPipeline } from '@huggingface/transformers';
-import { StagePayloadFactory, type ConversationInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
+import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
 import { ToolCallReader } from './tool_call_reader.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -140,11 +140,11 @@ type TaskGenerationState = {
 	 */
 	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
 	/**
-	 * The tools this task's conversation declared, kept for as long as the answer is being read.
+	 * The tools this task's history declared, kept for as long as the answer is being read.
 	 *
 	 * Needed after generation as well as before it: a tool call is refused unless it names one of
 	 * these, so a model that invents a tool is reported rather than believed. Empty when the
-	 * conversation declared none, which is every task submitted before tool calling existed.
+	 * history declared none, which is every task submitted before tool calling existed.
 	 */
 	declaredTools: readonly ToolDeclaration[];
 };
@@ -267,7 +267,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	 * @param taskId The task this run belongs to, which names the answer being produced for it.
 	 * @param stageAssignmentId The assignment this run is carrying out, which decides whether this run
 	 * is the one allowed to release the answer it is reading.
-	 * @param payload The prompt or conversation submitted with the task, or, on a run that carries
+	 * @param payload The prompt or history submitted with the task, or, on a run that carries
 	 * an answer on, a value saying so and nothing else.
 	 * @param generationSettings What the consumer asked for. Only `isStreaming` is read: set, one
 	 * run returns one piece and leaves the answer open for the run that follows; absent, one run
@@ -287,9 +287,9 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			? StageHelperLlmQwen3_5_0_8bFull.heldGeneration(taskId, stageAssignmentId)
 			: StageHelperLlmQwen3_5_0_8bFull.newGeneration(taskId, stageAssignmentId);
 		if (payload.isContinuation !== true) {
-			state.declaredTools = payload.conversation?.tools ?? [];
+			state.declaredTools = payload.history?.tools ?? [];
 		}
-		// A conversation that declared tools is never read in pieces, even when the consumer asked for
+		// A history that declared tools is never read in pieces, even when the consumer asked for
 		// pieces. Until the model has finished writing, a piece of a tool call is indistinguishable
 		// from a piece of an answer — the two begin the same way — so reporting pieces would send a
 		// consumer the raw `<tool_call>` markup of a request it was supposed to receive as structured
@@ -300,7 +300,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 		// finished answer, and every failure — releases it.
 		let leavesAnswerOpen = false;
 		try {
-			const reader = state.reader ?? await StageHelperLlmQwen3_5_0_8bFull.startGeneration(state, payload.conversation ?? payload.text ?? '');
+			const reader = state.reader ?? await StageHelperLlmQwen3_5_0_8bFull.startGeneration(state, payload.history ?? payload.text ?? '');
 			while (state.pieceCount < MAXIMUM_ANSWER_PIECES) {
 				const piece = await reader.read();
 				if (state.isReleased === true) {
@@ -508,16 +508,16 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	 * Starts one answer, and hands its stopping criteria and reader to the state the run holds.
 	 *
 	 * @param state The generation state this run registered, already released or not.
-	 * @param promptOrConversation The prompt or conversation submitted with the task.
+	 * @param promptOrHistory The prompt or history submitted with the task.
 	 * @returns The reader that delivers the answer.
-	 * @throws If the prompt or conversation is empty, if the model cannot be loaded, or if the
+	 * @throws If the prompt or history is empty, if the model cannot be loaded, or if the
 	 * assignment was taken away while the browser was loading the model.
 	 */
 	private static async startGeneration(
 		state: TaskGenerationState,
-		promptOrConversation: string | ConversationInput,
+		promptOrHistory: string | HistoryInput,
 	): Promise<ReadableStreamDefaultReader<string>> {
-		if (StageHelperLlmQwen3_5_0_8bFull.isEmpty(promptOrConversation)) {
+		if (StageHelperLlmQwen3_5_0_8bFull.isEmpty(promptOrHistory)) {
 			throw new Error('A prompt is needed to start an answer.');
 		}
 		const generator = await StageHelperLlmQwen3_5_0_8bFull.loadedGenerator();
@@ -536,7 +536,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			generator.tokenizer as unknown as {
 				apply_chat_template: (messages: unknown[], options: Record<string, unknown>) => { data?: ArrayLike<number> };
 			}
-		).apply_chat_template(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrConversation), {
+		).apply_chat_template(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrHistory), {
 			tokenize: true,
 			add_generation_prompt: true,
 			enable_thinking: false,
@@ -546,18 +546,18 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 		state.promptTokenCount = promptTensor.data?.length;
 		const criteria = new InterruptableStoppingCriteria();
 		state.criteria = criteria;
-		state.reader = StageHelperLlmQwen3_5_0_8bFull.createGenerationStream(generator, promptOrConversation, criteria, state).getReader();
+		state.reader = StageHelperLlmQwen3_5_0_8bFull.createGenerationStream(generator, promptOrHistory, criteria, state).getReader();
 		return state.reader;
 	}
 
 	/**
-	 * Builds the `tools` option handed to the chat template, or nothing at all when the conversation
+	 * Builds the `tools` option handed to the chat template, or nothing at all when the history
 	 * declared no tool.
 	 *
 	 * Nothing is added to the call when there are no tools, rather than an empty list, so that every
 	 * task submitted before tool calling existed produces byte for byte the prompt it always did.
 	 *
-	 * @param declaredTools The tools the conversation declared.
+	 * @param declaredTools The tools the history declared.
 	 * @returns The option to spread into the chat template call, empty when no tool was declared.
 	 */
 	private static toolTemplateOption(declaredTools: readonly ToolDeclaration[]): Record<string, unknown> {
@@ -570,21 +570,21 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	}
 
 	/**
-	 * Reports whether a prompt or conversation carries nothing to answer.
+	 * Reports whether a prompt or history carries nothing to answer.
 	 *
-	 * A conversation that reached this point always has at least one message, because
-	 * `ConversationInputSchema` refuses an empty one at submission; this still checks rather than
-	 * assuming it, so a payload with neither `text` nor `conversation` set is caught here as the
+	 * A history that reached this point always has at least one message, because
+	 * `HistoryInputSchema` refuses an empty one at submission; this still checks rather than
+	 * assuming it, so a payload with neither `text` nor `history` set is caught here as the
 	 * empty string {@link compute} falls back to, the same way an empty prompt always was.
 	 *
-	 * @param promptOrConversation The value {@link startGeneration} was given.
+	 * @param promptOrHistory The value {@link startGeneration} was given.
 	 * @returns `true` when there is nothing to answer.
 	 */
-	private static isEmpty(promptOrConversation: string | ConversationInput): boolean {
-		if (typeof promptOrConversation === 'string') {
-			return promptOrConversation.trim() === '';
+	private static isEmpty(promptOrHistory: string | HistoryInput): boolean {
+		if (typeof promptOrHistory === 'string') {
+			return promptOrHistory.trim() === '';
 		}
-		return promptOrConversation.messages.length === 0;
+		return promptOrHistory.messages.length === 0;
 	}
 
 	/**
@@ -601,14 +601,14 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	 * https://github.com/webai-at-home/webai-at-home/issues/150.
 	 *
 	 * @param generator The loaded text-generation pipeline.
-	 * @param promptOrConversation The prompt or conversation to generate an answer for.
+	 * @param promptOrHistory The prompt or history to generate an answer for.
 	 * @param criteria Stops generation early when the stream's reader is cancelled.
 	 * @param state The generation state to record the completion token count and stop reason on.
 	 * @returns A stream of the pieces of text the model produces, in order.
 	 */
 	private static createGenerationStream(
 		generator: TextGenerationPipeline,
-		promptOrConversation: string | ConversationInput,
+		promptOrHistory: string | HistoryInput,
 		criteria: InterruptableStoppingCriteria,
 		state: TaskGenerationState,
 	): ReadableStream<string> {
@@ -642,14 +642,14 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 						}
 					},
 				});
-				// A conversation that declared tools is rendered into a prompt here and generated from as
+				// A history that declared tools is rendered into a prompt here and generated from as
 				// text. The text-generation pipeline applies the chat template itself when it is handed
 				// a message list, and exposes no way to pass tool declarations through when it does, so
 				// a message list would silently produce a prompt with no tools in it. Every task that
 				// declared no tool still goes through the message list, exactly as it always has.
 				const input = state.declaredTools.length === 0
-					? StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrConversation)
-					: StageHelperLlmQwen3_5_0_8bFull.renderedPrompt(generator, promptOrConversation, state.declaredTools);
+					? StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrHistory)
+					: StageHelperLlmQwen3_5_0_8bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools);
 				generator(input, {
 					max_new_tokens: MAX_NEW_TOKENS,
 					do_sample: false,
@@ -749,32 +749,32 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 
 	/**
 	 * Builds the message list handed to the text-generation pipeline, from either a prompt or a
-	 * conversation.
+	 * history.
 	 *
-	 * A single prompt becomes the one user message this stage has always sent. A conversation
+	 * A single prompt becomes the one user message this stage has always sent. A history
 	 * becomes its messages, each carrying the role it was given, so `@huggingface/transformers`
 	 * applies the model's own chat template to real turns — a system message reaches the slot the
 	 * template has for it — instead of receiving one user message whose content happens to be a
 	 * flattened transcript.
 	 *
-	 * @param promptOrConversation The prompt or conversation submitted with the task.
+	 * @param promptOrHistory The prompt or history submitted with the task.
 	 * @returns The message list to pass to the text-generation pipeline.
 	 */
-	private static messagesOf(promptOrConversation: string | ConversationInput): Message[] {
-		if (typeof promptOrConversation === 'string') {
-			return [{ role: 'user', content: promptOrConversation }];
+	private static messagesOf(promptOrHistory: string | HistoryInput): Message[] {
+		if (typeof promptOrHistory === 'string') {
+			return [{ role: 'user', content: promptOrHistory }];
 		}
 		// `Message` declares `role` and `content` and nothing else, while this model's chat template
 		// reads a `tool_calls` field beside them and renders it — proved in the de-risk gate for
 		// https://github.com/webai-at-home/webai-at-home/issues/115. The cast is that gap, and is kept
 		// to the one message that needs it rather than widening the whole return type.
-		return promptOrConversation.messages.map((message): Message => {
+		return promptOrHistory.messages.map((message): Message => {
 			if (message.toolCalls === undefined) {
 				return { role: message.role, content: message.content };
 			}
 			// An assistant message that asked for tools is handed back in the shape the template reads,
 			// so the template renders it into the same form the model itself writes. That is what lets
-			// a conversation carrying a finished tool round trip be answered: the model reads its own
+			// a history carrying a finished tool round trip be answered: the model reads its own
 			// earlier request written the way it would have written it, not a rewriting of it.
 			return {
 				role: message.role,
@@ -791,26 +791,26 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	}
 
 	/**
-	 * Renders a conversation into the prompt text to generate from, with the declared tools in it.
+	 * Renders a history into the prompt text to generate from, with the declared tools in it.
 	 *
 	 * Used only when tools were declared. Every other task hands its message list to the pipeline and
 	 * lets the pipeline apply the template, exactly as before.
 	 *
 	 * @param generator The loaded text-generation pipeline, read for its tokenizer's chat template.
-	 * @param promptOrConversation The prompt or conversation submitted with the task.
-	 * @param declaredTools The tools the conversation declared.
+	 * @param promptOrHistory The prompt or history submitted with the task.
+	 * @param declaredTools The tools the history declared.
 	 * @returns The prompt text to generate from.
 	 */
 	private static renderedPrompt(
 		generator: TextGenerationPipeline,
-		promptOrConversation: string | ConversationInput,
+		promptOrHistory: string | HistoryInput,
 		declaredTools: readonly ToolDeclaration[],
 	): string {
 		return (
 			generator.tokenizer as unknown as {
 				apply_chat_template: (messages: unknown[], options: Record<string, unknown>) => string;
 			}
-		).apply_chat_template(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrConversation), {
+		).apply_chat_template(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrHistory), {
 			tokenize: false,
 			add_generation_prompt: true,
 			enable_thinking: false,

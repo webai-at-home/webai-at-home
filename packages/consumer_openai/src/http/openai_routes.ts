@@ -15,7 +15,7 @@ import type {
 	TransactionOutcome,
 	TransactionResponseType,
 } from './curl_style_transaction_logger.js';
-import { ConversationBuilder } from '../api/conversation_builder.js';
+import { HistoryBuilder } from '../api/history_builder.js';
 import { GenerationSettingsBuilder } from '../api/generation_settings_builder.js';
 import { ModelCatalog } from '../api/model_catalog.js';
 import { OpenaiError } from '../api/openai_error.js';
@@ -230,10 +230,10 @@ export class OpenaiRoutes {
 		const toolsToDeclare = body.tool_choice === 'none' ? undefined : declaredTools;
 
 		// A task type whose worker can hand a message list to its own chat template is sent the
-		// conversation as it was written, each message keeping its own role. Every other task type
+		// history as it was written, each message keeping its own role. Every other task type
 		// still takes one piece of text, so its request is flattened exactly as it always was.
-		const promptOrConversation = TaskInputFactory.acceptsConversation(taskTypeName)
-			? ConversationBuilder.build(body.messages, toolsToDeclare)
+		const promptOrHistory = TaskInputFactory.acceptsHistory(taskTypeName)
+			? HistoryBuilder.build(body.messages, toolsToDeclare)
 			: PromptFlattener.flatten(body.messages);
 		const isStreaming = body.stream === true;
 		// Asking the cluster for the answer in pieces is what makes it report them, and it is
@@ -246,7 +246,7 @@ export class OpenaiRoutes {
 		try {
 			// A request that asked for nothing submits exactly what it did before generation
 			// settings existed: no settings block at all.
-			taskInput = TaskInputFactory.createTaskInput(taskTypeName, promptOrConversation, generationSettings);
+			taskInput = TaskInputFactory.createTaskInput(taskTypeName, promptOrHistory, generationSettings);
 		} catch (error: unknown) {
 			throw OpenaiError.unusableMessages(
 				`The model ${body.model} cannot take this request: ` +

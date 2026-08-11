@@ -71,7 +71,7 @@ Test('reads the tool call the model really wrote, with its name and its argument
 
 Test('reads an answer in words as an answer, and never as a tool call', () => {
 	// Both captured from the live gate run: the negative control, and the answer given from a tool
-	// result already in the conversation.
+	// result already in the history.
 	Assert.deepEqual(ToolCallReader.read('hello', declaredTools), []);
 	Assert.deepEqual(ToolCallReader.read('The current weather in Paris is **31 degrees Celsius** with a **clear sky**.', declaredTools), []);
 	// A model that merely writes about tools has not asked for one.

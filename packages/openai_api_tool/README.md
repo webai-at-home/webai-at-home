@@ -37,7 +37,7 @@ npx openai_api_tool completion --model all
 | Subcommand | What it does |
 | --- | --- |
 | `completion` | Sends one prompt per model and per mode, and reports which ones answered. Every model has its own default prompt: `5` for `dev_formula`, which accepts only a number, and a plain question for every other model. |
-| `history` | Sends a two-turn conversation, then checks that the second turn's answer recalls both facts the first turn stated. Only `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` accept a whole conversation rather than only one prompt, so only those two are swept. |
+| `history` | Sends a two-turn history, then checks that the second turn's answer recalls both facts the first turn stated. Only `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` accept a whole history rather than only one prompt, so only those two are swept. |
 | `benchmark` | Measures the latency of one endpoint, one model at a time, over repeated requests, and prints a report as text, markdown, or JSON. |
 | `usage` | Sends one prompt per model and per mode, the same sweep `completion` runs, and reports each answer's `usage` — whether it was present, and its `prompt_tokens`/`completion_tokens`/`total_tokens` when it was — and its `finish_reason`. The streamed mode asks for its final, choice-less usage chunk with `stream_options: { include_usage: true }`. |
 
@@ -70,7 +70,7 @@ npx tsx ./src/cli.ts completion --base_url http://localhost:1234/v1 --model qwen
 
 `benchmark` always runs silently and prints its own report in the requested format, since it never streams a raw answer to a person.
 
-`history` shows every message of its two-turn conversation, labeled with its role. In `-f/--format text` each message is printed live as `[user] ...`/`[assistant] ...`; in `-f/--format markdown` a `## Turns` section lists them below the summary table, one subsection per swept model and mode; in `-f/--format json` they appear as the `turns` array on each outcome.
+`history` shows every message of its two-turn history, labeled with its role. In `-f/--format text` each message is printed live as `[user] ...`/`[assistant] ...`; in `-f/--format markdown` a `## Turns` section lists them below the summary table, one subsection per swept model and mode; in `-f/--format json` they appear as the `turns` array on each outcome.
 
 `-m/--model` behaves the same way in all four subcommands: `all` and `list` name the task type names of this project, but a plain name outside that list is passed through to the endpoint unchanged, because `openai_api_tool` is a tool over the OpenAI-compatible chat completion API, not something specific to the Web AI at Home cluster:
 
@@ -106,7 +106,7 @@ npm run benchmark:webai_at_home:llm_llama3_2_1b_full --workspace @webai/openai-a
 npm run benchmark:webai_at_home:llm_qwen3_0_6b_sharded --workspace @webai/openai-api-tool
 ```
 
-Convenience scripts run `history` against the same LM Studio endpoint, and against the cluster's `llm_llama3_2_1b_full` — one of the two models `taskTypeNamesAcceptingConversation` names, so it is the one of the pair `history` can sweep on the cluster:
+Convenience scripts run `history` against the same LM Studio endpoint, and against the cluster's `llm_llama3_2_1b_full` — one of the two models `taskTypeNamesAcceptingHistory` names, so it is the one of the pair `history` can sweep on the cluster:
 
 ```sh
 npm run history:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
@@ -182,7 +182,7 @@ Because that failure was a model that generates no call while reading tool resul
 | `generates_a_call_when_forced` | The same question with `tool_choice: "required"`, which leaves the model no choice. This is the decisive probe: a model that writes plain text here was never offered the option of answering in words, so the result cannot be explained away as the model having preferred to. |
 | `fills_in_the_arguments` | The arguments of the call it generated must parse as JSON, carry the argument the tool declared, and name the city the question asked about. A call naming the right tool and filled in with the wrong city is worse than no call at all, because the calling program would run it and answer confidently about the wrong place. |
 | `chooses_among_several_tools` | Three tools declared and a question only one of them answers. Supported when the model asks for that one. |
-| `reads_a_tool_result_back` | A conversation already carrying the question, the assistant's tool call, and a message whose role is `tool` holding a temperature no model could have known. Supported when the answer states that temperature. Generating a call and reading one back are two different abilities, and a model can have the second without the first — both models measured for [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119) read a result back, and only one of them generated a call. |
+| `reads_a_tool_result_back` | A history already carrying the question, the assistant's tool call, and a message whose role is `tool` holding a temperature no model could have known. Supported when the answer states that temperature. Generating a call and reading one back are two different abilities, and a model can have the second without the first — both models measured for [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119) read a result back, and only one of them generated a call. |
 | `answers_without_a_call_when_none_is_needed` | A tool declared and a question that needs none. Supported when the model answers in words. This is the negative control, and it is what proves the endpoint read the request rather than choking on it: without it, an endpoint failing every other probe cannot be told apart from one refusing the tool wire format outright, and that distinction is the whole finding of the de-risk gate. |
 
 Each probe reports one of five conclusions: `supported`, `unsupported` (the endpoint accepted the request and the model did not do it — the finding this subcommand exists to catch), `refused` (the endpoint answered naming `tools` or `tool_choice` as the field at fault, which is a correct answer about that endpoint and not a fault), `inconclusive` (such as an arguments probe against a model that generated no call for the arguments to be read from), and `failed` (no answer arrived at all, so the ability was never tested). Only `failed` sets the process exit code to `1`.

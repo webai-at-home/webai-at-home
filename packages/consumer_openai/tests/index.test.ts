@@ -11,7 +11,7 @@ import { CurlStyleTransactionLogger } from '../src/http/curl_style_transaction_l
 import { ModelCatalog } from '../src/api/model_catalog.js';
 import { OpenaiError } from '../src/api/openai_error.js';
 import { OpenaiRoutes } from '../src/http/openai_routes.js';
-import { ConversationBuilder } from '../src/api/conversation_builder.js';
+import { HistoryBuilder } from '../src/api/history_builder.js';
 import { GenerationSettingsBuilder } from '../src/api/generation_settings_builder.js';
 import { ChatCompletionRequestSchema, type ChatCompletionResponse } from '../src/api/openai_types.js';
 import { FinishReasonTranslator } from '../src/api/finish_reason_translator.js';
@@ -42,14 +42,14 @@ Test('labels several messages with their roles and invites the answer', () => {
 	Assert.equal(prompt, 'system: Answer in one short sentence.\nuser: What is the capital of France?\nassistant:');
 });
 
-Test('builds a conversation that keeps each message as its own turn, rather than flattening it into one piece of text', () => {
-	const conversation = ConversationBuilder.build([
+Test('builds a history that keeps each message as its own turn, rather than flattening it into one piece of text', () => {
+	const history = HistoryBuilder.build([
 		{ role: 'system', content: 'Answer in one short sentence.' },
 		{ role: 'user', content: 'What is the capital of France?' },
 		{ role: 'assistant', content: 'Paris.' },
 		{ role: 'user', content: 'And of Germany?' },
 	]);
-	Assert.deepEqual(conversation, {
+	Assert.deepEqual(history, {
 		messages: [
 			{ role: 'system', content: 'Answer in one short sentence.' },
 			{ role: 'user', content: 'What is the capital of France?' },
@@ -60,8 +60,8 @@ Test('builds a conversation that keeps each message as its own turn, rather than
 });
 
 Test('carries a developer message as a system message, since no worker chat template has a fourth slot for it', () => {
-	const conversation = ConversationBuilder.build([{ role: 'developer', content: 'Answer in one short sentence.' }]);
-	Assert.deepEqual(conversation, { messages: [{ role: 'system', content: 'Answer in one short sentence.' }] });
+	const history = HistoryBuilder.build([{ role: 'developer', content: 'Answer in one short sentence.' }]);
+	Assert.deepEqual(history, { messages: [{ role: 'system', content: 'Answer in one short sentence.' }] });
 });
 
 Test('reads the five generation controls, and ignores every other field of the request', () => {
@@ -94,7 +94,7 @@ Test('refuses a body it cannot read', () => {
 	// A content part list, which a request carrying an image sends, is refused rather than
 	// having its parts joined together.
 	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }] }).success, false);
-	// The tool role is accepted since issue #115: a conversation carrying a tool's answer can now be
+	// The tool role is accepted since issue #115: a history carrying a tool's answer can now be
 	// continued, because a worker that can ask for a tool can also read the answer of one back.
 	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages: [{ role: 'tool', content: 'hello' }] }).success, true);
 	// An assistant message that asked for a tool carries no content, because a model that asks for a
@@ -916,7 +916,7 @@ Test('declares the tools to a model that reads them, and answers a tool call wit
 	}
 });
 
-Test('submits the real conversation for a model that accepts one, instead of a flattened transcript', async () => {
+Test('submits the real history for a model that accepts one, instead of a flattened transcript', async () => {
 	const server = await listeningServer();
 	try {
 		const responsePromise = fetch(`${server.url}/v1/chat/completions`, {
@@ -942,8 +942,8 @@ Test('submits the real conversation for a model that accepts one, instead of a f
 			},
 		});
 		const taskRequestId = submitted['taskRequestId'];
-		server.cluster.receive({ type: 'task.accepted', taskRequestId, task: { taskId: 'task-conversation-1', taskRequestId, state: 'queued' } });
-		server.cluster.receive({ type: 'task.updated', update: { taskId: 'task-conversation-1', taskRevision: 2, state: 'completed', completedStageCount: 1, currentStageAttempts: 0, result: { text: 'Paris.', done: true } } });
+		server.cluster.receive({ type: 'task.accepted', taskRequestId, task: { taskId: 'task-history-1', taskRequestId, state: 'queued' } });
+		server.cluster.receive({ type: 'task.updated', update: { taskId: 'task-history-1', taskRevision: 2, state: 'completed', completedStageCount: 1, currentStageAttempts: 0, result: { text: 'Paris.', done: true } } });
 		Assert.equal((await responsePromise).status, 200);
 	} finally {
 		server.close();
@@ -1067,7 +1067,7 @@ Test('writes an error into a streamed answer when the cluster gave up before fin
 	}
 });
 
-Test('still flattens the conversation for a model that only takes one prompt', async () => {
+Test('still flattens the history for a model that only takes one prompt', async () => {
 	const server = await listeningServer();
 	try {
 		const responsePromise = fetch(`${server.url}/v1/chat/completions`, {

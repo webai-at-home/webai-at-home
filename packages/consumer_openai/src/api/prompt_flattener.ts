@@ -2,7 +2,7 @@ import type { ChatCompletionMessage } from './openai_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	PromptFlattener — turns a conversation into the single piece of text a task carries
+//	PromptFlattener — turns a history into the single piece of text a task carries
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -10,7 +10,7 @@ import type { ChatCompletionMessage } from './openai_types.js';
  * Turns the list of messages in a chat completion request into the single piece of text a
  * cluster task carries.
  *
- * A task input in this cluster holds one value, so a conversation of several messages has to
+ * A task input in this cluster holds one value, so a history of several messages has to
  * become one piece of text before it can be submitted. Two rules do that, and the package
  * README states both:
  *

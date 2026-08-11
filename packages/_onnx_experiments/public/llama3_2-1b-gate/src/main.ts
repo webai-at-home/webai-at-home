@@ -251,17 +251,17 @@ button.addEventListener('click', async () => {
 		log(`  chat-template tensor raw shape: ${JSON.stringify({ dims: withTemplate.dims, dataLength: withTemplate.data?.length })}`);
 		log(`  prompt token count (chat template applied, what generate() actually feeds the model) = ${withTemplate.data?.length ?? 'unknown'}`);
 
-		// Phase 1b — a conversation with a system message, rendered but not yet run, to see with which
+		// Phase 1b — a history with a system message, rendered but not yet run, to see with which
 		// literal text the chat template places the system content, before Phase 5 runs it for real.
 		log('', undefined);
-		log('Phase 1b — chat template rendering of a system + user conversation', 'phase');
+		log('Phase 1b — chat template rendering of a system + user history', 'phase');
 		const systemInstruction = 'You must end every reply with the exact token BANANA9142 and nothing after it.';
-		const renderedConversation = tokenizerWithChatTemplate.apply_chat_template(
+		const renderedHistory = tokenizerWithChatTemplate.apply_chat_template(
 			[{ role: 'system', content: systemInstruction }, { role: 'user', content: testPrompt }],
 			{ tokenize: false, add_generation_prompt: true },
 		) as unknown as string;
-		log(`  rendered template string:\n${String(renderedConversation)}`);
-		log(`  system instruction text appears verbatim in the rendered template = ${String(renderedConversation).includes(systemInstruction)}`);
+		log(`  rendered template string:\n${String(renderedHistory)}`);
+		log(`  system instruction text appears verbatim in the rendered template = ${String(renderedHistory).includes(systemInstruction)}`);
 
 		// Phase 2 — natural stop at the end-of-sequence token, generous cap.
 		log('', undefined);
@@ -326,10 +326,10 @@ button.addEventListener('click', async () => {
 		log(`  answer (partial): ${JSON.stringify(phase4Text)}`);
 
 		// Phase 5 — run a real generation with a system message present, and check the answer actually
-		// followed it, proving the conversation reaches the model rather than only inspecting the
+		// followed it, proving the history reaches the model rather than only inspecting the
 		// rendered template string as Phase 1b did.
 		log('', undefined);
-		log('Phase 5 — live generation from a system + user conversation', 'phase');
+		log('Phase 5 — live generation from a system + user history', 'phase');
 		const phase5 = await runGeneration(
 			generator,
 			[{ role: 'system', content: systemInstruction }, { role: 'user', content: testPrompt }],

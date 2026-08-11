@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { StagePayload } from '../stage/stage_payload_types.js';
-import { ConversationInputSchema } from './conversation_types.js';
+import { HistoryInputSchema } from './history_types.js';
 import type { StageName } from './pipeline_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -119,19 +119,19 @@ export const GenerationSettingsSchema = z.object({
 export type GenerationSettings = z.infer<typeof GenerationSettingsSchema>;
 
 /**
- * The value a language-model task carries: either one prompt, or a whole conversation.
+ * The value a language-model task carries: either one prompt, or a whole history.
  *
  * Which of the two a consumer submits is its own choice, and both remain valid indefinitely. A
  * consumer with one prompt and nothing else to say submits a prompt, which is what
  * `@webai/consumer-cli` does; a consumer with several turns or a system message to pass on submits
- * a conversation.
+ * a history.
  *
  * Only the task types whose stage helper can hand a message list to its model accept this. The
- * others take a prompt and nothing else, so a conversation is refused for them by this schema
+ * others take a prompt and nothing else, so a history is refused for them by this schema
  * rather than by a list kept somewhere else that could drift away from what the workers can
- * actually do. See `ConversationInputSchema` for what carrying a conversation is worth.
+ * actually do. See `HistoryInputSchema` for what carrying a history is worth.
  */
-const LlmTaskValueSchema = z.union([z.string(), ConversationInputSchema]);
+const LlmTaskValueSchema = z.union([z.string(), HistoryInputSchema]);
 
 /** The work submitted with a task: its kind, the value that kind carries, and how to generate it. */
 export const TaskInput = z.discriminatedUnion('taskType', [

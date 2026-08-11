@@ -9,7 +9,7 @@ import {
 	AccountProfileSchema,
 	ClientEnvelopeSchema,
 	ClientMessageSchema,
-	ConversationInputSchema,
+	HistoryInputSchema,
 	DiagnosticsBatchSchema,
 	GeneratedText,
 	PipelineSpecificationSchema,
@@ -60,58 +60,58 @@ Test('rejects task input that does not match its task type', () => {
 	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_dev_formula', input: '5' }).success, false);
 });
 
-Test('accepts a whole conversation only for the two task types whose worker can hand one to its chat template', () => {
-	const conversation = { messages: [{ role: 'user', content: 'hello' }] };
-	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation });
-	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_llama3_2_1b_full', input: conversation }), { taskType: 'task_type_llm_llama3_2_1b_full', input: conversation });
+Test('accepts a whole history only for the two task types whose worker can hand one to its chat template', () => {
+	const history = { messages: [{ role: 'user', content: 'hello' }] };
+	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history });
+	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_llama3_2_1b_full', input: history }), { taskType: 'task_type_llm_llama3_2_1b_full', input: history });
 	// The same two task types still take one prompt too, exactly as before this existed.
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' });
-	// Every other task type refuses a conversation, rather than reading part of it or accepting a
+	// Every other task type refuses a history, rather than reading part of it or accepting a
 	// shape its worker cannot hand to anything.
-	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_llm_qwen3_0_6b_sharded', input: conversation }).success, false);
-	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_llm_gemma_nano_chrome_full', input: conversation }).success, false);
-	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_dev_formula', input: conversation }).success, false);
+	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_llm_qwen3_0_6b_sharded', input: history }).success, false);
+	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_llm_gemma_nano_chrome_full', input: history }).success, false);
+	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_dev_formula', input: history }).success, false);
 });
 
-Test('accepts a conversation with several roles, and refuses one that is empty, malformed, or carries an unknown field', () => {
-	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'system', content: 'Be brief.' }, { role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello.' }] }).success, true);
-	Assert.equal(ConversationInputSchema.safeParse({ messages: [] }).success, false);
-	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'narrator', content: 'Hi' }] }).success, false);
-	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'user', content: 'Hi' }], somethingUnexpected: true }).success, false);
+Test('accepts a history with several roles, and refuses one that is empty, malformed, or carries an unknown field', () => {
+	Assert.equal(HistoryInputSchema.safeParse({ messages: [{ role: 'system', content: 'Be brief.' }, { role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello.' }] }).success, true);
+	Assert.equal(HistoryInputSchema.safeParse({ messages: [] }).success, false);
+	Assert.equal(HistoryInputSchema.safeParse({ messages: [{ role: 'narrator', content: 'Hi' }] }).success, false);
+	Assert.equal(HistoryInputSchema.safeParse({ messages: [{ role: 'user', content: 'Hi' }], somethingUnexpected: true }).success, false);
 	// Every message says something. A message with no content at all is refused rather than
 	// travelling to a chat template that would render an empty turn.
-	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'assistant' }] }).success, false);
+	Assert.equal(HistoryInputSchema.safeParse({ messages: [{ role: 'assistant' }] }).success, false);
 });
 
-Test('accepts a conversation declaring tools, and refuses a declaration missing what a model needs to use it', () => {
+Test('accepts a history declaring tools, and refuses a declaration missing what a model needs to use it', () => {
 	const weatherTool = {
 		name: 'get_current_weather',
 		description: 'Reports the current weather in one city.',
 		parametersJsonSchema: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
 	};
-	Assert.equal(ConversationInputSchema.safeParse({
+	Assert.equal(HistoryInputSchema.safeParse({
 		messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
 		tools: [weatherTool],
 	}).success, true);
 	// The description is what the model reads when it decides whether to ask for a tool, but a tool
 	// whose name says enough on its own is allowed to leave it out.
-	Assert.equal(ConversationInputSchema.safeParse({
+	Assert.equal(HistoryInputSchema.safeParse({
 		messages: [{ role: 'user', content: 'Hi' }],
 		tools: [{ name: 'get_current_weather', parametersJsonSchema: {} }],
 	}).success, true);
 	// A declaration with no arguments schema is refused: it is what a consumer converts the model's
 	// untyped argument text back into typed values with, so a tool without one cannot be completed.
-	Assert.equal(ConversationInputSchema.safeParse({
+	Assert.equal(HistoryInputSchema.safeParse({
 		messages: [{ role: 'user', content: 'Hi' }],
 		tools: [{ name: 'get_current_weather' }],
 	}).success, false);
-	Assert.equal(ConversationInputSchema.safeParse({
+	Assert.equal(HistoryInputSchema.safeParse({
 		messages: [{ role: 'user', content: 'Hi' }],
 		tools: [{ ...weatherTool, name: '' }],
 	}).success, false);
 	// Declaring tools is optional, and an empty list is refused rather than accepted as a way of
 	// saying "no tools" — leaving the field out is how that is said.
-	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'user', content: 'Hi' }], tools: [] }).success, false);
+	Assert.equal(HistoryInputSchema.safeParse({ messages: [{ role: 'user', content: 'Hi' }], tools: [] }).success, false);
 });
 
 Test('carries a whole tool round trip: the call the model asked for, and the result sent back to it', () => {
@@ -125,7 +125,7 @@ Test('carries a whole tool round trip: the call the model asked for, and the res
 		],
 		tools: [{ name: 'get_current_weather', parametersJsonSchema: { type: 'object', properties: { city: { type: 'string' } } } }],
 	};
-	Assert.equal(ConversationInputSchema.safeParse(roundTrip).success, true);
+	Assert.equal(HistoryInputSchema.safeParse(roundTrip).success, true);
 
 	// Every argument value is text, because the format the model writes them in carries no types at
 	// all: `llm_qwen3_5_0_8b_full` writes `<parameter=city>Paris</parameter>` and nothing that says
@@ -138,7 +138,7 @@ Test('carries a whole tool round trip: the call the model asked for, and the res
 	// A tool that takes no arguments asks for none, rather than being refused for asking for nothing.
 	Assert.equal(ToolCallSchema.safeParse({ name: 'get_server_time', argumentValues: {} }).success, true);
 	// An assistant message that asked for nothing leaves the field out rather than stating an empty list.
-	Assert.equal(ConversationInputSchema.safeParse({ messages: [{ role: 'assistant', content: 'Hello.', toolCalls: [] }] }).success, false);
+	Assert.equal(HistoryInputSchema.safeParse({ messages: [{ role: 'assistant', content: 'Hello.', toolCalls: [] }] }).success, false);
 });
 
 Test('restricts task states, and checks the shape of a stage name without listing them', () => {
@@ -159,7 +159,7 @@ Test('restricts task states, and checks the shape of a stage name without listin
 Test('StagePayloadFactory builds each stage payload shape', () => {
 	Assert.equal(StagePayloadFactory.formula(42), 42);
 	Assert.deepEqual(StagePayloadFactory.llmPrompt('hello'), { text: 'hello' });
-	Assert.deepEqual(StagePayloadFactory.llmConversation({ messages: [{ role: 'user', content: 'hello' }] }), { conversation: { messages: [{ role: 'user', content: 'hello' }] } });
+	Assert.deepEqual(StagePayloadFactory.llmHistory({ messages: [{ role: 'user', content: 'hello' }] }), { history: { messages: [{ role: 'user', content: 'hello' }] } });
 
 	const tensors = { '/model/layers.9/input_layernorm/output_0': { dims: [1, 1, 4], type: 'float16', dataBase64: 'AA==' } };
 	Assert.deepEqual(StagePayloadFactory.llmHandoff(tensors, [1, 2, 3], 0), { tensors, inputIds: [1, 2, 3], position: 0 });
@@ -204,7 +204,7 @@ Test('a task can end by asking for a tool instead of by writing an answer', () =
 	Assert.equal(StagePayloadSchema.safeParse({ text: '', toolCalls, done: true }).success, true);
 	Assert.equal(StagePayloadSchema.safeParse({ text: '', toolCalls: [], done: true }).success, false);
 	Assert.equal(StagePayloadSchema.safeParse({ text: '', toolCalls: [{ name: 'x', argumentValues: { n: 1 } }], done: true }).success, false);
-	// The tool call travels back on the stage result the same way it travels out on a conversation,
+	// The tool call travels back on the stage result the same way it travels out on a history,
 	// under one schema, so what a worker returned can be put straight back into the next submission.
 	Assert.equal(ToolCallSchema.safeParse(toolCalls[0]).success, true);
 });
@@ -256,13 +256,13 @@ Test('StagePayloadFactory answers every task type with a first stage value', () 
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_qwen3_0_6b_sharded', input: 'hello' }), { text: 'hello' });
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello' }), { text: 'hello' });
 	// A task submitted with a prompt still carries it as `text`, whichever of the two task types
-	// it names, exactly as before a conversation could be submitted at all.
+	// it names, exactly as before a history could be submitted at all.
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' }), { text: 'hello' });
-	// A task submitted with a whole conversation carries that conversation to its first stage
+	// A task submitted with a whole history carries that history to its first stage
 	// instead, rather than having it flattened into `text`.
-	const conversation = { messages: [{ role: 'user' as const, content: 'hello' }] };
-	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: conversation }), { conversation });
-	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_llama3_2_1b_full', input: conversation }), { conversation });
+	const history = { messages: [{ role: 'user' as const, content: 'hello' }] };
+	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history }), { history });
+	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_llama3_2_1b_full', input: history }), { history });
 });
 
 Test('validates every inbound client message shape', () => {
@@ -709,7 +709,7 @@ Test('the three accounting reads are accepted, and a page larger than one page m
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'account.balance.get', accountId: 'account-1', includeEveryAccount: true }).success, false);
 });
 
-Test('the account conversation registers, signs the challenge it is handed, and settles with the account', async () => {
+Test('the account history registers, signs the challenge it is handed, and settles with the account', async () => {
 	const keyPair = await AccountIdentity.generateKeyPair('Ed25519');
 	const publicKeySpkiBase64 = await AccountIdentity.exportPublicKeySpkiBase64(keyPair.publicKey);
 	const accountId = await AccountIdentity.accountIdFor(publicKeySpkiBase64);
@@ -738,7 +738,7 @@ Test('the account conversation registers, signs the challenge it is handed, and 
 	Assert.equal(authentication.handleMessage({ type: 'account.authenticated', accountId }), true);
 	Assert.equal(settledAccountId, accountId);
 
-	// A message that is not part of this conversation is left to whoever else is listening.
+	// A message that is not part of this history is left to whoever else is listening.
 	Assert.equal(authentication.handleMessage({ type: 'task.updated' }), false);
 });
 
