@@ -157,8 +157,10 @@ The entrypoint script forwards `SIGTERM` to the gateway and the worker page's st
 The public deployment runs this image on a virtual private server, managed by Coolify, and Coolify rebuilds it from a branch of this repository named `production`. Pushing to `main` deploys nothing. Deploying is one command, run when you decide the tip of `main` should go live:
 
 ```bash
-git push origin main:production
+npm run deploy
 ```
+
+That npm script, declared in the repository root [`package.json`](../../package.json), runs `git push origin main:production`.
 
 Coolify receives the push through its GitHub webhook, rebuilds the image, and restarts the container.
 
