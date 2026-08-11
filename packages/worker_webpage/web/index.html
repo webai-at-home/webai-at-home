@@ -21,6 +21,10 @@
                 <button class="btn btn-light btn-sm" id="connect" type="button" title="Connect this browser to WebAI so it can be assigned stages to run">Connect</button>
                 <button class="btn btn-outline-light btn-sm d-none" id="disconnect" type="button">Disconnect</button>
                 <button class="btn btn-outline-light btn-sm" id="full-power" type="button">Start full power</button>
+                <button class="btn btn-outline-light border-0 btn-sm" id="stages-config-open" type="button" title="Choose which stages this browser offers to run">
+                    <i class="bi bi-gear-fill" aria-hidden="true"></i>
+                    <span class="visually-hidden">Settings</span>
+                </button>
                 <button class="btn btn-outline-light border-0 btn-sm" id="about-open" type="button" title="Which build of the worker webpage this browser tab is running">About</button>
                 <button class="btn btn-outline-light border-0 btn-sm" type="button" id="theme-toggle">Use dark theme</button>
             </div>
@@ -92,6 +96,39 @@
                 <div class="modal-footer">
                     <a class="link-secondary small" id="about-health-link" href="/health" target="_blank" rel="noreferrer">View gateway health</a>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- The stages settings panel opens over the worker webpage rather than being a page of its own, so a
+         volunteer whose browser tab is running a stage never leaves that tab. -->
+    <div class="modal fade" id="stages-config-panel" tabindex="-1" aria-labelledby="stages-config-panel-title" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="stages-config-panel-title">Which stages this browser offers</h2>
+                    <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close the settings panel"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary small">Choose which stages this browser tab offers to run. A stage stays offered only while it is enabled here, and this browser's choice is remembered on this device.</p>
+                    <div id="stages-config-list"></div>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="stages-config-enable-all" type="button">Enable all</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="stages-config-clear-all" type="button">Clear all</button>
+                    </div>
+                    <button class="btn btn-primary btn-sm" type="button" data-bs-dismiss="modal">Done</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div class="toast align-items-center text-bg-primary border-0" id="stages-config-reload-toast" role="status" aria-live="polite" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">Reload this page for the updated stage list to take effect.</div>
+                <button class="btn-close btn-close-white me-2 m-auto" type="button" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
         </div>
     </div>

@@ -19,6 +19,7 @@ import { WorkerAccount } from './connection/worker_account';
 import { ThemeToggle } from './page/theme_toggle.js';
 import { HelpTooltips } from './page/help_tooltips.js';
 import { AboutPanel } from './page/about_panel.js';
+import { StagesConfigPanel } from './page/stages_config_panel.js';
 import { AudioKeepalive, type AudioKeepaliveState } from './page/audio_keepalive.js';
 import { ScreenWakeLock, type ScreenWakeLockState } from './page/screen_wake_lock.js';
 
@@ -140,7 +141,7 @@ export class WorkerPage {
 
 	private readonly eventLog = new WorkerEventLog();
 	/** The stages the page URL restricts this worker browser to, if it names any. */
-	private readonly requestedStageNames: readonly string[];
+	private readonly urlRequestedStageNames: readonly string[];
 
 	/** The active WebSocket connection, when the worker browser is connected. */
 	private socket: WebSocket | undefined;
@@ -205,7 +206,7 @@ export class WorkerPage {
 		this.screenWakeLockStateEl = PageElements.getElement('#screen-wake-lock-state');
 		this.fullPowerButtonEl = PageElements.getButton('#full-power');
 		this.startOverlayEl = PageElements.getButton('#start-overlay');
-		this.requestedStageNames = WorkerStageOffer.requestedStageNamesFromUrl(location.search);
+		this.urlRequestedStageNames = WorkerStageOffer.requestedStageNamesFromUrl(location.search);
 		this.gatewayReconnection = new GatewayReconnection({
 			onWaiting: (secondsRemaining: number, attemptNumber: number): void => {
 				this.statusEl.textContent = `Connection lost. Trying again in ${String(secondsRemaining)} second(s) (attempt ${String(attemptNumber)})`;
@@ -236,6 +237,7 @@ export class WorkerPage {
 		ThemeToggle.setup();
 		HelpTooltips.setup();
 		AboutPanel.setup(GatewayConfig.assetUrl('/health'));
+		StagesConfigPanel.setup();
 
 		// Use the URL-provided name for embedded worker pages, and generate a random
 		// name for standalone pages so multiple workers can still be opened safely.
@@ -664,7 +666,7 @@ export class WorkerPage {
 			this.workerAccount?.requestBalance();
 		}
 		if (message.type === 'pipelines' && this.socket !== undefined) {
-			this.registerOfferedStages(WorkerStageOffer.offeredStages(message.pipelines ?? [], this.requestedStageNames));
+			this.registerOfferedStages(WorkerStageOffer.offeredStages(message.pipelines ?? [], this.requestedStageNames()));
 			return;
 		}
 		if (message.type === 'deviceRegistered') {
@@ -712,6 +714,24 @@ export class WorkerPage {
 			return;
 		}
 		this.runAssignedStage(message);
+	}
+
+	/**
+	 * Decides which stages this browser asks to offer, for the connection now registering.
+	 *
+	 * The page URL's `enabledStages` query parameter wins when it names any stages, so an existing
+	 * debug URL keeps working unchanged. Otherwise this returns the stages chosen in the settings
+	 * panel, read fresh from local storage so a choice made after the page loaded still takes
+	 * effect on the next connection.
+	 *
+	 * @returns The stages to restrict this browser's offer to. An empty result means this browser
+	 * offers every stage it can run.
+	 */
+	private requestedStageNames(): readonly string[] {
+		if (this.urlRequestedStageNames.length > 0) {
+			return this.urlRequestedStageNames;
+		}
+		return StagesConfigPanel.getEnabledStageNames();
 	}
 
 	/**
