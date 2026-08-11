@@ -78,6 +78,12 @@ export type CompletionResult = {
 	 * `length`. `undefined` when the endpoint reported none.
 	 */
 	readonly finishReason: string | undefined;
+	/**
+	 * The tool calls the model asked for, in the order the endpoint reported them, assembled from
+	 * the streamed fragments in the streamed mode. Empty when the model answered in words instead,
+	 * which is every request that declared no tool at all.
+	 */
+	readonly toolCalls: readonly ChatCompletionToolCall[];
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -296,7 +302,7 @@ export type GenerationControls = {
 	readonly seed?: number;
 };
 
-/** Every generation control this tool probes, named as the request field it is sent in. */
+/** Every generation control `openai_api_tool` probes, named as the request field it is sent in. */
 export const generationControlFields = ['temperature', 'top_p', 'max_completion_tokens', 'stop', 'seed'] as const;
 
 /** One generation control this tool probes, named as the request field it is sent in. */
@@ -335,5 +341,135 @@ export type GenerationControlOutcome = {
 	/** What was observed, in words, naming the numbers the conclusion was drawn from. */
 	readonly observation: string;
 	/** The answers the probe's requests produced, in the order they were sent, so a reader can check the conclusion. */
+	readonly answers: readonly string[];
+};
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Tool Calls
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * One tool a request declares, spelled the way the OpenAI Chat Completions interface spells it on
+ * the connection.
+ *
+ * These spellings are what the endpoint reads, so they are not renamed to match this repository's
+ * own naming rules, exactly as the generation control field names above are not.
+ */
+export type ToolDeclaration = {
+	/** The kind of tool. This interface defines only `function`. */
+	readonly type: 'function';
+	/** The function the model may ask to have called. */
+	readonly function: {
+		/** The name the model writes when it asks for this tool. */
+		readonly name: string;
+		/** What the tool does, in the words the model reads when it decides whether to ask for it. */
+		readonly description: string;
+		/** The arguments the tool takes, as a JSON Schema object. */
+		readonly parameters: Record<string, unknown>;
+	};
+};
+
+/**
+ * How much choice the request leaves the model about asking for a tool, spelled the way the OpenAI
+ * Chat Completions interface spells it.
+ *
+ * - `auto` — the model decides whether to ask for a tool or to answer in words.
+ * - `required` — the model must ask for a tool. This is the value that tells a model that chose
+ *   plain text apart from a server that never offered the model the choice at all.
+ * - `none` — the model must answer in words even though tools were declared.
+ */
+export type ToolChoice = 'auto' | 'required' | 'none';
+
+/** One tool call the model asked for, camelCased from the OpenAI-compatible response body. */
+export type ChatCompletionToolCall = {
+	/** The identifier the tool's result is sent back under, in a message whose role is `tool`. */
+	readonly id: string;
+	/** The name of the function the model asked to have called. */
+	readonly name: string;
+	/**
+	 * The arguments the model filled in, exactly as it generated them, which this interface carries
+	 * as a string of JSON rather than as an object. It is left unparsed here because a model does
+	 * not always generate valid JSON, and whether it did is one of the things the probes report.
+	 */
+	readonly argumentsJson: string;
+};
+
+/**
+ * Every ability `openai_api_tool` probes a model for, in the order the probes run.
+ *
+ * They are separate abilities rather than one, which is the whole reason this subcommand exists:
+ * the de-risk gate of [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) found
+ * one server that read the tool wire format correctly, accepted the tool declarations without
+ * complaining, and still never generated a single tool call — so "tool calling works" is not a
+ * question with one answer.
+ *
+ * - `generates_a_call` — asked a question a declared tool answers, the model asks for that tool
+ *   rather than answering in words.
+ * - `generates_a_call_when_forced` — the same, with `tool_choice: "required"`, which leaves the
+ *   model no choice. This is the decisive probe: a model that writes plain text here was never
+ *   given the option of not calling a tool, so the failure cannot be explained as the model having
+ *   preferred to answer in words.
+ * - `fills_in_the_arguments` — the tool call it generated carries arguments that parse as JSON and
+ *   hold the value the question named.
+ * - `chooses_among_several_tools` — with more than one tool declared, it asks for the one that
+ *   answers the question rather than one of the others.
+ * - `reads_a_tool_result_back` — given a conversation that already contains a tool call and that
+ *   tool's result, it answers from the result. Generating a call and reading one back are two
+ *   different abilities, and a model can have the second without the first.
+ * - `answers_without_a_call_when_none_is_needed` — with a tool declared and a question that needs
+ *   no tool, it answers in words. This is the negative control that proves the endpoint read the
+ *   request at all, so that an endpoint failing every other probe is not mistaken for one that is
+ *   refusing the tool wire format outright.
+ */
+export const toolCallAbilities = [
+	'generates_a_call',
+	'generates_a_call_when_forced',
+	'fills_in_the_arguments',
+	'chooses_among_several_tools',
+	'reads_a_tool_result_back',
+	'answers_without_a_call_when_none_is_needed',
+] as const;
+
+/** One ability `openai_api_tool` probes a model for. */
+export type ToolCallAbility = typeof toolCallAbilities[number];
+
+/**
+ * What probing one tool call ability against one model and one mode concluded.
+ *
+ * - `supported` — the model did what the ability names.
+ * - `unsupported` — the endpoint accepted the request and the model did not. This is the finding
+ *   this subcommand exists to catch, and the one the de-risk gate of
+ *   [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) reached.
+ * - `refused` — the endpoint answered that it will not take tool declarations at all, naming
+ *   `tools` or `tool_choice` as the field at fault. That is a correct answer about the endpoint,
+ *   not a fault in this run.
+ * - `inconclusive` — the run cannot tell the two apart, such as an arguments probe against a model
+ *   that generated no tool call for the arguments to be read from.
+ * - `failed` — a request did not produce an answer at all, so the ability was never tested.
+ */
+export const toolCallStatuses = ['supported', 'unsupported', 'refused', 'inconclusive', 'failed'] as const;
+
+/** What probing one tool call ability against one model and one mode concluded. */
+export type ToolCallStatus = typeof toolCallStatuses[number];
+
+/** What probing one tool call ability against one model and one mode produced. */
+export type ToolCallOutcome = {
+	/** The model identifier probed. */
+	readonly modelId: string;
+	/** The mode probed. */
+	readonly mode: CompletionMode;
+	/** The ability probed. */
+	readonly ability: ToolCallAbility;
+	/** What the probe concluded. */
+	readonly status: ToolCallStatus;
+	/** What was observed, in words, naming what the conclusion was drawn from. */
+	readonly observation: string;
+	/**
+	 * Every answer the probe's requests produced, in the order they were sent, so a reader can check
+	 * the conclusion against what the model really wrote rather than taking it on trust. A request
+	 * the model answered with a tool call is recorded as the call it asked for.
+	 */
 	readonly answers: readonly string[];
 };

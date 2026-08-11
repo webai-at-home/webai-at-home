@@ -13,12 +13,13 @@ import { BenchmarkCommand, type RawBenchmarkOptions } from './commands/benchmark
 import { CompletionCommand, type RawCompletionOptions } from './commands/completion_command.js';
 import { GenerationControlsCommand, type RawGenerationControlsOptions } from './commands/generation_controls_command.js';
 import { HistoryCommand, type RawHistoryOptions } from './commands/history_command.js';
+import { ToolCallsCommand, type RawToolCallsOptions } from './commands/tool_calls_command.js';
 import { UsageCommand, type RawUsageOptions } from './commands/usage_command.js';
 import { SharedOptions } from './shared_options.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Cli — the openai_api_tool command line program and its five subcommands
+//	Cli — the openai_api_tool command line program and its six subcommands
 //
 //	Run with:
 //	  ./src/cli.ts completion --streamed --model llm_qwen3_0_6b_sharded
@@ -26,6 +27,7 @@ import { SharedOptions } from './shared_options.js';
 //	  ./src/cli.ts benchmark --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct
 //	  ./src/cli.ts usage --model all
 //	  ./src/cli.ts generation_controls --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct --nostream
+//	  ./src/cli.ts tool_calls --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct --nostream
 //	or, from the workspace:
 //	  npm run completion --workspace @webai/openai-api-tool -- --model all
 //
@@ -39,8 +41,8 @@ import { SharedOptions } from './shared_options.js';
 /** The `openai_api_tool` command line program. */
 export class Cli {
 	/**
-	 * Parses the command line and dispatches to `completion`, `history`, `benchmark`, `usage`, or
-	 * `generation_controls`.
+	 * Parses the command line and dispatches to `completion`, `history`, `benchmark`, `usage`,
+	 * `generation_controls`, or `tool_calls`.
 	 *
 	 * @param args The command line arguments, without the program name. Defaults to the arguments
 	 * this process was started with.
@@ -132,6 +134,22 @@ export class Cli {
 		SharedOptions.addEndpointOptions(generationControls);
 		generationControls.action(async (rawOptions: RawGenerationControlsOptions) => {
 			await GenerationControlsCommand.run(rawOptions);
+		});
+
+		const toolCalls = program
+			.command('tool_calls')
+			.description('Probes each of the six tool call abilities, and reports which ones the model behind the endpoint really has.')
+			.option(
+				'-m, --model <name>',
+				'model identifier, a comma-separated list of identifiers, a pattern such as llm_*, all, or list to print the model identifiers',
+				'all',
+			)
+			.option('-r, --repeats <number>', 'how many times a probe that needs a tool call sends its prompt before giving up on getting one', '3');
+		SharedOptions.addModeOptions(toolCalls);
+		SharedOptions.addFormatOption(toolCalls);
+		SharedOptions.addEndpointOptions(toolCalls);
+		toolCalls.action(async (rawOptions: RawToolCallsOptions) => {
+			await ToolCallsCommand.run(rawOptions);
 		});
 
 		try {

@@ -6,11 +6,13 @@ import Test from 'node:test';
 // local imports
 import { BenchmarkRunner, type BenchmarkOptions } from '../src/benchmark_runner.js';
 import { CompletionSender } from '../src/completion_sender.js';
-import type { CompletionResult, CompletionTarget, UsageOutcome } from '../src/completion_types.js';
+import type { CompletionResult, CompletionTarget, ToolCallOutcome, UsageOutcome } from '../src/completion_types.js';
 import { GenerationControlProber } from '../src/generation_control_prober.js';
 import { ModelSweeper } from '../src/model_sweeper.js';
 import { ReportRenderer } from '../src/report_renderer.js';
 import { StatisticsCalculator } from '../src/statistics_calculator.js';
+import { ToolCallProber } from '../src/tool_call_prober.js';
+import { ToolCallRenderer } from '../src/tool_call_renderer.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,6 +52,7 @@ function completionResult(answer: string, timeToFirstCharacterMs: number, timeTo
 		clusterTimeToFirstPieceMs: undefined,
 		usage: undefined,
 		finishReason: undefined,
+		toolCalls: [],
 	};
 }
 
@@ -988,4 +991,322 @@ Test('reports a control the endpoint says the model cannot honour as refused, no
 	} finally {
 		await server.stop();
 	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	ToolCallProber
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** The parts of one chat completion request the tool call stand-in endpoints below read. */
+type ReceivedToolRequest = {
+	tools?: { function: { name: string } }[];
+	tool_choice?: string;
+	stream?: boolean;
+	messages: { role: string; content: string | null }[];
+};
+
+/** What a tool call stand-in endpoint answers with: words, or the tool calls the model asked for. */
+type StandInAnswer = {
+	/** The answer text, empty when the model asked for a tool instead. */
+	text: string;
+	/** The tool calls the model asked for, empty when it answered in words. */
+	toolCalls: { name: string; argumentsJson: string }[];
+};
+
+/**
+ * Reads the question a stand-in endpoint was asked, which is the first message of every probe that
+ * sends one prompt.
+ *
+ * @param body The request body received.
+ * @returns The question text.
+ */
+function questionOf(body: ReceivedToolRequest): string {
+	return body.messages[0]?.content ?? '';
+}
+
+/**
+ * Reports whether the conversation received already carries a tool's result, which is what the
+ * `reads_a_tool_result_back` probe sends and no other probe does.
+ *
+ * @param body The request body received.
+ * @returns `true` when a message whose role is `tool` is present.
+ */
+function carriesAToolResult(body: ReceivedToolRequest): boolean {
+	return body.messages.some((message) => message.role === 'tool');
+}
+
+/**
+ * Starts a stand-in endpoint that answers every chat completion request through one function, in
+ * whichever mode the request asked for.
+ *
+ * A streamed answer sends its tool calls the way this interface really does — the name once, then
+ * the arguments a fragment at a time, each carrying the index of the call it belongs to — so that
+ * assembling them back together is exercised rather than assumed.
+ *
+ * @param answerOf Builds the answer for one received request body.
+ * @returns The base URL to point a client at, and how to stop the server again.
+ */
+async function startToolCallServer(answerOf: (body: ReceivedToolRequest) => StandInAnswer): Promise<{ baseUrl: string; stop: () => Promise<void>; }> {
+	return await startTestServer((request, response) => {
+		let received = '';
+		request.on('data', (piece: Buffer) => {
+			received += piece.toString();
+		});
+		request.on('end', () => {
+			const body = JSON.parse(received) as ReceivedToolRequest;
+			const answer = answerOf(body);
+			const finishReason = answer.toolCalls.length > 0 ? 'tool_calls' : 'stop';
+			if (body.stream === true) {
+				response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' });
+				answer.toolCalls.forEach((toolCall, index) => {
+					const opening = { choices: [{ delta: { tool_calls: [{ index, id: `call_${index}`, type: 'function', function: { name: toolCall.name, arguments: '' } }] } }] };
+					response.write(`data: ${JSON.stringify(opening)}\n\n`);
+					const halfway = Math.floor(toolCall.argumentsJson.length / 2);
+					for (const fragment of [toolCall.argumentsJson.slice(0, halfway), toolCall.argumentsJson.slice(halfway)]) {
+						const piece = { choices: [{ delta: { tool_calls: [{ index, function: { arguments: fragment } }] } }] };
+						response.write(`data: ${JSON.stringify(piece)}\n\n`);
+					}
+				});
+				if (answer.text !== '') {
+					response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: answer.text } }] })}\n\n`);
+				}
+				response.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: finishReason }] })}\n\n`);
+				response.write('data: [DONE]\n\n');
+				response.end();
+				return;
+			}
+			const toolCalls = answer.toolCalls.map((toolCall, index) => ({
+				id: `call_${index}`,
+				type: 'function',
+				function: { name: toolCall.name, arguments: toolCall.argumentsJson },
+			}));
+			response.writeHead(200, { 'Content-Type': 'application/json' });
+			response.end(JSON.stringify({
+				id: 'chatcmpl-test',
+				object: 'chat.completion',
+				created: 0,
+				model: 'stand-in',
+				choices: [{
+					index: 0,
+					message: {
+						role: 'assistant',
+						content: answer.text === '' ? null : answer.text,
+						...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+					},
+					logprobs: null,
+					finish_reason: finishReason,
+				}],
+			}));
+		});
+	});
+}
+
+/**
+ * Answers the way a model that really calls tools would: it asks for the tool that answers the
+ * question, fills in the city the question named, answers in words once the tool's result is in the
+ * conversation, and leaves the tool alone for a question that needs none.
+ *
+ * @param body The request body received.
+ * @returns What to answer with.
+ */
+function callsToolsAnswer(body: ReceivedToolRequest): StandInAnswer {
+	if (carriesAToolResult(body) === true) {
+		return {
+			text: 'It is 31 degrees celsius and clear in Paris.',
+			toolCalls: [],
+		};
+	}
+	const question = questionOf(body);
+	if (question.includes('weather') === false && question.includes('time') === false) {
+		return {
+			text: 'hello',
+			toolCalls: [],
+		};
+	}
+	return {
+		text: '',
+		toolCalls: [{
+			name: question.includes('time') === true ? 'get_current_time' : 'get_current_weather',
+			argumentsJson: '{"city":"Paris"}',
+		}],
+	};
+}
+
+/**
+ * Probes one stand-in endpoint and returns what each ability's probe concluded.
+ *
+ * @param baseUrl The stand-in endpoint's base URL.
+ * @param mode Whether to ask for the answer as it is written, or in one piece.
+ * @returns The status of each of the six probes, keyed by the ability's name.
+ */
+async function probeToolCallStatuses(baseUrl: string, mode: 'nostream' | 'streamed'): Promise<Record<string, string>> {
+	const client = CompletionSender.createClient({
+		baseUrl: `${baseUrl}/v1`,
+		apiKey: 'insecure-benchmark-key',
+		timeoutMs: 5_000,
+	});
+	const outcomes = await ToolCallProber.probeAll({
+		client,
+		modelId: 'stand-in',
+		mode,
+		repeats: 3,
+	});
+	return Object.fromEntries(outcomes.map((outcome) => [outcome.ability, outcome.status]));
+}
+
+Test('finds every ability supported against a model that really calls tools', async () => {
+	const server = await startToolCallServer(callsToolsAnswer);
+	try {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+			generates_a_call: 'supported',
+			generates_a_call_when_forced: 'supported',
+			fills_in_the_arguments: 'supported',
+			chooses_among_several_tools: 'supported',
+			reads_a_tool_result_back: 'supported',
+			answers_without_a_call_when_none_is_needed: 'supported',
+		});
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('assembles a tool call streamed a fragment at a time, so the streamed mode reaches the same conclusions', async () => {
+	const server = await startToolCallServer(callsToolsAnswer);
+	try {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'streamed'), {
+			generates_a_call: 'supported',
+			generates_a_call_when_forced: 'supported',
+			fills_in_the_arguments: 'supported',
+			chooses_among_several_tools: 'supported',
+			reads_a_tool_result_back: 'supported',
+			answers_without_a_call_when_none_is_needed: 'supported',
+		});
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('reads a streamed tool call back as one call, with its name and its whole arguments', async () => {
+	const server = await startToolCallServer(callsToolsAnswer);
+	try {
+		const client = CompletionSender.createClient({
+			baseUrl: `${server.baseUrl}/v1`,
+			apiKey: 'insecure-benchmark-key',
+			timeoutMs: 5_000,
+		});
+		const result = await CompletionSender.send({
+			client,
+			modelId: 'stand-in',
+			messages: [{ role: 'user', content: 'What is the current weather in Paris?' }],
+			mode: 'streamed',
+			tools: [{
+				type: 'function',
+				function: {
+					name: 'get_current_weather',
+					description: 'Reports the current weather in one city.',
+					parameters: { type: 'object', properties: {}, required: [] },
+				},
+			}],
+			toolChoice: 'auto',
+		});
+		// The stand-in split the arguments in half across two chunks, so reading them back whole is
+		// what proves the fragments were assembled rather than the last one having won.
+		Assert.deepEqual(result.toolCalls, [{ id: 'call_0', name: 'get_current_weather', argumentsJson: '{"city":"Paris"}' }]);
+		Assert.equal(result.answer, '');
+		Assert.equal(result.finishReason, 'tool_calls');
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('finds tool calling unsupported against an endpoint that accepts the declarations and never calls a tool', async () => {
+	// This is the shape the de-risk gate of issue #78 found, and the reason this subcommand exists:
+	// the tool wire format is read without complaint, tool_choice required is accepted, and the model
+	// still answers in words every time. The two abilities that do not need the model to generate a
+	// call are unaffected, which is what tells this apart from an endpoint that refuses tools.
+	const server = await startToolCallServer((body) => ({
+		text: carriesAToolResult(body) === true ? 'It is 31 degrees celsius and clear in Paris.' : 'I cannot look that up for you.',
+		toolCalls: [],
+	}));
+	try {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+			generates_a_call: 'unsupported',
+			generates_a_call_when_forced: 'unsupported',
+			fills_in_the_arguments: 'inconclusive',
+			chooses_among_several_tools: 'inconclusive',
+			reads_a_tool_result_back: 'supported',
+			answers_without_a_call_when_none_is_needed: 'supported',
+		});
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('finds the wrong tool, unusable arguments, and a call nobody asked for, each on its own', async () => {
+	// A model that always asks for one particular tool, filled in with something that is not JSON.
+	// Generating a call is not the same as generating a useful one, and every probe after the first
+	// two exists to tell those apart.
+	const server = await startToolCallServer(() => ({
+		text: '',
+		toolCalls: [{ name: 'get_stock_price', argumentsJson: 'city=Paris' }],
+	}));
+	try {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+			generates_a_call: 'supported',
+			generates_a_call_when_forced: 'supported',
+			fills_in_the_arguments: 'unsupported',
+			chooses_among_several_tools: 'unsupported',
+			reads_a_tool_result_back: 'unsupported',
+			answers_without_a_call_when_none_is_needed: 'unsupported',
+		});
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('reports an endpoint that will not take tool declarations at all as refused, not as a failure', async () => {
+	const server = await startTestServer((request, response) => {
+		request.on('data', () => undefined);
+		request.on('end', () => {
+			response.writeHead(400, { 'Content-Type': 'application/json' });
+			response.end(JSON.stringify({
+				error: {
+					message: 'This server does not accept tool declarations.',
+					type: 'invalid_request_error',
+					param: 'tools',
+					code: 'unsupported_parameter',
+				},
+			}));
+		});
+	});
+	try {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+			generates_a_call: 'refused',
+			generates_a_call_when_forced: 'refused',
+			fills_in_the_arguments: 'refused',
+			chooses_among_several_tools: 'refused',
+			reads_a_tool_result_back: 'refused',
+			answers_without_a_call_when_none_is_needed: 'refused',
+		});
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('records a tool call answer as the call the model asked for, so a report shows what it really wrote', () => {
+	Assert.equal(ToolCallProber.describeAnswer('', [{ id: 'call_0', name: 'get_current_weather', argumentsJson: '{"city":"Paris"}' }]), 'tool call get_current_weather({"city":"Paris"})');
+	Assert.equal(ToolCallProber.describeAnswer('answered in words', []), 'answered in words');
+});
+
+Test('writes every probed ability and the supported/unsupported counts as JSON', () => {
+	const outcomes: ToolCallOutcome[] = [
+		{ modelId: 'stand-in', mode: 'nostream', ability: 'generates_a_call', status: 'unsupported', observation: 'answered in words', answers: ['no thanks'] },
+		{ modelId: 'stand-in', mode: 'nostream', ability: 'reads_a_tool_result_back', status: 'supported', observation: 'states 31', answers: ['31 degrees'] },
+	];
+	const parsed = JSON.parse(ToolCallRenderer.formatReport(outcomes, 'json'));
+	Assert.equal(parsed.outcomes.length, 2);
+	Assert.deepEqual(parsed.summary, { supported: 1, unsupported: 1, refused: 0, inconclusive: 0, failed: 0, total: 2 });
+	Assert.match(ToolCallRenderer.formatReport(outcomes, 'markdown'), /\| stand-in \| nostream \| generates_a_call \| unsupported \|/);
 });

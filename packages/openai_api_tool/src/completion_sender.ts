@@ -2,7 +2,16 @@
 import OpenAI, { APIError } from 'openai';
 
 // local imports
-import type { ChatCompletionUsage, CompletionMode, CompletionResult, CompletionTarget, GenerationControls } from './completion_types.js';
+import type {
+	ChatCompletionToolCall,
+	ChatCompletionUsage,
+	CompletionMode,
+	CompletionResult,
+	CompletionTarget,
+	GenerationControls,
+	ToolChoice,
+	ToolDeclaration,
+} from './completion_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -52,6 +61,18 @@ export type SendCompletionOptions = {
 	 * request they always have.
 	 */
 	readonly controls?: GenerationControls;
+	/**
+	 * The tools to declare to the model, each spelled the way the OpenAI Chat Completions interface
+	 * spells it. Left out by every caller other than the `tool_calls` subcommand, so `completion`,
+	 * `history`, `benchmark`, `usage`, and `generation_controls` keep sending the exact request they
+	 * always have.
+	 */
+	readonly tools?: readonly ToolDeclaration[];
+	/**
+	 * How much choice the request leaves the model about asking for a tool. Sent only alongside
+	 * `tools`, since this interface defines it only for a request that declares tools.
+	 */
+	readonly toolChoice?: ToolChoice;
 };
 
 /** The completion request a benchmark run uses, replaceable for deterministic tests. */
@@ -137,6 +158,24 @@ export class CompletionSender {
 	}
 
 	/**
+	 * Reads which request field the endpoint named as the one at fault, when it named one.
+	 *
+	 * This is how a refusal of the tool declarations themselves is told apart from a request that
+	 * failed for any other reason: an endpoint that will not take tools at all answers naming
+	 * `tools` or `tool_choice`, which is a correct answer about that endpoint rather than a fault in
+	 * the run that asked.
+	 *
+	 * @param error The error caught around one request.
+	 * @returns The endpoint's own `param`, or `undefined` when the failure named no field.
+	 */
+	static failureParam(error: unknown): string | undefined {
+		if (error instanceof APIError && typeof error.param === 'string') {
+			return error.param;
+		}
+		return undefined;
+	}
+
+	/**
 	 * Reads the endpoint's own explanation of a failure, in its own words and nothing else.
 	 *
 	 * Unlike {@link describeFailure}, this adds no status and no code, and it removes the status
@@ -186,6 +225,52 @@ export class CompletionSender {
 	}
 
 	/**
+	 * Builds the tool declaration fields of one request body.
+	 *
+	 * A caller that declared no tool produces no field at all, so every request this package sent
+	 * before tool calling existed is byte for byte the request it still sends. `tool_choice` is sent
+	 * only alongside `tools`, because this interface defines it only for a request that declares
+	 * tools.
+	 *
+	 * @param tools The tools to declare, or `undefined` when the caller declared none.
+	 * @param toolChoice How much choice to leave the model, or `undefined` to let the endpoint apply
+	 * its own default.
+	 * @returns The fields to spread into the request body, empty when no tool was declared.
+	 */
+	private static _toolFieldsOf(tools: readonly ToolDeclaration[] | undefined, toolChoice: ToolChoice | undefined): Record<string, unknown> {
+		if (tools === undefined || tools.length === 0) {
+			return {};
+		}
+		if (toolChoice === undefined) {
+			return {
+				tools,
+			};
+		}
+		return {
+			tools,
+			tool_choice: toolChoice,
+		};
+	}
+
+	/**
+	 * Camel-cases the `openai` npm package's own tool call objects into `ChatCompletionToolCall`.
+	 *
+	 * @param toolCalls The tool calls read from a response body, `undefined` when the model asked for
+	 * none.
+	 * @returns The camelCased tool calls, empty when the model asked for none.
+	 */
+	private static _toToolCalls(toolCalls: OpenAI.ChatCompletionMessageToolCall[] | undefined): ChatCompletionToolCall[] {
+		if (toolCalls === undefined) {
+			return [];
+		}
+		return toolCalls.map((toolCall) => ({
+			id: toolCall.id,
+			name: toolCall.function.name,
+			argumentsJson: toolCall.function.arguments,
+		}));
+	}
+
+	/**
 	 * Sends one streamed chat completion request, writing each piece out as it arrives rather
 	 * than waiting for the whole answer, and measuring when its characters arrived.
 	 *
@@ -207,6 +292,7 @@ export class CompletionSender {
 			stream: true,
 			...(options.includeUsage === true ? { stream_options: { include_usage: true } } : {}),
 			...CompletionSender._controlFieldsOf(options.controls),
+			...CompletionSender._toolFieldsOf(options.tools, options.toolChoice),
 		}).withResponse();
 		const clusterTimeToFirstPieceMs = CompletionSender._readMsHeader(response, 'x-webai-time-to-first-piece-ms');
 
@@ -214,6 +300,7 @@ export class CompletionSender {
 		let timeToFirstCharacterMs: number | undefined;
 		let usage: ChatCompletionUsage | undefined;
 		let finishReason: string | undefined;
+		const toolCallsByIndex = new Map<number, { id: string; name: string; argumentsJson: string }>();
 		for await (const chunk of stream) {
 			const finishReasonOfChunk = chunk.choices[0]?.finish_reason;
 			if (finishReasonOfChunk !== undefined && finishReasonOfChunk !== null) {
@@ -223,6 +310,7 @@ export class CompletionSender {
 			if (usageOfChunk !== undefined) {
 				usage = usageOfChunk;
 			}
+			CompletionSender._collectToolCallFragments(chunk.choices[0]?.delta.tool_calls, toolCallsByIndex);
 			const piece = chunk.choices[0]?.delta.content ?? '';
 			if (piece === '') {
 				continue;
@@ -237,7 +325,11 @@ export class CompletionSender {
 		}
 		const timeToLastCharacterMs = performance.now() - startedAt;
 
-		if (answer === '') {
+		// A model that asked for a tool wrote no text at all, and that is a complete answer rather
+		// than an empty one. Only a stream that carried neither text nor a tool call is retried as one
+		// whole request, which is what an endpoint ignoring `stream: true` produces.
+		const toolCalls = [...toolCallsByIndex.entries()].sort(([left], [right]) => left - right).map(([, toolCall]) => toolCall);
+		if (answer === '' && toolCalls.length === 0) {
 			return await CompletionSender._sendNostream(options);
 		}
 
@@ -249,7 +341,45 @@ export class CompletionSender {
 			clusterTimeToFirstPieceMs,
 			usage,
 			finishReason,
+			toolCalls,
 		};
+	}
+
+	/**
+	 * Merges the tool call fragments of one streamed chunk into the tool calls assembled so far.
+	 *
+	 * This interface streams a tool call in pieces the same way it streams text: the name arrives
+	 * once and the arguments arrive a fragment at a time, each carrying the `index` of the tool call
+	 * it belongs to, so several tool calls can be streamed at once and interleaved.
+	 *
+	 * @param fragments The tool call fragments of one chunk, `undefined` when it carried none.
+	 * @param toolCallsByIndex The tool calls assembled so far, keyed by their index, updated in place.
+	 * @returns Nothing.
+	 */
+	private static _collectToolCallFragments(
+		fragments: OpenAI.ChatCompletionChunk.Choice.Delta.ToolCall[] | undefined,
+		toolCallsByIndex: Map<number, { id: string; name: string; argumentsJson: string }>,
+	): void {
+		if (fragments === undefined) {
+			return;
+		}
+		for (const fragment of fragments) {
+			const assembled = toolCallsByIndex.get(fragment.index) ?? {
+				id: '',
+				name: '',
+				argumentsJson: '',
+			};
+			if (fragment.id !== undefined) {
+				assembled.id = fragment.id;
+			}
+			if (fragment.function?.name !== undefined) {
+				assembled.name += fragment.function.name;
+			}
+			if (fragment.function?.arguments !== undefined) {
+				assembled.argumentsJson += fragment.function.arguments;
+			}
+			toolCallsByIndex.set(fragment.index, assembled);
+		}
 	}
 
 	/**
@@ -267,13 +397,17 @@ export class CompletionSender {
 			model: options.modelId,
 			messages: options.messages,
 			...CompletionSender._controlFieldsOf(options.controls),
+			...CompletionSender._toolFieldsOf(options.tools, options.toolChoice),
 		}).withResponse();
 		const elapsedMs = performance.now() - startedAt;
 		const answer = completion.choices[0]?.message.content ?? '';
-		if (answer === '') {
+		const toolCalls = CompletionSender._toToolCalls(completion.choices[0]?.message.tool_calls);
+		// A model that asked for a tool wrote no text at all, which is a complete answer and not a
+		// missing one, so only an answer carrying neither text nor a tool call is a failure.
+		if (answer === '' && toolCalls.length === 0) {
 			throw new Error('the endpoint returned no answer text');
 		}
-		if (options.writePiece !== undefined) {
+		if (options.writePiece !== undefined && answer !== '') {
 			options.writePiece(answer);
 		}
 
@@ -285,6 +419,7 @@ export class CompletionSender {
 			clusterTimeToFirstPieceMs: undefined,
 			usage: CompletionSender._toUsage(completion.usage),
 			finishReason: completion.choices[0]?.finish_reason,
+			toolCalls,
 		};
 	}
 

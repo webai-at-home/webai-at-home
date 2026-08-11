@@ -48,7 +48,15 @@
 		"generation_controls:lm_studio:qwen_qwen3.5-0.8b": "tsx src/cli.ts generation_controls --base_url http://localhost:1234/v1 --model qwen_qwen3.5-0.8b --nostream",
 		"generation_controls:webai_at_home:llm_qwen3_5_0_8b_full": "tsx src/cli.ts generation_controls --base_url http://localhost:8788/v1 --model llm_qwen3_5_0_8b_full --nostream",
 		"generation_controls:lm_studio:llama-3.2-1b-instruct": "tsx src/cli.ts generation_controls --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --nostream",
-		"generation_controls:webai_at_home:llm_llama3_2_1b_full": "tsx src/cli.ts generation_controls --base_url http://localhost:8788/v1 --model llm_llama3_2_1b_full --nostream"
+		"generation_controls:webai_at_home:llm_llama3_2_1b_full": "tsx src/cli.ts generation_controls --base_url http://localhost:8788/v1 --model llm_llama3_2_1b_full --nostream",
+		"pretool_calls": "npm run build:dependencies",
+		"tool_calls": "tsx src/cli.ts tool_calls",
+		"tool_calls:lm_studio:qwen_qwen3-0.6b": "tsx src/cli.ts tool_calls --base_url http://localhost:1234/v1 --model qwen_qwen3-0.6b",
+		"tool_calls:lm_studio:qwen_qwen3.5-0.8b": "tsx src/cli.ts tool_calls --base_url http://localhost:1234/v1 --model qwen_qwen3.5-0.8b",
+		"tool_calls:lm_studio:llama-3.2-1b-instruct": "tsx src/cli.ts tool_calls --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct",
+		"tool_calls:lm_studio:llama-3.2-3b-instruct": "tsx src/cli.ts tool_calls --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct",
+		"tool_calls:webai_at_home:llm_qwen3_5_0_8b_full": "tsx src/cli.ts tool_calls --base_url http://localhost:8788/v1 --model llm_qwen3_5_0_8b_full",
+		"tool_calls:webai_at_home:llm_llama3_2_1b_full": "tsx src/cli.ts tool_calls --base_url http://localhost:8788/v1 --model llm_llama3_2_1b_full"
 	},
 	"dependencies": {
 		"@webai/consumer-cli": "0.1.0",
