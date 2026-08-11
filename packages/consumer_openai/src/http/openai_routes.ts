@@ -3,7 +3,7 @@ import Crypto from 'node:crypto';
 
 // npm imports
 import Express from 'express';
-import { TaskInputFactory } from '@webai/consumer-cli';
+import { TaskInputFactory, taskTypeNamesAcceptingTools } from '@webai/consumer-cli';
 import type { TaskInput } from '@webai/protocol';
 import type { z } from 'zod';
 
@@ -21,6 +21,7 @@ import { ModelCatalog } from '../api/model_catalog.js';
 import { OpenaiError } from '../api/openai_error.js';
 import { FinishReasonTranslator } from '../api/finish_reason_translator.js';
 import { PromptFlattener } from '../api/prompt_flattener.js';
+import { ToolTranslator } from '../api/tool_translator.js';
 import {
 	ChatCompletionRequestSchema,
 	type ChatCompletionAnswerChunk,
@@ -212,11 +213,27 @@ export class OpenaiRoutes {
 			throw OpenaiError.unknownModel(body.model, ModelCatalog.modelIds);
 		}
 
+		// Tool declarations are refused rather than dropped by a model that cannot read them, and a
+		// tool_choice this server cannot enforce is refused rather than accepted and ignored. The
+		// second of those is the failure that closed issue #78: a server accepted
+		// `tool_choice: "required"`, did not enforce it, and the model's answering in words read as
+		// "this model cannot call tools" when nothing had ever made it try.
+		const declaredTools = ToolTranslator.toProtocolTools(body.tools);
+		if (declaredTools !== undefined && TaskInputFactory.acceptsTools(taskTypeName) === false) {
+			throw OpenaiError.unsupportedToolDeclarations(body.model, taskTypeNamesAcceptingTools);
+		}
+		if (body.tool_choice !== null && body.tool_choice !== undefined && body.tool_choice !== 'auto' && body.tool_choice !== 'none') {
+			throw OpenaiError.unenforceableToolChoice(typeof body.tool_choice === 'string' ? `"${body.tool_choice}"` : `naming the function "${body.tool_choice.function.name}"`);
+		}
+		// `none` is honoured by declaring nothing, which is the one way this server can enforce it:
+		// a model told about no tool cannot ask for one.
+		const toolsToDeclare = body.tool_choice === 'none' ? undefined : declaredTools;
+
 		// A task type whose worker can hand a message list to its own chat template is sent the
 		// conversation as it was written, each message keeping its own role. Every other task type
 		// still takes one piece of text, so its request is flattened exactly as it always was.
 		const promptOrConversation = TaskInputFactory.acceptsConversation(taskTypeName)
-			? ConversationBuilder.build(body.messages)
+			? ConversationBuilder.build(body.messages, toolsToDeclare)
 			: PromptFlattener.flatten(body.messages);
 		const isStreaming = body.stream === true;
 		// Asking the cluster for the answer in pieces is what makes it report them, and it is
@@ -283,7 +300,11 @@ export class OpenaiRoutes {
 		// Rule 2 of this project's OpenAI compatibility requirement: an answer the cluster gave up
 		// on producing has no OpenAI value for `finish_reason`, so it is reported as an HTTP error
 		// for a whole-answer response like this one, rather than an invented `finish_reason`.
-		const finishReason = FinishReasonTranslator.translate(answer.stopReason);
+		// A model that asked for a tool stopped because it had finished asking, not because it gave up
+		// on an answer, so its own stop reason is not translated: `tool_calls` is what this interface
+		// says happened, and it is what a client reads to know it must run something and come back.
+		const askedForTools = answer.toolCalls !== undefined && answer.toolCalls.length > 0;
+		const finishReason = askedForTools === true ? 'tool_calls' : FinishReasonTranslator.translate(answer.stopReason);
 		const usage = OpenaiRoutes._usageOf(answer);
 		const completion: ChatCompletionResponse = {
 			id: `chatcmpl-${Crypto.randomUUID()}`,
@@ -296,6 +317,9 @@ export class OpenaiRoutes {
 					message: {
 						role: 'assistant',
 						content: answer.text,
+						...(answer.toolCalls === undefined || answer.toolCalls.length === 0
+							? {}
+							: { tool_calls: ToolTranslator.toOpenaiToolCalls(answer.toolCalls, declaredTools ?? []) }),
 					},
 					logprobs: null,
 					finish_reason: finishReason,

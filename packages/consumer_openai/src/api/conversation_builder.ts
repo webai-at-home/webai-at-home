@@ -1,4 +1,4 @@
-import type { ConversationInput, ConversationMessage } from '@webai/protocol';
+import type { ConversationInput, ConversationMessage, ToolDeclaration } from '@webai/protocol';
 import type { ChatCompletionMessage } from './openai_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -25,9 +25,12 @@ export class ConversationBuilder {
 	 * @param messages The messages of the request, in the order they were sent.
 	 * @returns The conversation to submit as the task input.
 	 */
-	static build(messages: ChatCompletionMessage[]): ConversationInput {
+	static build(messages: ChatCompletionMessage[], tools?: ToolDeclaration[]): ConversationInput {
 		return {
 			messages: messages.map(ConversationBuilder.messageOf),
+			// Left out entirely rather than stated as empty when the request declared no tool, so that
+			// a request that asked for nothing about tools submits exactly what it always did.
+			...(tools === undefined || tools.length === 0 ? {} : { tools }),
 		};
 	}
 
@@ -45,7 +48,53 @@ export class ConversationBuilder {
 	private static messageOf(message: ChatCompletionMessage): ConversationMessage {
 		return {
 			role: message.role === 'developer' ? 'system' : message.role,
-			content: message.content,
+			// A model that asks for a tool writes no text, and an OpenAI client hands that message
+			// straight back with `content` absent or `null`. Both mean the same thing here, and the
+			// protocol says a message always states what it carries, so both become the empty string.
+			content: message.content ?? '',
+			// A tool call is carried back so the chat template can render it into the form the model
+			// itself writes, which is what lets the model read its own earlier request rather than a
+			// rewriting of it. The identifier this interface gave it is dropped: no chat template this
+			// project drives reads one, and the order of the messages is what says which call a
+			// result answers.
+			...(message.tool_calls === undefined || message.tool_calls.length === 0
+				? {}
+				: {
+					toolCalls: message.tool_calls.map((toolCall) => ({
+						name: toolCall.function.name,
+						argumentValues: ConversationBuilder.argumentValuesOf(toolCall.function.arguments),
+					})),
+				}),
 		};
+	}
+
+	/**
+	 * Reads the argument values out of the JSON string this interface carries a tool call's
+	 * arguments in.
+	 *
+	 * Every value becomes text again, because text is what the protocol carries and what the model
+	 * itself wrote in the first place. A value that was a number on the way out is written back as
+	 * the characters of that number, which is what the chat template renders either way.
+	 *
+	 * @param argumentsJson The arguments exactly as the client sent them, which this interface
+	 * defines as a string because a model does not always generate valid JSON.
+	 * @returns The argument values keyed by name, empty when the string could not be read as an
+	 * object of arguments.
+	 */
+	private static argumentValuesOf(argumentsJson: string): Record<string, string> {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(argumentsJson);
+		} catch {
+			return {};
+		}
+		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+			return {};
+		}
+		const argumentValues: Record<string, string> = {};
+		for (const [argumentName, value] of Object.entries(parsed)) {
+			argumentValues[argumentName] = typeof value === 'string' ? value : JSON.stringify(value);
+		}
+		return argumentValues;
 	}
 }

@@ -18,6 +18,38 @@ import { z } from 'zod';
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
+ * One tool call, as this interface spells it both in a request's history and in an answer.
+ *
+ * `arguments` is a string of JSON rather than an object, which is this interface's own choice and
+ * not this project's: it is defined that way because a model does not always generate valid JSON,
+ * so the field has to be able to carry whatever it wrote.
+ */
+export const ChatCompletionToolCallSchema = z.object({
+	id: z.string(),
+	type: z.literal('function'),
+	function: z.object({
+		name: z.string(),
+		arguments: z.string(),
+	}),
+});
+/** One tool call, as this interface spells it. */
+export type ChatCompletionToolCall = z.infer<typeof ChatCompletionToolCallSchema>;
+
+/**
+ * One tool a request declares, as this interface spells it.
+ */
+export const ChatCompletionToolSchema = z.object({
+	type: z.literal('function'),
+	function: z.object({
+		name: z.string().min(1),
+		description: z.string().optional(),
+		parameters: z.record(z.string(), z.unknown()).optional(),
+	}),
+});
+/** One tool a request declares. */
+export type ChatCompletionTool = z.infer<typeof ChatCompletionToolSchema>;
+
+/**
  * One message of a conversation, as a chat completion request carries it.
  *
  * The content must be a single piece of text. The OpenAI completion interface also allows a
@@ -25,13 +57,19 @@ import { z } from 'zod';
  * refused here rather than having its parts joined together, because a task in this cluster
  * carries one piece of text and nothing else.
  *
- * The `tool` role is refused for the same reason: this server ignores the tool settings of a
- * request, so a conversation containing the answer of a tool could not be continued sensibly.
+ * The `tool` role is accepted, since
+ * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115): a conversation carrying
+ * a tool's answer can now be continued, because a worker that can ask for a tool can also read the
+ * answer of one back out of the conversation it is given. `content` may be absent on an assistant
+ * message carrying `tool_calls`, because a model that asks for a tool writes no text at all, and
+ * an OpenAI client hands back the message it was given.
  */
 export const ChatCompletionMessageSchema = z.object({
-	role: z.enum(['system', 'developer', 'user', 'assistant']),
-	content: z.string(),
+	role: z.enum(['system', 'developer', 'user', 'assistant', 'tool']),
+	content: z.string().nullish(),
 	name: z.string().optional(),
+	tool_calls: z.array(ChatCompletionToolCallSchema).optional(),
+	tool_call_id: z.string().optional(),
 });
 /** One message of a conversation, as a chat completion request carries it. */
 export type ChatCompletionMessage = z.infer<typeof ChatCompletionMessageSchema>;
@@ -44,7 +82,12 @@ export type ChatCompletionMessage = z.infer<typeof ChatCompletionMessageSchema>;
  * generation settings, for whichever task types honour them. See
  * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
  *
- * Every other field an OpenAI client may send — `n`, `tools`, `logprobs`, `presence_penalty`,
+ * `tools` and `tool_choice` are read too, since
+ * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115), and carried to the
+ * cluster for whichever task types can act on them. A request declaring tools to a model that
+ * cannot read them is refused rather than answered as though it had declared none.
+ *
+ * Every other field an OpenAI client may send — `n`, `logprobs`, `presence_penalty`,
  * `frequency_penalty`, and the rest — is still accepted and then ignored, so the schema
  * deliberately does not refuse unknown fields.
  *
@@ -63,6 +106,11 @@ export const ChatCompletionRequestSchema = z.object({
 	max_completion_tokens: z.number().int().positive().nullish(),
 	stop: z.union([z.string(), z.array(z.string()).max(4)]).nullish(),
 	seed: z.number().int().nullish(),
+	tools: z.array(ChatCompletionToolSchema).nullish(),
+	tool_choice: z.union([
+		z.enum(['auto', 'none', 'required']),
+		z.object({ type: z.literal('function'), function: z.object({ name: z.string() }) }),
+	]).nullish(),
 });
 /** The body of a request to `POST /v1/chat/completions`. */
 export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;
@@ -76,10 +124,16 @@ export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;
 /**
  * Why an answer stopped, spelled the way the OpenAI Chat Completions interface spells it.
  *
- * This server only ever produces `stop` or `length`: nothing in this cluster runs tools or
- * filters content, so `tool_calls`, `content_filter`, and `function_call` never occur, but the
- * field is still typed as the whole closed set the OpenAI Chat Completions interface defines,
- * since that is the set a reader is entitled to expect and to nothing outside it.
+ * This server produces `stop`, `length`, or `tool_calls`. Nothing in this cluster filters content
+ * and nothing here ever ran the older function interface, so `content_filter` and `function_call`
+ * never occur, but the field is still typed as the whole closed set the OpenAI Chat Completions
+ * interface defines, since that is the set a reader is entitled to expect and to nothing outside it.
+ *
+ * `tool_calls` means what it says on this interface: the model asked for a tool rather than writing
+ * an answer, and the caller is expected to run the tool and send the result back. The cluster never
+ * runs the tool itself — see
+ * [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) for why running a caller's
+ * tool on a volunteer's machine is a security problem before it is an engineering one.
  */
 export type ChatCompletionFinishReason = 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
 
@@ -91,7 +145,15 @@ export type ChatCompletionFinishReason = 'stop' | 'length' | 'tool_calls' | 'con
  */
 export type ChatCompletionChoice = {
 	index: number;
-	message: { role: 'assistant'; content: string };
+	/**
+	 * The answer the model wrote, and the tools it asked to have called.
+	 *
+	 * `tool_calls` is present only when the model asked for a tool, and `content` is then the empty
+	 * string, because a model that asks for a tool writes no text at all. It is stated as empty
+	 * rather than as `null` so that a client joining `content` never has to check which of the two
+	 * kinds of answer it received.
+	 */
+	message: { role: 'assistant'; content: string; tool_calls?: ChatCompletionToolCall[] };
 	logprobs: null;
 	finish_reason: ChatCompletionFinishReason;
 };

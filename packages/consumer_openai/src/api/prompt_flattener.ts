@@ -30,9 +30,13 @@ export class PromptFlattener {
 	static flatten(messages: ChatCompletionMessage[]): string {
 		const onlyMessage = messages.length === 1 ? messages[0] : undefined;
 		if (onlyMessage !== undefined) {
-			return onlyMessage.content;
+			// A message may now carry no content at all, because an assistant message that asked for a
+			// tool writes none. Such a message reaching here means a client sent a tool round trip to a
+			// model that flattens, which is refused before this point; the empty string is what a
+			// message with nothing to say flattens to either way.
+			return onlyMessage.content ?? '';
 		}
-		const labelledLines = messages.map((message) => `${message.role}: ${message.content}`);
+		const labelledLines = messages.map((message) => `${message.role}: ${message.content ?? ''}`);
 		return [...labelledLines, 'assistant:'].join('\n');
 	}
 }

@@ -36,6 +36,28 @@ export const taskTypeNamesAcceptingConversation = ['llm_qwen3_5_0_8b_full', 'llm
 export type TaskTypeNameAcceptingConversation = typeof taskTypeNamesAcceptingConversation[number];
 
 /**
+ * The task types whose conversation may declare tools the model can ask to have called.
+ *
+ * A shorter list than {@link taskTypeNamesAcceptingConversation}, and deliberately so. Accepting a
+ * conversation and being able to do anything with a tool declaration in it are two different
+ * abilities: declaring tools is only useful where the stage helper hands the declarations to a
+ * chat template that has a slot for them, and then finds the tool call the model wrote and reads
+ * it back out of the generated text.
+ *
+ * Only `llm_qwen3_5_0_8b_full` does both today, proved live against the real worker path in
+ * milestone 0's de-risk gate for
+ * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115). `llm_llama3_2_1b_full`
+ * accepts a conversation and is left out: neither of the two workers that can run it reads a tool
+ * declaration, so declaring tools to it would be accepted and dropped, which is the worst of the
+ * possible answers — the consumer would receive an answer generated as though it had declared
+ * nothing, and be told nothing went wrong.
+ */
+export const taskTypeNamesAcceptingTools = ['llm_qwen3_5_0_8b_full'] as const;
+
+/** One of the task types whose conversation may declare tools. */
+export type TaskTypeNameAcceptingTools = typeof taskTypeNamesAcceptingTools[number];
+
+/**
  * Turns the text given on the command line into the task input the gateway expects.
  *
  * Every task type carries a different kind of value — a number for the development formula
@@ -65,6 +87,19 @@ export class TaskInputFactory {
 	 */
 	static acceptsConversation(value: TaskTypeName): value is TaskTypeNameAcceptingConversation {
 		return (taskTypeNamesAcceptingConversation as readonly string[]).includes(value);
+	}
+
+	/**
+	 * Reports whether a task type's conversation may declare tools the model can ask to have called.
+	 *
+	 * A consumer asks this before it submits, so that a request declaring tools to a task type that
+	 * cannot read them is refused rather than answered as though it had declared none.
+	 *
+	 * @param value The task type to ask about.
+	 * @returns `true` when it is one of {@link taskTypeNamesAcceptingTools}.
+	 */
+	static acceptsTools(value: TaskTypeName): value is TaskTypeNameAcceptingTools {
+		return (taskTypeNamesAcceptingTools as readonly string[]).includes(value);
 	}
 
 	/**

@@ -6,7 +6,7 @@ import WebSocket from 'ws';
 import { ConsumerClient, type TaskSocket } from '@webai/consumer-cli';
 import type { MessageLogger } from '@webai/protocol/message_logger';
 import { ReconnectBackoff } from '@webai/protocol/reconnect_backoff';
-import type { AccountKeyPair, ProtocolError, StagePayload, TaskInput, TaskSnapshot, TaskState, TaskUpdate } from '@webai/protocol';
+import type { AccountKeyPair, ProtocolError, StagePayload, TaskInput, TaskSnapshot, TaskState, ToolCall, TaskUpdate } from '@webai/protocol';
 
 // local imports
 import { OpenaiError } from '../api/openai_error.js';
@@ -41,6 +41,16 @@ export type TaskAnswer = {
 	 * calls this runner and speaks the OpenAI Chat Completions interface.
 	 */
 	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
+	/**
+	 * The tools the model asked to have called, `undefined` when it answered in words, which is
+	 * every task whose conversation declared no tool.
+	 *
+	 * Carried without an identifier and with every argument value as text, exactly as the worker
+	 * reported it. Supplying the identifier this cluster cannot generate, and the types this
+	 * cluster cannot know, is a job for whoever calls this runner and speaks the OpenAI Chat
+	 * Completions interface.
+	 */
+	toolCalls: ToolCall[] | undefined;
 };
 
 /** How this runner reaches the central gateway and how long it is willing to wait. */
@@ -543,7 +553,7 @@ export class ClusterTaskRunner {
 		// written out. Either language-model task carries the generated text.
 		if (taskInput.taskType === 'task_type_dev_formula') {
 			return typeof result === 'number'
-				? { text: String(result), promptTokenCount: undefined, completionTokenCount: undefined, stopReason: undefined }
+				? { text: String(result), promptTokenCount: undefined, completionTokenCount: undefined, stopReason: undefined, toolCalls: undefined }
 				: undefined;
 		}
 		if (typeof result === 'number') {
@@ -557,6 +567,7 @@ export class ClusterTaskRunner {
 			promptTokenCount: result.promptTokenCount,
 			completionTokenCount: result.completionTokenCount,
 			stopReason: result.stopReason,
+			toolCalls: result.toolCalls,
 		};
 	}
 

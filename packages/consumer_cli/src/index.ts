@@ -18,6 +18,8 @@ export {
 	TaskInputFactory,
 	taskTypeNames,
 	taskTypeNamesAcceptingConversation,
+	taskTypeNamesAcceptingTools,
 	type TaskTypeName,
 	type TaskTypeNameAcceptingConversation,
+	type TaskTypeNameAcceptingTools,
 } from './libs/task_input_factory.js';

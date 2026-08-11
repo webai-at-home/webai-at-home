@@ -74,7 +74,7 @@ Test('reads the five generation controls, and ignores every other field of the r
 		stop: ['\nUser:'],
 		seed: 42,
 		n: 3,
-		tools: [{ type: 'function' }],
+		logprobs: true,
 	});
 	Assert.equal(parsed.success, true);
 	Assert.deepEqual(parsed.success === true ? parsed.data : undefined, {
@@ -94,8 +94,17 @@ Test('refuses a body it cannot read', () => {
 	// A content part list, which a request carrying an image sends, is refused rather than
 	// having its parts joined together.
 	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }] }).success, false);
-	// The tool role is refused, because this server ignores the tool settings of a request.
-	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages: [{ role: 'tool', content: 'hello' }] }).success, false);
+	// The tool role is accepted since issue #115: a conversation carrying a tool's answer can now be
+	// continued, because a worker that can ask for a tool can also read the answer of one back.
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages: [{ role: 'tool', content: 'hello' }] }).success, true);
+	// An assistant message that asked for a tool carries no content, because a model that asks for a
+	// tool writes no text at all, and an OpenAI client hands that message straight back.
+	Assert.equal(ChatCompletionRequestSchema.safeParse({
+		model: 'dev_formula',
+		messages: [{ role: 'assistant', content: null, tool_calls: [{ id: 'call_0', type: 'function', function: { name: 'get_weather', arguments: '{}' } }] }],
+	}).success, true);
+	// A tool declaration with no function at all is refused rather than read as declaring nothing.
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages: [{ role: 'user', content: 'hi' }], tools: [{ type: 'function' }] }).success, false);
 });
 
 Test('reads whether the request asks for the answer to be streamed', () => {
@@ -795,32 +804,113 @@ Test('a failure after the stream has begun is written into the stream, since the
 	}
 });
 
-Test('answers a request carrying tool definitions normally, with those settings ignored', async () => {
+Test('refuses tool declarations sent to a model that cannot read them, rather than dropping them', async () => {
 	const server = await listeningServer();
 	try {
-		const responsePromise = fetch(`${server.url}/v1/chat/completions`, {
+		// Accepting these and answering as though nothing had been declared is the worst of the
+		// possible answers: the caller would wait for a tool call that was never going to come, and
+		// would be told nothing went wrong. This is the same refusal an unhonourable generation
+		// control gets, for the same reason.
+		const response = await fetch(`${server.url}/v1/chat/completions`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({
 				model: 'dev_formula',
 				messages: [{ role: 'user', content: '5' }],
 				tools: [{ type: 'function', function: { name: 'get_weather', parameters: {} } }],
-				tool_choice: 'auto',
+			}),
+		});
+		Assert.equal(response.status, 400);
+		const body = await response.json() as { error: { code: string; param: string } };
+		Assert.equal(body.error.code, 'unsupported_tool_declarations');
+		Assert.equal(body.error.param, 'tools');
+	} finally {
+		server.close();
+	}
+});
+
+Test('refuses a tool_choice it cannot enforce, which is the failure that closed issue #78', async () => {
+	const server = await listeningServer();
+	try {
+		// The de-risk gate of issue #78 failed on exactly this shape: a server accepted
+		// tool_choice "required", did not enforce it, and the model's answering in words read as
+		// "this model cannot call tools" when nothing had ever made it try. Refusing is what stops
+		// this server from producing that same false finding for someone else.
+		const response = await fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_qwen3_5_0_8b_full',
+				messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+				tools: [{ type: 'function', function: { name: 'get_weather', parameters: {} } }],
+				tool_choice: 'required',
+			}),
+		});
+		Assert.equal(response.status, 400);
+		const body = await response.json() as { error: { code: string; param: string } };
+		Assert.equal(body.error.code, 'unenforceable_tool_choice');
+		Assert.equal(body.error.param, 'tool_choice');
+	} finally {
+		server.close();
+	}
+});
+
+Test('declares the tools to a model that reads them, and answers a tool call with finish_reason tool_calls', async () => {
+	const server = await listeningServer();
+	try {
+		const responsePromise = fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_qwen3_5_0_8b_full',
+				messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+				tools: [{
+					type: 'function',
+					function: {
+						name: 'get_current_weather',
+						description: 'Reports the current weather in one city.',
+						parameters: { type: 'object', properties: { city: { type: 'string' }, days: { type: 'integer' } } },
+					},
+				}],
 			}),
 		});
 		await waitUntil(() => server.cluster.lastSentBody()['type'] === 'task.submit');
-		const taskRequestId = server.cluster.lastSentBody()['taskRequestId'];
-		Assert.equal(typeof taskRequestId, 'string');
-		server.cluster.receive({ type: 'task.accepted', taskRequestId, task: { taskId: 'task-tools-1', taskRequestId, state: 'queued' } });
-		server.cluster.receive({ type: 'task.updated', update: { taskId: 'task-tools-1', taskRevision: 2, state: 'completed', completedStageCount: 2, currentStageAttempts: 0, result: 17 } });
+		const submitted = server.cluster.lastSentBody();
+		const taskRequestId = submitted['taskRequestId'];
+		// The declarations reach the cluster in this project's own naming, not the OpenAI spelling.
+		Assert.deepEqual((submitted['input'] as { input: { tools: unknown } }).input.tools, [{
+			name: 'get_current_weather',
+			description: 'Reports the current weather in one city.',
+			parametersJsonSchema: { type: 'object', properties: { city: { type: 'string' }, days: { type: 'integer' } } },
+		}]);
+
+		server.cluster.receive({ type: 'task.accepted', taskRequestId, task: { taskId: 'task-tools-2', taskRequestId, state: 'queued' } });
+		server.cluster.receive({
+			type: 'task.updated',
+			update: {
+				taskId: 'task-tools-2',
+				taskRevision: 2,
+				state: 'completed',
+				completedStageCount: 1,
+				currentStageAttempts: 0,
+				result: { text: '', done: true, toolCalls: [{ name: 'get_current_weather', argumentValues: { city: 'Paris', days: '3' } }] },
+			},
+		});
 
 		const response = await responsePromise;
 		Assert.equal(response.status, 200);
 		const body = await response.json() as ChatCompletionResponse;
-		// The request's tool definitions and tool choice carried no weight in this answer: the
-		// task ran and completed exactly as it would have without them.
-		Assert.equal(body.choices[0]?.message.content, '17');
-		Assert.equal(body.choices[0]?.finish_reason, 'stop');
+		Assert.equal(body.choices[0]?.finish_reason, 'tool_calls');
+		// A model that asks for a tool writes no text, and the empty string says so, rather than null.
+		Assert.equal(body.choices[0]?.message.content, '');
+		const toolCall = body.choices[0]?.message.tool_calls?.[0];
+		Assert.equal(toolCall?.function.name, 'get_current_weather');
+		// The identifier is minted here, because no model this cluster runs generates one.
+		Assert.match(String(toolCall?.id), /^call_/);
+		// The worker reported both values as text, because the format the model writes carries no
+		// types. `days` becomes a number here because the tool declared it as one, and `city` stays
+		// text because it was declared as text.
+		Assert.deepEqual(JSON.parse(String(toolCall?.function.arguments)), { city: 'Paris', days: 3 });
 	} finally {
 		server.close();
 	}

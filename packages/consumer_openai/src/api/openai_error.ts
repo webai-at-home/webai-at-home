@@ -156,6 +156,63 @@ export class OpenaiError extends Error {
 	}
 
 	/**
+	 * The request declared tools to a model that cannot read them.
+	 *
+	 * Refused for the same reason an unhonourable generation control is: accepting the declarations
+	 * and dropping them returns an answer generated as though nothing had been declared, and says
+	 * nothing went wrong. A caller waiting for a tool call would wait for one that was never going
+	 * to come, and would have no way to find out why.
+	 *
+	 * @param modelId The model the request asked for.
+	 * @param modelIdsAcceptingTools The models that do read tool declarations, so the sender learns
+	 * what it may ask instead of only what it may not.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static unsupportedToolDeclarations(modelId: string, modelIdsAcceptingTools: readonly string[]): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			`The model ${modelId} cannot read tool declarations, and this server refuses a request it would have to ` +
+				'ignore rather than answering it as though no tool had been declared. The models that accept tool ' +
+				`declarations are ${modelIdsAcceptingTools.length === 0 ? 'none' : modelIdsAcceptingTools.join(', ')}. Send the ` +
+				'request again without tools, or send it to a model that reads them.',
+			'tools',
+			'unsupported_tool_declarations',
+		);
+	}
+
+	/**
+	 * The request asked for a `tool_choice` this server cannot enforce.
+	 *
+	 * `auto` is what this server does, and `none` is honoured by not declaring the tools at all.
+	 * Every other value — `required`, or naming one particular function — means the model must be
+	 * prevented from answering in words, and the only way to enforce that is to constrain
+	 * generation, which the chat template cannot express and `@huggingface/transformers` does not
+	 * offer.
+	 *
+	 * Refusing matters more here than almost anywhere else, because of what accepting would look
+	 * like. The de-risk gate of [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78)
+	 * failed on precisely this: a server accepted `tool_choice: "required"`, did not enforce it, and
+	 * the model answered in words — which read as "this model cannot call tools" when what had
+	 * actually happened was that nothing had ever made it try.
+	 *
+	 * @param requestedChoice What the request asked for, written out.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static unenforceableToolChoice(requestedChoice: string): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			`This server cannot enforce tool_choice ${requestedChoice}, and refuses a request it would have to accept ` +
+				'and then ignore. Enforcing it means constraining generation, which the chat templates this cluster ' +
+				'drives cannot express. Send tool_choice "auto" to let the model decide, or "none" to declare the ' +
+				'tools without letting it ask for one.',
+			'tool_choice',
+			'unenforceable_tool_choice',
+		);
+	}
+
+	/**
 	 * This server was started with a required key, and the request presented no key or a key
 	 * that does not match.
 	 *
