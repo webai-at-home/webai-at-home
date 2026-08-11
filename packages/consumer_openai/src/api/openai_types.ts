@@ -190,15 +190,36 @@ export type ChatCompletionResponse = {
 };
 
 /**
+ * One tool call, as this interface spells it inside a chunk of an answer sent as it is written.
+ *
+ * The same fields as `ChatCompletionToolCall`, plus the `index` that says which tool call of the
+ * answer this is. That index exists because this interface allows a tool call to arrive in pieces,
+ * spread over several chunks, with the name in one and parts of the arguments in later ones — a
+ * reader joins the pieces that share an index. This server never sends a tool call in pieces: a
+ * worker reports a whole tool call or none, because a piece of a `<function=…>` block is
+ * indistinguishable from ordinary text until it is complete. So every tool call here arrives whole,
+ * in one chunk, and the index only ever says which call it is.
+ */
+export type ChatCompletionChunkToolCall = {
+	index: number;
+	id: string;
+	type: 'function';
+	function: { name: string; arguments: string };
+};
+
+/**
  * One answer inside a chunk of a chat completion sent as the answer is written.
  *
  * `delta` carries only what this chunk adds. The first chunk of an answer states the role and
  * adds no text, every chunk after it adds text and states no role, and the last chunk adds
  * nothing and says why the answer stopped. A reader joins the `content` it is given in order.
+ *
+ * A model that asked for a tool writes no text at all, so its answer is a first chunk stating the
+ * role, one chunk carrying every tool call it asked for, and a last chunk saying `tool_calls`.
  */
 export type ChatCompletionChunkChoice = {
 	index: number;
-	delta: { role?: 'assistant'; content?: string };
+	delta: { role?: 'assistant'; content?: string; tool_calls?: ChatCompletionChunkToolCall[] };
 	logprobs: null;
 	finish_reason: ChatCompletionFinishReason | null;
 };

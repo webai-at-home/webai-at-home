@@ -4,7 +4,7 @@ import Crypto from 'node:crypto';
 // npm imports
 import Express from 'express';
 import { TaskInputFactory, taskTypeNamesAcceptingTools } from '@webai/consumer-cli';
-import type { TaskInput } from '@webai/protocol';
+import type { TaskInput, ToolDeclaration } from '@webai/protocol';
 import type { z } from 'zod';
 
 // local imports
@@ -290,6 +290,7 @@ export class OpenaiRoutes {
 				abortController.signal,
 				onCorrelationIds,
 				body.stream_options?.include_usage === true,
+				declaredTools,
 			);
 			return;
 		}
@@ -370,6 +371,8 @@ export class OpenaiRoutes {
 	 * `stream_options: { include_usage: true }`, an existing field of the OpenAI Chat Completions
 	 * interface. See milestone 4 of
 	 * [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150).
+	 * @param declaredTools The tools the request declared, `undefined` when it declared none, read
+	 * for the types each argument was declared with when a tool call has to be written out.
 	 * @throws OpenaiError when the task fails before any chunk has been written.
 	 */
 	private async _streamChatCompletion(
@@ -380,6 +383,7 @@ export class OpenaiRoutes {
 		abortSignal: AbortSignal,
 		onCorrelationIds: (ids: { taskRequestId: string; taskId?: string }) => void,
 		includeUsage: boolean,
+		declaredTools: ToolDeclaration[] | undefined,
 	): Promise<void> {
 		const completionId = `chatcmpl-${Crypto.randomUUID()}`;
 		const created = Math.floor(Date.now() / 1000);
@@ -491,12 +495,36 @@ export class OpenaiRoutes {
 					});
 				}
 			}
+			// A model that asked for a tool wrote no text, so nothing above has written its answer:
+			// the tool calls are the answer, and they are written here as one chunk. This interface
+			// allows them to arrive in pieces across several chunks, and they never do here, because
+			// a worker reports a whole tool call or none at all.
+			const askedForTools = answer.toolCalls !== undefined && answer.toolCalls.length > 0;
+			if (askedForTools === true && answer.toolCalls !== undefined) {
+				writeChunk({
+					index: 0,
+					delta: {
+						tool_calls: ToolTranslator.toOpenaiToolCalls(answer.toolCalls, declaredTools ?? []).map((toolCall, toolCallIndex) => ({
+							index: toolCallIndex,
+							...toolCall,
+						})),
+					},
+					logprobs: null,
+					finish_reason: null,
+				});
+			}
 			// Rule 2 of this project's OpenAI compatibility requirement: an answer the cluster gave
 			// up on producing has no OpenAI value for `finish_reason`. Translating it is done here,
 			// after every piece has already been written, so that a failure to translate it falls
 			// into the `catch` below and is written into the stream as an error, which is what an
 			// OpenAI client already expects when a stream fails partway through.
-			const finishReason = FinishReasonTranslator.translate(answer.stopReason);
+			//
+			// A model that asked for a tool has its own stop reason left untranslated, exactly as in
+			// the whole-answer path above: it stopped because it had finished asking, and the worker
+			// reports that as `interrupted` because stopping the moment a tool call is complete is
+			// how it stops. Translating that would fail every streamed answer that asked for a tool,
+			// which is what it did until this was written.
+			const finishReason = askedForTools === true ? 'tool_calls' : FinishReasonTranslator.translate(answer.stopReason);
 			writeChunk({
 				index: 0,
 				delta: {},
@@ -514,7 +542,10 @@ export class OpenaiRoutes {
 				transaction.outcome = 'completed';
 				transaction.responseBody = {
 					object: 'chat.completion.chunk',
+					// An answer that asked for a tool has no text, so the record would say nothing at
+					// all about what was answered unless the tool calls are recorded beside it.
 					answer: answer.text,
+					...(askedForTools === false ? {} : { toolCalls: answer.toolCalls }),
 				};
 			}
 			OpenaiRoutes._endStream(response);

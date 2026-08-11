@@ -916,6 +916,86 @@ Test('declares the tools to a model that reads them, and answers a tool call wit
 	}
 });
 
+Test('answers a streamed tool call with a tool_calls chunk and finish_reason tool_calls, rather than failing the task', async () => {
+	// The failure this covers was found by running `openai_api_tool tool_calls` against a real
+	// cluster: every streamed probe that ended in a tool call was answered `task_failed`, while the
+	// same probe not streamed was answered correctly. A worker stops the moment a tool call is
+	// complete, so it reports `interrupted`, and the streamed path translated that stop reason
+	// instead of reading the tool calls beside it.
+	const server = await listeningServer();
+	try {
+		const responsePromise = fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_qwen3_5_0_8b_full',
+				messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+				stream: true,
+				tools: [{
+					type: 'function',
+					function: {
+						name: 'get_current_weather',
+						description: 'Reports the current weather in one city.',
+						parameters: { type: 'object', properties: { city: { type: 'string' }, days: { type: 'integer' } } },
+					},
+				}],
+			}),
+		});
+		await waitUntil(() => server.cluster.lastSentBody()['type'] === 'task.submit');
+		const taskRequestId = server.cluster.lastSentBody()['taskRequestId'];
+
+		server.cluster.receive({ type: 'task.accepted', taskRequestId, task: { taskId: 'task-stream-tools-1', taskRequestId, state: 'queued' } });
+		server.cluster.receive({
+			type: 'task.updated',
+			update: {
+				taskId: 'task-stream-tools-1',
+				taskRevision: 2,
+				state: 'completed',
+				completedStageCount: 1,
+				currentStageAttempts: 0,
+				// No piece was ever reported, and the stop reason is `interrupted`, which is exactly
+				// what a real worker sends: a history that declared tools is generated whole, and
+				// generation is stopped as soon as the closing marker of the tool call arrives.
+				result: {
+					text: '',
+					done: true,
+					stopReason: 'interrupted',
+					toolCalls: [{ name: 'get_current_weather', argumentValues: { city: 'Paris', days: '3' } }],
+				},
+			},
+		});
+
+		const response = await responsePromise;
+		Assert.equal(response.status, 200);
+		const lines = await streamedDataLines(response);
+		Assert.equal(lines.at(-1), '[DONE]');
+		const chunks = lines.slice(0, -1).map((line) => JSON.parse(line) as {
+			choices: {
+				delta: {
+					role?: string;
+					tool_calls?: { index: number; id: string; type: string; function: { name: string; arguments: string } }[];
+				};
+				finish_reason: string | null;
+			}[];
+		});
+		// The role once, then the tool calls, then the reason the answer stopped.
+		Assert.deepEqual(chunks.map((chunk) => chunk.choices[0]?.delta.role ?? null), ['assistant', null, null]);
+		Assert.deepEqual(chunks.map((chunk) => chunk.choices[0]?.finish_reason ?? null), [null, null, 'tool_calls']);
+		const toolCall = chunks[1]?.choices[0]?.delta.tool_calls?.[0];
+		// The index says which tool call of the answer this is, since this interface allows a
+		// tool call to arrive in pieces. This server never sends one in pieces.
+		Assert.equal(toolCall?.index, 0);
+		Assert.equal(toolCall?.type, 'function');
+		Assert.equal(toolCall?.function.name, 'get_current_weather');
+		Assert.match(String(toolCall?.id), /^call_/);
+		// Typed the same way as in a whole answer: `days` becomes a number because the tool declared
+		// it as one, and `city` stays text because it was declared as text.
+		Assert.deepEqual(JSON.parse(String(toolCall?.function.arguments)), { city: 'Paris', days: 3 });
+	} finally {
+		server.close();
+	}
+});
+
 Test('submits the real history for a model that accepts one, instead of a flattened transcript', async () => {
 	const server = await listeningServer();
 	try {
