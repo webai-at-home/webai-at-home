@@ -11,7 +11,8 @@
     "prestart": "npm run build:dependencies",
     "start": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npm run typecheck"
+    "pretest": "npm run build:dependencies",
+    "test": "npm run typecheck && npx tsx --test tests/index.test.ts"
   },
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",

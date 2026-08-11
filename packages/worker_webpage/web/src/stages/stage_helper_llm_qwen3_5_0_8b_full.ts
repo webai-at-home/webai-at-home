@@ -1,5 +1,6 @@
-import { pipeline, TextStreamer, InterruptableStoppingCriteria, type TextGenerationPipeline } from '@huggingface/transformers';
-import { StagePayloadFactory, type ConversationInput, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
+import { pipeline, TextStreamer, InterruptableStoppingCriteria, type Message, type TextGenerationPipeline } from '@huggingface/transformers';
+import { StagePayloadFactory, type ConversationInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
+import { ToolCallReader } from './tool_call_reader.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -138,6 +139,14 @@ type TaskGenerationState = {
 	 * value. See milestone 3 of https://github.com/webai-at-home/webai-at-home/issues/150.
 	 */
 	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
+	/**
+	 * The tools this task's conversation declared, kept for as long as the answer is being read.
+	 *
+	 * Needed after generation as well as before it: a tool call is refused unless it names one of
+	 * these, so a model that invents a tool is reported rather than believed. Empty when the
+	 * conversation declared none, which is every task submitted before tool calling existed.
+	 */
+	declaredTools: readonly ToolDeclaration[];
 };
 
 /**
@@ -274,10 +283,18 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 		payload: LlmStagePayload,
 		generationSettings: GenerationSettings | undefined,
 	): Promise<LlmStagePayload> {
-		const wantsPieces = generationSettings?.isStreaming === true;
 		const state = payload.isContinuation === true
 			? StageHelperLlmQwen3_5_0_8bFull.heldGeneration(taskId, stageAssignmentId)
 			: StageHelperLlmQwen3_5_0_8bFull.newGeneration(taskId, stageAssignmentId);
+		if (payload.isContinuation !== true) {
+			state.declaredTools = payload.conversation?.tools ?? [];
+		}
+		// A conversation that declared tools is never read in pieces, even when the consumer asked for
+		// pieces. Until the model has finished writing, a piece of a tool call is indistinguishable
+		// from a piece of an answer — the two begin the same way — so reporting pieces would send a
+		// consumer the raw `<tool_call>` markup of a request it was supposed to receive as structured
+		// data. One run reads the whole thing and returns either an answer or the tool calls.
+		const wantsPieces = generationSettings?.isStreaming === true && state.declaredTools.length === 0;
 		// A run that returns a piece leaves the answer open behind it, so it is the one kind of
 		// run that must not release what it was reading. Every other way out of this method — the
 		// finished answer, and every failure — releases it.
@@ -305,6 +322,13 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 				}
 			}
 			StageHelperLlmQwen3_5_0_8bFull.refuseIfReplaced(state, stageAssignmentId);
+			// A tool call that cannot be read throws out of here, which fails the stage and names what
+			// could not be read. That is deliberate: a calling program runs whatever tool call it
+			// receives, so a call read wrongly is a call run wrongly on the caller's own machine.
+			const toolCalls = ToolCallReader.read(state.text, state.declaredTools);
+			if (toolCalls.length > 0) {
+				return StagePayloadFactory.llmToolCalls(toolCalls, StageHelperLlmQwen3_5_0_8bFull.usageOf(state));
+			}
 			return StagePayloadFactory.llmDone(state.text, undefined, StageHelperLlmQwen3_5_0_8bFull.usageOf(state));
 		} finally {
 			if (leavesAnswerOpen === false) {
@@ -395,6 +419,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			promptTokenCount: undefined,
 			completionTokenCount: undefined,
 			stopReason: undefined,
+			declaredTools: [],
 		};
 		StageHelperLlmQwen3_5_0_8bFull.stateByTaskId.set(taskId, state);
 		return state;
@@ -516,12 +541,32 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			add_generation_prompt: true,
 			enable_thinking: false,
 			return_dict: false,
+			...StageHelperLlmQwen3_5_0_8bFull.toolTemplateOption(state.declaredTools),
 		});
 		state.promptTokenCount = promptTensor.data?.length;
 		const criteria = new InterruptableStoppingCriteria();
 		state.criteria = criteria;
 		state.reader = StageHelperLlmQwen3_5_0_8bFull.createGenerationStream(generator, promptOrConversation, criteria, state).getReader();
 		return state.reader;
+	}
+
+	/**
+	 * Builds the `tools` option handed to the chat template, or nothing at all when the conversation
+	 * declared no tool.
+	 *
+	 * Nothing is added to the call when there are no tools, rather than an empty list, so that every
+	 * task submitted before tool calling existed produces byte for byte the prompt it always did.
+	 *
+	 * @param declaredTools The tools the conversation declared.
+	 * @returns The option to spread into the chat template call, empty when no tool was declared.
+	 */
+	private static toolTemplateOption(declaredTools: readonly ToolDeclaration[]): Record<string, unknown> {
+		if (declaredTools.length === 0) {
+			return {};
+		}
+		return {
+			tools: ToolCallReader.toChatTemplateTools(declaredTools),
+		};
 	}
 
 	/**
@@ -569,12 +614,24 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	): ReadableStream<string> {
 		let isCancelled = false;
 		const tokenIds: number[] = [];
+		// `<tool_call>` and `</tool_call>` are added tokens of this tokenizer with `special: false`,
+		// read off the pinned revision's own tokenizer.json, so they survive this decoding and the
+		// setting below does not have to change for a tool call to arrive intact.
+		let writtenSoFar = '';
 		return new ReadableStream<string>({
 			start(controller) {
 				const streamer = new TextStreamer(generator.tokenizer, {
 					skip_prompt: true,
 					skip_special_tokens: true,
 					callback_function: (chunk: string) => {
+						writtenSoFar += chunk;
+						// Stop the moment the model has finished asking for a tool. Nothing after a
+						// complete tool call is wanted, and on a volunteer's browser the tokens that
+						// would follow are not cheap. Interrupting is an ordinary stopping condition,
+						// so the generation resolves with what it had rather than throwing.
+						if (state.declaredTools.length > 0 && ToolCallReader.hasCompleteToolCall(writtenSoFar) === true) {
+							criteria.interrupt();
+						}
 						if (isCancelled === false) {
 							controller.enqueue(chunk);
 						}
@@ -585,7 +642,15 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 						}
 					},
 				});
-				generator(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrConversation), {
+				// A conversation that declared tools is rendered into a prompt here and generated from as
+				// text. The text-generation pipeline applies the chat template itself when it is handed
+				// a message list, and exposes no way to pass tool declarations through when it does, so
+				// a message list would silently produce a prompt with no tools in it. Every task that
+				// declared no tool still goes through the message list, exactly as it always has.
+				const input = state.declaredTools.length === 0
+					? StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrConversation)
+					: StageHelperLlmQwen3_5_0_8bFull.renderedPrompt(generator, promptOrConversation, state.declaredTools);
+				generator(input, {
 					max_new_tokens: MAX_NEW_TOKENS,
 					do_sample: false,
 					return_full_text: false,
@@ -695,10 +760,61 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	 * @param promptOrConversation The prompt or conversation submitted with the task.
 	 * @returns The message list to pass to the text-generation pipeline.
 	 */
-	private static messagesOf(promptOrConversation: string | ConversationInput): { role: string; content: string }[] {
+	private static messagesOf(promptOrConversation: string | ConversationInput): Message[] {
 		if (typeof promptOrConversation === 'string') {
 			return [{ role: 'user', content: promptOrConversation }];
 		}
-		return promptOrConversation.messages.map((message) => ({ role: message.role, content: message.content }));
+		// `Message` declares `role` and `content` and nothing else, while this model's chat template
+		// reads a `tool_calls` field beside them and renders it — proved in the de-risk gate for
+		// https://github.com/webai-at-home/webai-at-home/issues/115. The cast is that gap, and is kept
+		// to the one message that needs it rather than widening the whole return type.
+		return promptOrConversation.messages.map((message): Message => {
+			if (message.toolCalls === undefined) {
+				return { role: message.role, content: message.content };
+			}
+			// An assistant message that asked for tools is handed back in the shape the template reads,
+			// so the template renders it into the same form the model itself writes. That is what lets
+			// a conversation carrying a finished tool round trip be answered: the model reads its own
+			// earlier request written the way it would have written it, not a rewriting of it.
+			return {
+				role: message.role,
+				content: message.content,
+				tool_calls: message.toolCalls.map((toolCall) => ({
+					type: 'function',
+					function: {
+						name: toolCall.name,
+						arguments: toolCall.argumentValues,
+					},
+				})),
+			} as unknown as Message;
+		});
+	}
+
+	/**
+	 * Renders a conversation into the prompt text to generate from, with the declared tools in it.
+	 *
+	 * Used only when tools were declared. Every other task hands its message list to the pipeline and
+	 * lets the pipeline apply the template, exactly as before.
+	 *
+	 * @param generator The loaded text-generation pipeline, read for its tokenizer's chat template.
+	 * @param promptOrConversation The prompt or conversation submitted with the task.
+	 * @param declaredTools The tools the conversation declared.
+	 * @returns The prompt text to generate from.
+	 */
+	private static renderedPrompt(
+		generator: TextGenerationPipeline,
+		promptOrConversation: string | ConversationInput,
+		declaredTools: readonly ToolDeclaration[],
+	): string {
+		return (
+			generator.tokenizer as unknown as {
+				apply_chat_template: (messages: unknown[], options: Record<string, unknown>) => string;
+			}
+		).apply_chat_template(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrConversation), {
+			tokenize: false,
+			add_generation_prompt: true,
+			enable_thinking: false,
+			...StageHelperLlmQwen3_5_0_8bFull.toolTemplateOption(declaredTools),
+		});
 	}
 }
