@@ -70,17 +70,13 @@ A model identifier is the cluster's task type name without the leading `task_typ
 
 ## Try it
 
-The examples in [`examples/`](./examples) use the official `openai` package on npm against this server, each one runnable on its own. Start with the development formula example, which needs no model download:
+The examples that use the official `openai` package on npm against this server live in [`@webai/openai-api-tool`](../openai_api_tool/), in [`packages/openai_api_tool/examples/`](../openai_api_tool/examples), each one runnable on its own. Start with the development formula example, which needs no model download:
 
 ```sh
-npm run example:chat_completion_dev_formula --workspace @webai/consumer-openai
+npm run example:chat_completion_dev_formula --workspace @webai/openai-api-tool
 ```
 
-The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `WEBAI_OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
-
-The two `history` examples are the ones to run to see a real history reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole history rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
-
-The sweep that sends one prompt to every model in one run, and the one that checks a two-turn history across the models accepting a history, moved out of this package into [`@webai/openai-api-tool`](../openai_api_tool/), where they are the `text_completion` and `history` subcommands. The examples above remain the ones to read first: each is a short, single-purpose file explaining one model in one mode.
+Each example file says at the top what the cluster has to have running for it to work, and every example reads `WEBAI_OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set. The sweep that sends one prompt to every model in one run, and the one that checks a two-turn history across the models accepting a history, live in the same package as the `completion` and `history` subcommands. The examples remain the ones to read first: each is a short, single-purpose file explaining one model in one mode.
 
 Without the `openai` package, the same two endpoints with `curl`:
 

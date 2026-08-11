@@ -7,7 +7,8 @@
   "scripts": {
     "build": "npm run build --workspace @webai/protocol && npm run build --workspace @webai/gateway && npm run build --workspace @webai/consumer-cli && npm run build --workspace @webai/consumer-openai && npm run build --workspace @webai/openai-api-tool",
     "test": "npm run test:documentation_links && npm run test --workspaces",
-    "test:documentation_links": "npx tsx --test tests/documentation_links.test.ts"
+    "test:documentation_links": "npx tsx --test tests/documentation_links.test.ts",
+    "deploy": "git push origin main:production"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

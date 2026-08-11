@@ -4,7 +4,7 @@ The command line tool that exercises and measures a server speaking the OpenAI-c
 
 It sends chat completion requests to an endpoint, times when the first and the last character of each answer arrived, and reports what answered. It reaches this project's own [`@webai/consumer-openai`](../consumer_openai/) server and any other such server alike — LM Studio among them — which is what makes it the way the Web AI at Home cluster is compared against a model running on one machine.
 
-It holds the two programs that used to live inside `@webai/consumer-openai`, as `examples/chat_completion.ts` and `scripts/benchmark_openai_api.ts`. Both sent a chat completion request and timed it, through two separate transports, so the move gave them one shared implementation and one command line program. It is the work described by [issue #147](https://github.com/webai-at-home/webai-at-home/issues/147).
+It holds the two programs that used to live inside `@webai/consumer-openai`, as `examples/chat_completion.ts` and `scripts/benchmark_openai_api.ts` of that package, both since removed. Both sent a chat completion request and timed it, through two separate transports, so the move gave them one shared implementation and one command line program. It is the work described by [issue #147](https://github.com/webai-at-home/webai-at-home/issues/147).
 
 ## Run
 
@@ -230,6 +230,18 @@ The cluster's own row was measured on 11 August 2026 against a real worker brows
 Two of the six probes used to ask with `tool_choice: "required"` as a convenience and now ask with `"auto"`. What `fills_in_the_arguments` and `chooses_among_several_tools` need is a tool call to read, not a forced one, so forcing bought them nothing and cost them a `refused` against any endpoint honest enough to say it cannot force. Only `generates_a_call_when_forced` still asks to be forced, which is the whole of what it measures.
 
 The streamed mode passing matters on its own. The plan on issue #78 said its whole ordering rested on the tool call behaviour holding under `stream: true`, against a real server, and that this had not yet been seen. It has now been seen, on both models, and it holds.
+
+## The examples
+
+Beside the six subcommands, [`examples/`](./examples) holds one short runnable program per task type and per calling style, each one written against the official `openai` package on npm rather than against this package's own sender, and each one runnable on its own. They came here from `@webai/consumer-openai` so that every program sending a chat completion request from this repository lives in one package. Start with the development formula example, which needs no model download:
+
+```sh
+npm run example:chat_completion_dev_formula --workspace @webai/openai-api-tool
+```
+
+The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `WEBAI_OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
+
+The two `history` examples are the ones to run to see a real history reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole history rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
 
 ## Test it
 

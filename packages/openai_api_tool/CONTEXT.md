@@ -13,6 +13,7 @@ The command line tool that exercises and measures a server speaking the OpenAI-c
 - `src/generation_control_prober.ts`: the five generation control probes and what each one concludes. `src/generation_control_renderer.ts` writes out what they concluded.
 - `src/tool_call_prober.ts`: the six tool call probes and what each one concludes. `src/tool_call_renderer.ts` writes out what they concluded.
 - `src/shared_options.ts`: every command line option all six subcommands accept.
+- `examples/`: one runnable example per task type and per calling style, named `chat_completion_<style>_<task type>.ts`. Each one uses the `openai` npm package directly rather than the subcommands, and is run with its own `example:<name>` script.
 
 ## Local Rules & Boundaries
 
