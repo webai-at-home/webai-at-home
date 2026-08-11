@@ -294,7 +294,12 @@ export class ToolCallProber {
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeFillsInTheArguments(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
-		const asked = await ToolCallProber._askUntilACall(options, [weatherTool], 'required', prompts.weather);
+		// Asked with `auto` rather than `required`, unlike the probe above. This probe needs a tool
+		// call to read, not a forced one, and an endpoint that refuses to be forced — as this
+		// project's own `consumer_openai` server does, because it cannot enforce the request and
+		// will not accept what it would have to ignore — would otherwise report `refused` for an
+		// ability it can perfectly well demonstrate.
+		const asked = await ToolCallProber._askUntilACall(options, [weatherTool], 'auto', prompts.weather);
 		const failure = ToolCallProber._failureOf(options, 'fills_in_the_arguments', asked);
 		if (failure !== undefined) {
 			return failure;
@@ -368,7 +373,9 @@ export class ToolCallProber {
 	 */
 	private static async _probeChoosesAmongSeveralTools(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
 		const declared = [weatherTool, timeTool, stockPriceTool];
-		const asked = await ToolCallProber._askUntilACall(options, declared, 'required', prompts.time);
+		// Asked with `auto`, for the same reason the arguments probe is: what this probe needs is a
+		// tool call to read the choice out of, not a forced one.
+		const asked = await ToolCallProber._askUntilACall(options, declared, 'auto', prompts.time);
 		const failure = ToolCallProber._failureOf(options, 'chooses_among_several_tools', asked);
 		if (failure !== undefined) {
 			return failure;

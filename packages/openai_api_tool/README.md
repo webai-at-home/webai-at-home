@@ -217,12 +217,17 @@ Measured on 11 August 2026, against LM Studio's server on `http://localhost:1234
 
 | Model | Generates a call | Generates a call when forced | Fills in the arguments | Chooses among several tools | Reads a tool result back | Answers without a call when none is needed |
 | --- | --- | --- | --- | --- | --- | --- |
-| `qwen_qwen3.5-0.8b` | yes | yes | yes | yes | yes | yes |
-| `qwen3.5-2b-mlx` | yes | yes | yes | yes | yes | yes |
+| `qwen_qwen3.5-0.8b` (LM Studio) | yes | yes | yes | yes | yes | yes |
+| `qwen3.5-2b-mlx` (LM Studio) | yes | yes | yes | yes | yes | yes |
+| `llm_qwen3_5_0_8b_full` (this cluster) | yes | refused | yes | yes | yes | yes |
 
 Both models scored 12 of 12, counting the nostream mode and the streamed mode separately, and both asked for `get_current_weather` on all three repeats of both elicitation probes.
 
 This overturns the reason tool calling was dropped from this project. The de-risk gate of [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) was run against `llama-3.2-3b-instruct` and nothing else, and it found a model that never generates a tool call under any condition. That finding was correct about that model, and it was read as a finding about tool calling. `qwen_qwen3.5-0.8b` is the LM Studio name for the model the cluster already serves as `llm_qwen3_5_0_8b_full`, so the first model issue #78 named to carry tool calling does every part of it, and needs nothing downloaded that this project does not already run.
+
+The cluster's own row was measured on 11 August 2026 against a real worker browser tab holding the model, through `consumer_openai`. Its one non-`supported` result is not a failure of the model: `consumer_openai` refuses `tool_choice: "required"` outright, because enforcing it means constraining generation and the chat templates this cluster drives cannot express that. Refusing is the point — it is the failure that closed [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78), where a server accepted that setting, did not enforce it, and the model's answering in words read as "this model cannot call tools" when nothing had ever made it try. So `generates_a_call_when_forced` cannot be measured against this cluster, and the endpoint says so plainly rather than pretending.
+
+Two of the six probes used to ask with `tool_choice: "required"` as a convenience and now ask with `"auto"`. What `fills_in_the_arguments` and `chooses_among_several_tools` need is a tool call to read, not a forced one, so forcing bought them nothing and cost them a `refused` against any endpoint honest enough to say it cannot force. Only `generates_a_call_when_forced` still asks to be forced, which is the whole of what it measures.
 
 The streamed mode passing matters on its own. The plan on issue #78 said its whole ordering rested on the tool call behaviour holding under `stream: true`, against a real server, and that this had not yet been seen. It has now been seen, on both models, and it holds.
 
