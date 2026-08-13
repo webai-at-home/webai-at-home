@@ -7,7 +7,7 @@ The single command line program published to the npm registry as `webai-at-home`
 ```sh
 npx webai-at-home gateway
 npx webai-at-home worker_openai --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
-npx webai-at-home submit "What is the capital of France?" --task_type llm_llama3_2_1b_full
+npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
 The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already serving a model on `http://localhost:1234/v1`. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
@@ -23,7 +23,7 @@ The first word of the command line decides:
 | `worker_openai` | [`@webai/worker-openai`](../worker_openai/README.md), the native worker |
 | anything else | [`@webai/consumer-cli`](../consumer_cli/README.md), on the whole command line unchanged |
 
-"Anything else" covers every `consumer_cli` subcommand — `submit`, `status`, `capacity`, `log_stats`, and the account commands — and a global option such as `--url` written ahead of one of them, since `consumer_cli` is what reads it. See each program's own README, linked above, for its own options.
+"Anything else" covers every `consumer_cli` subcommand — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — and a global option such as `--url` written ahead of one of them, since `consumer_cli` is what reads it. See each program's own README, linked above, for its own options.
 
 ## Build
 

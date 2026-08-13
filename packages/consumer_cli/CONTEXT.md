@@ -6,12 +6,12 @@ The command line client of `webai-at-home`. It submits a task to the central gat
 
 ## Key Exports & Entry Points
 
-- `src/cli.ts`: the `consumer_cli` command line program, linked into the repository's `node_modules/.bin` once the package is built. Its subcommands are `submit`, `status`, `capacity`, `log_stats`, `account_key`, `account_register`, `account_information`, `account_balance`, and `account_history`.
+- `src/cli.ts`: the `consumer_cli` command line program, linked into the repository's `node_modules/.bin` once the package is built. Its subcommands are `submit`, `status`, `capacity`, `log_statistics`, `account_key`, `account_register`, `account_information`, `account_balance`, and `account_history`.
 - `src/index.ts`: what another package may import from `@webai/consumer-cli` — `ConsumerClient` and `TaskInputFactory`. `@webai/consumer-openai` reuses `ConsumerClient` to speak the consumer side of the gateway protocol.
 - `src/gateway_connection/`: `consumer_client.ts`, `observer_client.ts`, and `gateway_session.ts`.
 - `src/commands/`: one file per subcommand, each named `<subcommand>_command.ts`.
 - `src/cluster_capacity/`: `capacity_calculator.ts` and `device_availability.ts`, behind the `capacity` subcommand.
-- `src/message_log/`: reads and summarises a recorded `.log_entry.jsonl` file, behind the `log_stats` subcommand.
+- `src/message_log/`: reads and summarises a recorded `.log_entry.jsonl` file, behind the `log_statistics` subcommand, which also answers to its earlier name `log_stats`.
 - `src/account/`: `account_client.ts` and `account_output_format.ts`, behind the account subcommands.
 
 ## Local Rules & Boundaries

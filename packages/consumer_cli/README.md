@@ -2,7 +2,7 @@
 
 Command-line client for the central gateway: submitting tasks, reading the worker cluster's current state, and estimating its capacity.
 
-The program has four subcommands about tasks and the cluster: `submit` sends one task and shows its updates until it completes or fails, `status` reports the connected workers and their free capacity, `capacity` estimates how many concurrent runs of a task type the cluster can currently support, and `log_stats` measures one already recorded `.log_entry.jsonl` message log file.
+The program has four subcommands about tasks and the cluster: `submit` sends one task and shows its updates until it completes or fails, `status` reports the connected workers and their free capacity, `capacity` estimates how many concurrent runs of a task type the cluster can currently support, and `log_statistics` measures one already recorded `.log_entry.jsonl` message log file.
 
 It has five further subcommands about this participant's own account in the accounting system: `account_key` generates the key pair that is the account, `account_register` tells the central gateway about it, and `account_information`, `account_balance`, and `account_history` read back what the gateway holds for it. [`docs/accounting_system.md`](../../docs/accounting_system.md) describes what an account and a credit are; the sections below describe the commands.
 
@@ -12,7 +12,7 @@ Once this package has been built (`npm run build --workspace @webai/consumer-cli
 
 ```sh
 npx consumer_cli status
-npx consumer_cli submit 5
+npx consumer_cli submit --task_type dev_formula 5
 npx consumer_cli capacity --task_type dev_formula
 ```
 
@@ -24,7 +24,7 @@ Every subcommand accepts:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-u, --url <url>` | `GATEWAY_WS_URL` environment variable, then `ws://localhost:8787` | The central gateway's WebSocket URL. |
+| `-u, --url <url>` | `GATEWAY_WS_URL` environment variable, then `wss://webai-gateway.dash-menu.com/` | The central gateway's WebSocket URL. |
 | `-a, --auth-token <token>` | `GATEWAY_AUTH_TOKEN` environment variable, then `development-token` | Bearer token for the central gateway. |
 
 `GATEWAY_WS_URL` and `GATEWAY_AUTH_TOKEN` are the same two names `packages/worker_openai` and `packages/docker_server` use for the same two settings, so one pair of exported variables points every program on this machine at the same gateway. See [`docs/environment_variables.md`](../../docs/environment_variables.md) for every variable this project reads and which programs read none.
@@ -34,32 +34,34 @@ Every subcommand accepts:
 From the repository root, with the central gateway running:
 
 ```sh
-npm run dev --workspace @webai/consumer-cli -- submit 5
+npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 5
 ```
 
 Set the registered consumer name with `--consumer_name`, for example:
 
 ```sh
-npm run dev --workspace @webai/consumer-cli -- submit --consumer_name dev-formula-consumer 5
+npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula --consumer_name dev-formula-consumer 5
 ```
 
 Use `--url` to connect to another WebSocket endpoint:
 
 ```sh
-npm run dev --workspace @webai/consumer-cli -- submit 5 --url ws://localhost:9000
+npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 5 --url ws://localhost:9000
 ```
 
 `submit`'s own options:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-t, --task_type <type>` | `dev_formula` | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
+| `-t, --task_type <type>` | — | Required. One of `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
 | `-n, --consumer_name <name>` | `consumer` | Name registered with the gateway. |
 | `-s, --stream` | off | Ask a language-model task to return answer pieces while it runs. |
 
+`-t/--task_type` is required and has no default: which task type to run is the decision of the person submitting, and this program cannot make it for them. A `submit` without it stops with `error: required option '-t, --task_type <type>' not specified` before it connects to anything. See [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171).
+
 Use `-t/--task_type` to choose the task type:
 
-- `dev_formula` (default) takes a number.
+- `dev_formula` takes a number.
 - `llm_qwen3_0_6b_sharded` takes free text, and is run by three worker browser tabs, each holding one shard of the Qwen3-0.6B model.
 - `llm_gemma_nano_chrome_full` takes free text, and is run by one worker browser tab using the Gemma Nano model built into Chrome.
 - `llm_qwen3_5_0_8b_full` takes free text, and is run by one worker browser tab that downloads and holds the complete Qwen3.5-0.8B model.
@@ -129,12 +131,12 @@ A pipeline whose every stage keeps state on one worker between rounds — such a
 
 An unknown task type is an error with a non-zero exit code. `--task_type` is required.
 
-## `log_stats`
+## `log_statistics`
 
 Reads one message log file — a `.log_entry.jsonl` file written by `MessageLogger` (see `@webai/protocol/message_logger`), for example one of the gateway's own `packages/gateway/logs/gateway-*.log_entry.jsonl` files — and prints everything it measures: how much traffic it carried, who carried it, how long every reply and every task and every stage run took, and anything about the file worth a second look. It never connects to the central gateway, so it measures a capture from weeks ago exactly the same way as one from a moment ago.
 
 ```sh
-npm run dev --workspace @webai/consumer-cli -- log_stats ../gateway/logs/gateway-2026-08-02T03-09-46-028Z.log_entry.jsonl
+npm run dev --workspace @webai/consumer-cli -- log_statistics ../gateway/logs/gateway-2026-08-02T03-09-46-028Z.log_entry.jsonl
 ```
 
 | Option | Default | Meaning |

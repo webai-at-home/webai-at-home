@@ -71,12 +71,12 @@ The central research questions are still open, especially result verification, b
 
 ## Run without cloning this repository
 
-`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai` and `worker_openai` each run the command line program of the same name; every other command — `submit`, `status`, `capacity`, and the account commands — runs `consumer_cli`.
+`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai` and `worker_openai` each run the command line program of the same name; every other command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs `consumer_cli`.
 
 ```sh
 npx webai-at-home gateway
 npx webai-at-home worker_openai --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
-npx webai-at-home submit "What is the capital of France?" --task_type llm_llama3_2_1b_full
+npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
 The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already serving a model on `http://localhost:1234/v1`. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
@@ -86,7 +86,7 @@ The worker above expects an OpenAI-compatible server, such as [LM Studio](https:
 ```sh
 npm install
 npm run dev --workspace @webai/gateway
-npm run dev --workspace @webai/consumer-cli -- submit 5
+npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 5
 ```
 
 Start the worker browser page with `npm run dev --workspace @webai/worker-webpage`. Open the worker page in two browser tabs, then open `http://localhost:8787/home` in another browser tab. The development formula pipeline multiplies the input by `2` and then adds `7`, so input `5` produces `17`. The gateway uses the development bearer token `development-token` by default; pass the same token in the worker page's `authToken` query parameter when it is not using that default.

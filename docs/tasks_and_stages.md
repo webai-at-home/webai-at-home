@@ -60,7 +60,7 @@ npm run sample:dev_formula --workspace @webai/consumer-cli
 That script submits the number 5 under the consumer name `dev-formula-consumer`. To submit a different number, call the command line client directly:
 
 ```bash
-npm run dev --workspace @webai/consumer-cli -- submit --type dev_formula 12
+npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 12
 ```
 
 ### Task type `task_type_llm_qwen3_0_6b_sharded`
@@ -104,7 +104,7 @@ npm run sample:llm_qwen3_0_6b_sharded --workspace @webai/consumer-cli
 That script submits the prompt "What is the capital of France?" under the consumer name `llm-qwen3-0-6b-sharded-consumer`. To submit a different prompt, call the command line client directly:
 
 ```bash
-npm run dev --workspace @webai/consumer-cli -- submit --type llm_qwen3_0_6b_sharded "Write one sentence about rain."
+npm run dev --workspace @webai/consumer-cli -- submit --task_type llm_qwen3_0_6b_sharded "Write one sentence about rain."
 ```
 
 ### Task type `task_type_llm_gemma_nano_chrome_full`
@@ -164,7 +164,7 @@ npm run sample:llm_gemma_nano_chrome_full --workspace @webai/consumer-cli
 That script submits the prompt "What is the capital of France?" under the consumer name `llm-gemma-nano-chrome-full-consumer`. To submit a different prompt, call the command line client directly:
 
 ```bash
-npm run dev --workspace @webai/consumer-cli -- submit --type llm_gemma_nano_chrome_full "Write one sentence about rain."
+npm run dev --workspace @webai/consumer-cli -- submit --task_type llm_gemma_nano_chrome_full "Write one sentence about rain."
 ```
 
 ### Task type `task_type_llm_qwen3_5_0_8b_full`
@@ -209,7 +209,7 @@ npm run sample:llm_qwen3_5_0_8b_full --workspace @webai/consumer-cli
 That script submits the prompt "What is the capital of France?" under the consumer name `llm-qwen3-5-0-8b-full-consumer`. To submit a different prompt, call the command line client directly:
 
 ```bash
-npm run dev --workspace @webai/consumer-cli -- submit --type llm_qwen3_5_0_8b_full "Write one sentence about rain."
+npm run dev --workspace @webai/consumer-cli -- submit --task_type llm_qwen3_5_0_8b_full "Write one sentence about rain."
 ```
 
 ### Task type `task_type_llm_llama3_2_1b_full`
@@ -261,7 +261,7 @@ npm run sample:llm_llama3_2_1b_full --workspace @webai/consumer-cli
 That script submits the prompt "What is the capital of France?" under the consumer name `llm-llama3-2-1b-full-consumer`. To submit a different prompt, call the command line client directly:
 
 ```bash
-npm run dev --workspace @webai/consumer-cli -- submit --type llm_llama3_2_1b_full "Write one sentence about rain."
+npm run dev --workspace @webai/consumer-cli -- submit --task_type llm_llama3_2_1b_full "Write one sentence about rain."
 ```
 
 ## Every stage in the cluster

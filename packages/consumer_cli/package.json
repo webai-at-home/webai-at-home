@@ -36,14 +36,14 @@
     "sample:status": "npx tsx src/cli.ts status -f json | jq",
     "presample:capacity": "npm run build:dependencies",
     "sample:capacity": "npx tsx src/cli.ts capacity --task_type dev_formula -f json | jq",
-    "presample:log_stats": "npm run build:dependencies",
-    "sample:log_stats": "npx tsx src/cli.ts log_stats ../gateway/logs/$(ls -t ../gateway/logs | grep log_entry.jsonl | head -1)",
+    "presample:log_statistics": "npm run build:dependencies",
+    "sample:log_statistics": "npx tsx src/cli.ts log_statistics ../gateway/logs/$(ls -t ../gateway/logs | grep log_entry.jsonl | head -1)",
     "build": "tsc -p tsconfig.build.json",
     "build:dependencies": "npm run build --workspace @webai/protocol",
     "typecheck": "tsc -p tsconfig.json",
     "predev": "npm run build:dependencies",
     "dev": "tsx src/cli.ts --url ws://localhost:8787",
-    "test": "npx tsx --test tests/index.test.ts tests/log_stats.test.ts"
+    "test": "npx tsx --test tests/index.test.ts tests/log_statistics.test.ts"
   },
   "dependencies": {
     "@webai/protocol": "0.1.0",

@@ -21,7 +21,7 @@ import { AccountIdentityFile } from '@webai/protocol/account_identity_file';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Cli — the consumer command line program: submit, status, capacity, log_stats, and the account commands
+//	Cli — the consumer command line program: submit, status, capacity, log_statistics, and the account commands
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -60,8 +60,9 @@ type GlobalOptions = {
 /**
  * The command line program of the consumer: `submit` sends one task to the central gateway,
  * `status` reports the current worker cluster state, `capacity` estimates how many concurrent
- * runs of a task type the cluster can currently support, and `log_stats` measures one already
- * recorded message log file without connecting to anything.
+ * runs of a task type the cluster can currently support, and `log_statistics` measures one already
+ * recorded message log file without connecting to anything. `log_statistics` also answers to its
+ * earlier name, `log_stats`.
  *
  * Five further commands read and write this participant's own account, which is what the accounting
  * system of issue #122 records contributed and consumed computation against: `account_key`
@@ -93,8 +94,15 @@ export class Cli {
 
 		program
 			.command('submit')
+			.description('send one task to the central gateway, and print its updates until it completes or fails')
 			.argument('<input>', 'number for dev_formula, free text for every language-model task type')
-			.option('-t, --task_type <type>', `task type: ${taskTypeNames.join(', ')}`, 'dev_formula')
+			// Required, and with no default: which task type to run is the decision of the person
+			// submitting, and this program cannot make it for them. It used to default to
+			// `dev_formula`, so `submit "What is the capital of France?"` — the first command a
+			// user is likely to type — reached the development formula task and failed with
+			// `Input must be a finite number`. `capacity` already declared this option the same
+			// way. See issue #171.
+			.requiredOption('-t, --task_type <type>', `task type: ${taskTypeNames.join(', ')}`)
 			.option('-n, --consumer_name <name>', 'consumer name', 'consumer')
 			.option(
 				'-s, --stream',
@@ -171,6 +179,10 @@ export class Cli {
 
 		program
 			.command('capacity')
+			.description(
+				'estimate how many concurrent runs of one task type the connected workers could'
+					+ ' support right now',
+			)
 			.requiredOption('--task_type <type>', `task type: ${taskTypeNames.join(', ')}`)
 			.option('-f, --format <format>', `output format: ${capacityFormats.join(', ')}`, 'text')
 			.option('--timeout <ms>', 'how long to wait for the central gateway to answer', '10000')
@@ -192,7 +204,16 @@ export class Cli {
 			});
 
 		program
-			.command('log_stats')
+			.command('log_statistics')
+			// `log_stats` was this command's only name until issue #171, which found it to be the
+			// one shortened name in a set that otherwise writes its names out in full, next to
+			// `account_information`, `account_balance` and `account_history`. The old name keeps
+			// working so that anything already written against it does not break.
+			.alias('log_stats')
+			// This command reads one file already on this machine and connects to nothing, so the
+			// central gateway's URL and its bearer token do not apply to it and are left out of
+			// its help, even though every connecting command shows them.
+			.configureHelp({ showGlobalOptions: false })
 			.description(
 				'measure one .log_entry.jsonl message log file and print what it says: how much'
 					+ ' traffic it carried, who carried it, how long every answer took, what'
@@ -225,6 +246,10 @@ export class Cli {
 
 		program
 			.command('account_key')
+			// This command generates a key pair on this machine and connects to nothing — its own
+			// description says so — so the central gateway's URL and its bearer token do not apply
+			// to it and are left out of its help. See issue #171.
+			.configureHelp({ showGlobalOptions: false })
 			.description(
 				'generate the key pair that is this participant\'s account, and print the account'
 					+ ' identifier it produces. It talks to nothing: the identifier is a digest of'

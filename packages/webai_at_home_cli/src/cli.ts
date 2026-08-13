@@ -26,7 +26,7 @@ const namedSubcommands = ['gateway', 'consumer_openai', 'worker_openai'] as cons
  *
  * `gateway`, `consumer_openai` and `worker_openai` each name one of the other three command line
  * programs in this repository and run it, unchanged, on whatever follows. Any other first word —
- * `submit`, `status`, `capacity`, `log_stats`, or one of the account commands, but also a global
+ * `submit`, `status`, `capacity`, `log_statistics`, or one of the account commands, but also a global
  * option such as `--url` written before any of those, the way `@webai/consumer-cli`'s own usage
  * documents it — is not a command of this program at all: it is handed whole to
  * `@webai/consumer-cli`, the participant program every other command name and every bare option
@@ -110,7 +110,7 @@ export class Cli {
 					+ '  submit                send one task to the central gateway\n'
 					+ '  status                report the current worker cluster state\n'
 					+ '  capacity              estimate how many concurrent runs of a task type the cluster can support\n'
-					+ '  log_stats             measure one already recorded message log file\n'
+					+ '  log_statistics        measure one already recorded message log file\n'
 					+ '  account_key           generate this participant\'s account key pair\n'
 					+ '  account_register      tell the central gateway about this participant\'s account\n'
 					+ '  account_information   read this participant\'s own account profile\n'
