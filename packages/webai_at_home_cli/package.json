@@ -10,7 +10,7 @@
 	},
 	"type": "module",
 	"bin": {
-		"webai-at-home": "./dist/cli.js"
+		"webai-at-home": "dist/cli.js"
 	},
 	"files": [
 		"dist"
