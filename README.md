@@ -47,7 +47,7 @@ The central research questions are still open, especially result verification, b
 
 ## Repository layout
 
-- [`packages/webai_at_home_cli`](packages/webai_at_home_cli/CONTEXT.md) — the single command line program published to the npm registry as `webai-at-home`, dispatching to the gateway, the OpenAI-compatible server, the native worker, and the command-line client below.
+- [`packages/webai_at_home_cli`](packages/webai_at_home_cli/README.md) — the single command line program published to the npm registry as `webai-at-home`, dispatching to the gateway, the OpenAI-compatible server, the native worker, and the command-line client below.
 - [`packages/gateway`](packages/gateway/README.md) — coordinator HTTP and WebSocket gateway, scheduling, and home and worker pages.
 - [`packages/protocol`](packages/protocol/README.md) — shared message and task definitions with validation.
 - [`packages/consumer_cli`](packages/consumer_cli/README.md) — command-line client for submitting test tasks.
