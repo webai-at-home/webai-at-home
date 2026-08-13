@@ -1,15 +1,15 @@
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	FixtureTypes — the shape of the two files make_expert_block_graph_fixture.mjs writes
+//	FixtureTypes — the shape of the two files make_expert_block_graph_fixture.ts writes
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
  * This gate cannot invent its own input. The whole question is whether ONNX Runtime Web reads the bytes that
- * `convert_mixture_of_experts_to_expert_blocks.mjs` actually wrote, so the block has to come from that pipeline, and
+ * `convert_mixture_of_experts_to_expert_blocks.ts` actually wrote, so the block has to come from that pipeline, and
  * the answer to compare against has to be computed somewhere other than in this browser.
  *
- * `packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs` writes both, and these types describe what it
+ * `packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.ts` writes both, and these types describe what it
  * writes.
  */
 

@@ -49,14 +49,14 @@ key/value cache, from one session to the next.
 Verify three autoregressive steps with ONNX Runtime Node:
 
 ```sh
-node packages/_onnx_experiments/tools/qwen3_shard_export/verify_qwen3_shards.mjs
+npx tsx packages/_onnx_experiments/tools/qwen3_shard_export/verify_qwen3_shards.ts
 ```
 
 Pass the original monolithic model as an optional argument to compare the first
 shard pipeline result against the original graph:
 
 ```sh
-node packages/_onnx_experiments/tools/qwen3_shard_export/verify_qwen3_shards.mjs /tmp/qwen3-model_q4f16.onnx
+npx tsx packages/_onnx_experiments/tools/qwen3_shard_export/verify_qwen3_shards.ts /tmp/qwen3-model_q4f16.onnx
 ```
 
 ## Qwen3-30B-A3B residency measurement
@@ -64,7 +64,7 @@ node packages/_onnx_experiments/tools/qwen3_shard_export/verify_qwen3_shards.mjs
 Answers milestone 1 of [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): does the always-resident part of Qwen3-30B-A3B fit in the graphics memory of the target machine? Streaming only helps for the part of a model that is inactive most of the time, so if the part that must stay resident does not fit on its own, the approach of [issue #168](https://github.com/webai-at-home/webai-at-home/issues/168) stops there.
 
 ```sh
-node packages/_onnx_experiments/tools/weight_conversion/measure_qwen3_moe_residency.mjs
+npx tsx packages/_onnx_experiments/tools/weight_conversion/measure_qwen3_moe_residency.ts
 ```
 
 The tool downloads no model. It reads the real shape of every one of the 18867 published tensors out of the safetensors headers over HTTP range requests, which is about 20 megabytes rather than the 57 gigabytes of weights, and classifies each tensor as an expert weight or as always resident. Nothing is trusted to arithmetic done from `config.json`.
@@ -74,7 +74,7 @@ The tool downloads no model. It reads the real shape of every one of the 18867 p
 Answers the question milestone 3 of [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169) has to answer before any conversion is worth running: does 4-bit block quantization in the layout `MatMulNBits` reads keep a real Qwen3-30B-A3B expert usable, and which block size and which scheme should the conversion write?
 
 ```sh
-node packages/_onnx_experiments/tools/weight_conversion/gate_quantize_real_expert.mjs
+npx tsx packages/_onnx_experiments/tools/weight_conversion/gate_quantize_real_expert.ts
 ```
 
 The gate downloads about 9 megabytes by HTTP range request: three real expert weight matrices out of `Qwen/Qwen3-30B-A3B`, and the same expert as already published by `mlx-community/Qwen3-30B-A3B-4bit`. That second download is what makes the gate mean anything. Quantization error has no absolute threshold that can be argued for from first principles, so the gate compares against a 4-bit conversion of the same model that people already use, and asks only that this conversion is no worse than that one.
@@ -225,10 +225,10 @@ packages/_onnx_experiments/tools/.venv/bin/python \
 
 The sizes come out of the conversion's own manifest rather than off the command line, because a graph built to sizes that do not match the blocks on disk loads perfectly well and then reads the wrong bytes.
 
-`make_expert_block_graph_fixture.mjs` writes what [the expert block graph gate](../public/expert-block-graph-gate/README.md) compares against: one real converted block, and the same expert computed twice on the processor side from that block's own bytes — once in single precision, and once with every intermediate value and every running total rounded to half precision.
+`make_expert_block_graph_fixture.ts` writes what [the expert block graph gate](../public/expert-block-graph-gate/README.md) compares against: one real converted block, and the same expert computed twice on the processor side from that block's own bytes — once in single precision, and once with every intermediate value and every running total rounded to half precision.
 
 ```sh
-node packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs \
+npx tsx packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.ts \
   --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --block 0
 ```
 
@@ -239,7 +239,7 @@ Two answers rather than one, because the gate needs a bracket instead of a thres
 Writes the on-disk layout milestone 3 asks for: the always-resident part in one file, and every expert block in another, each block one contiguous 256-byte-aligned region holding one expert's quantized weights, scales, and zero points together.
 
 ```sh
-node packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs \
+npx tsx packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.ts \
   --model Qwen3-30B-A3B \
   --output /tmp/qwen3-30b-a3b-expert-blocks
 ```

@@ -6,7 +6,7 @@
 
 /**
  * One part of one expert block, as written by
- * `packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs` and described in the published
+ * `packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.ts` and described in the published
  * `manifest.json`.
  */
 export type BlockPart = {

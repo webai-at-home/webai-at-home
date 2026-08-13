@@ -1,9 +1,9 @@
-#!/usr/bin/env node
-
 import Fs from 'node:fs';
 import Path from 'node:path';
-import { QuantizeMatmulnbits } from './quantize_matmulnbits.mjs';
-import { SafetensorsReader } from './safetensors_reader.mjs';
+import { QuantizeMatmulnbits } from './quantize_matmulnbits.js';
+import type { QuantizationOptions } from './quantize_matmulnbits.js';
+import { SafetensorsReader } from './safetensors_reader.js';
+import type { LocatedTensor, SafetensorsHeaderEntry, SafetensorsIndex } from './safetensors_reader.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -20,7 +20,7 @@ import { SafetensorsReader } from './safetensors_reader.mjs';
  * it misses, and a layout that put the scales in some other file would turn every miss into two reads and every
  * measurement in milestone 6 into a measurement of that mistake.
  *
- * The quantization scheme is not chosen here. `gate_quantize_real_expert.mjs` measured six of them against real
+ * The quantization scheme is not chosen here. `gate_quantize_real_expert.ts` measured six of them against real
  * published weights and against `mlx-community/Qwen3-30B-A3B-4bit`, and this pipeline writes the one that gate
  * chose: 4 bits, blocks of 32, each block fitted to its own range with its own zero point.
  *
@@ -33,23 +33,24 @@ import { SafetensorsReader } from './safetensors_reader.mjs';
  * its converted form still fits on the target machine and so it can be run both ways and compared.
  */
 
-/**
- * One model this pipeline knows how to convert.
- *
- * @typedef {object} ModelDescription
- * @property {string} repository The Hugging Face repository holding the published weights.
- * @property {string} revision The revision to read, pinned rather than left at `main`, so that anything published
- *     from this pipeline names the exact bytes it was made from.
- * @property {string} expertWidthKey Which configuration key holds the width of one expert's inner projection. The two
- *     models disagree on the name, and reading the wrong key produces a plausible layout of the wrong size.
- */
+/** One model this pipeline knows how to convert. */
+type ModelDescription = {
+	/** The Hugging Face repository holding the published weights. */
+	repository: string;
+	/**
+	 * The revision to read, pinned rather than left at `main`, so that anything published from this pipeline names the
+	 * exact bytes it was made from.
+	 */
+	revision: string;
+	/**
+	 * Which configuration key holds the width of one expert's inner projection. The two models disagree on the name,
+	 * and reading the wrong key produces a plausible layout of the wrong size.
+	 */
+	expertWidthKey: string;
+};
 
-/**
- * Every model this pipeline converts, named as `--model` names them.
- *
- * @type {Record<string, ModelDescription>}
- */
-const MODEL_DESCRIPTIONS = {
+/** Every model this pipeline converts, named as `--model` names them. */
+const MODEL_DESCRIPTIONS: Record<string, ModelDescription> = {
 	'Qwen3-30B-A3B': {
 		repository: 'Qwen/Qwen3-30B-A3B',
 		revision: 'ad44e777bcd18fa416d9da3bd8f70d33ebb85d39',
@@ -61,13 +62,13 @@ const MODEL_DESCRIPTIONS = {
 		expertWidthKey: 'intermediate_size',
 	},
 };
-/** The quantization scheme, as chosen by `gate_quantize_real_expert.mjs` against real weights. */
-const SCHEME = {
+/** The quantization scheme, as chosen by `gate_quantize_real_expert.ts` against real weights. */
+const SCHEME: QuantizationOptions = {
 	blockSize: 32,
 	scheme: 'asymmetric',
 };
 /** The three projections one expert is made of, in the order they are written into a block. */
-const PROJECTION_NAMES = ['gate_proj', 'up_proj', 'down_proj'];
+const PROJECTION_NAMES = ['gate_proj', 'up_proj', 'down_proj'] as const;
 /** The alignment every part of an expert block starts on. */
 const PART_ALIGNMENT = 256;
 /** How many bytes one contiguous range request may cover, which bounds how much memory a run holds. */
@@ -75,23 +76,164 @@ const LARGEST_RUN_BYTE_LENGTH = 96 * 1024 * 1024;
 /** How many times a range request is retried before the run gives up, since a conversion runs for hours. */
 const REQUEST_ATTEMPT_COUNT = 5;
 
-/**
- * One part of one expert block.
- *
- * @typedef {object} BlockPart
- * @property {string} name What the part holds, such as `gate_proj quantized`.
- * @property {number} offset Where the part starts inside the block, in bytes.
- * @property {number} byteLength How long the part is, in bytes.
- */
+/** The parts of the published `config.json` this pipeline reads by name, plus whichever expert-width key applies. */
+type Configuration = {
+	/** How many decoder layers the model has. */
+	num_hidden_layers: number;
+	/** How many experts one layer holds. */
+	num_experts: number;
+	/** How many experts each token selects in each layer. */
+	num_experts_per_tok: number;
+	/** The width of one token's activation. */
+	hidden_size: number;
+	/** Every other configuration key, read only through `ModelDescription.expertWidthKey`. */
+	[key: string]: unknown;
+};
+
+/** One part of one expert block. */
+type BlockPart = {
+	/** What the part holds, such as `gate_proj quantized`. */
+	name: string;
+	/** Where the part starts inside the block, in bytes. */
+	offset: number;
+	/** How long the part is, in bytes. */
+	byteLength: number;
+};
+
+/** Where every part of an expert block sits. */
+type BlockLayout = {
+	/** How long one whole block is, in bytes. */
+	blockByteLength: number;
+	/** The nine parts, in the order they are written. */
+	parts: BlockPart[];
+};
+
+/** One located tensor belonging to one expert's one projection. */
+type LocatedExpertTensor = {
+	/** Which expert of the layer this tensor belongs to. */
+	expertIndex: number;
+	/** Which of the three projections this tensor is. */
+	projectionName: string;
+	/** Where the tensor's bytes are. */
+	tensor: LocatedTensor;
+};
+
+/** What one written resident file cost, for the manifest. */
+type ResidentManifestEntry = {
+	/** The file's name. */
+	fileName: string;
+	/** How many tensors it holds. */
+	tensorCount: number;
+	/** How long the file is, in bytes. */
+	byteLength: number;
+	/** Whether the tensors were quantized. This part never is. */
+	isQuantized: boolean;
+	/** The element type the tensors are stored at. */
+	elementType: string;
+	/** Why they are stored the way they are. */
+	note: string;
+};
+
+/** Everything this pipeline writes to `manifest.json`. */
+export type ConversionManifest = {
+	/** The tool that wrote this. */
+	producedBy: string;
+	/** The issue this conversion belongs to. */
+	issue: string;
+	/** Which of `MODEL_DESCRIPTIONS` this is. */
+	modelName: string;
+	/** The Hugging Face repository the weights came from. */
+	sourceRepository: string;
+	/** The pinned revision of that repository. */
+	sourceRevision: string;
+	/** The quantization scheme this conversion wrote. */
+	quantization: {
+		/** How many bits one quantized value costs. */
+		bits: number;
+		/** How many weights share one scale. */
+		blockSize: number;
+		/** Which scheme was used. */
+		scheme: string;
+		/** Whether a zero point tensor was written for every block. */
+		zeroPointIsStored: boolean;
+		/** Whether the scales are stored at half precision. */
+		scalesAreHalfPrecision: boolean;
+		/** In words, how a stored value is restored. */
+		storedValueMeaning: string;
+	};
+	/** What the expert blocks hold. */
+	experts: {
+		/** How many decoder layers the model has. */
+		layerCount: number;
+		/** How many experts one layer holds. */
+		expertsForEachLayer: number;
+		/** In words, how a layer and an expert become a block number. */
+		blockIndexFormula: string;
+		/** How long one block is, in bytes. */
+		blockByteLength: number;
+		/** The nine parts one block is made of, in order. */
+		parts: BlockPart[];
+		/** The first layer this run converted. */
+		convertedFirstLayer: number;
+		/** The last layer this run converted. */
+		convertedLastLayer: number;
+		/** How many expert blocks this run wrote. */
+		convertedExpertCount: number;
+	};
+	/** What the resident file holds. */
+	resident: ResidentManifestEntry;
+	/** The width of one token's activation. */
+	hiddenSize: number;
+	/** The width of one expert's inner projection. */
+	expertWidth: number;
+	/** How many experts each token selects in each layer. */
+	expertsForEachToken: number;
+};
+
+/** What one converted layer cost. */
+type LayerOutcome = {
+	/** How many expert blocks were written. */
+	expertCount: number;
+	/** How many bytes were read from the source shards. */
+	readBytes: number;
+};
+
+/** The command line options this pipeline accepts. */
+type ConversionOptions = {
+	/** Which of `MODEL_DESCRIPTIONS` to convert. */
+	modelName: string;
+	/** Where to write the converted files. */
+	outputDirectory: string;
+	/** The first layer to convert. */
+	firstLayer: number;
+	/** The last layer to convert. */
+	lastLayer: number;
+};
+
+/** Everything one call to `_convertLayer` needs. */
+type ConvertLayerOptions = {
+	/** The reader for the source model. */
+	reader: SafetensorsReader;
+	/** The open file descriptor of the expert block file. */
+	blocksFile: number;
+	/** Which layer to convert. */
+	layerIndex: number;
+	/** How many experts one layer holds. */
+	expertsForEachLayer: number;
+	/** The first layer of this run, which fixes where blocks start. */
+	firstLayerConverted: number;
+	/** The block layout. */
+	layout: BlockLayout;
+};
 
 /** Converts a mixture-of-experts model into a resident part and one block for each expert. */
 class ConvertMixtureOfExpertsToExpertBlocks {
 	/**
 	 * Runs the conversion.
 	 *
-	 * @returns {Promise<void>} Resolves once everything asked for has been written and verified.
+	 * @returns Resolves once everything asked for has been written and verified.
 	 */
-	static async main() {
+	static async main(): Promise<void> {
 		const options = ConvertMixtureOfExpertsToExpertBlocks._readOptions(process.argv.slice(2));
 		const description = MODEL_DESCRIPTIONS[options.modelName];
 		Fs.mkdirSync(options.outputDirectory, {
@@ -99,10 +241,10 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 		});
 
 		const reader = new SafetensorsReader(description.repository, description.revision);
-		const configuration = await reader._fetchJson('config.json');
+		const configuration = await reader._fetchJson<Configuration>('config.json');
 		const layerCount = configuration.num_hidden_layers;
 		const expertsForEachLayer = configuration.num_experts;
-		const expertWidth = configuration[description.expertWidthKey];
+		const expertWidth = configuration[description.expertWidthKey] as number | undefined;
 		if (expertWidth === undefined) {
 			throw new Error(
 				`${description.repository} has no ${description.expertWidthKey} in its configuration, so the expert ` +
@@ -162,8 +304,8 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 			options.outputDirectory,
 		);
 
-		const manifest = {
-			producedBy: 'packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs',
+		const manifest: ConversionManifest = {
+			producedBy: 'packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.ts',
 			issue: 'https://github.com/webai-at-home/webai-at-home/issues/169',
 			modelName: options.modelName,
 			sourceRepository: description.repository,
@@ -225,17 +367,11 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 	 * one layer costs a handful of large range requests rather than 384 small ones. That is the difference between a
 	 * conversion that finishes and one that spends its whole time in request overhead.
 	 *
-	 * @param {object} options Everything the layer needs.
-	 * @param {SafetensorsReader} options.reader The reader for the source model.
-	 * @param {number} options.blocksFile The open file descriptor of the expert block file.
-	 * @param {number} options.layerIndex Which layer to convert.
-	 * @param {number} options.expertsForEachLayer How many experts one layer holds.
-	 * @param {number} options.firstLayerConverted The first layer of this run, which fixes where blocks start.
-	 * @param {{blockByteLength: number, parts: BlockPart[]}} options.layout The block layout.
-	 * @returns {Promise<{expertCount: number, readBytes: number}>} What the layer cost.
+	 * @param options Everything the layer needs.
+	 * @returns What the layer cost.
 	 */
-	static async _convertLayer(options) {
-		const located = [];
+	private static async _convertLayer(options: ConvertLayerOptions): Promise<LayerOutcome> {
+		const located: LocatedExpertTensor[] = [];
 		for (let expertIndex = 0; expertIndex < options.expertsForEachLayer; expertIndex++) {
 			for (const projectionName of PROJECTION_NAMES) {
 				const tensorName =
@@ -262,15 +398,24 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 				const entry = located.find(
 					(candidate) => candidate.expertIndex === expertIndex && candidate.projectionName === projectionName,
 				);
+				if (entry === undefined) {
+					throw new Error(`expert ${expertIndex}'s ${projectionName} was never located`);
+				}
 				const [rowCount, columnCount] = entry.tensor.shape;
 				const matrix = QuantizeMatmulnbits.quantize(
-					values.get(entry.tensor.name),
+					values.get(entry.tensor.name) as Float32Array,
 					rowCount,
 					columnCount,
 					SCHEME,
 				);
 				const halfScales = new Float16Array(matrix.scales.length);
 				halfScales.set(matrix.scales);
+				if (matrix.zeroPoints === undefined) {
+					throw new Error(
+						`expert ${expertIndex}'s ${projectionName} produced no zero point tensor, though the scheme is ` +
+							`${SCHEME.scheme}`,
+					);
+				}
 
 				for (const stored of [matrix.quantized, new Uint8Array(halfScales.buffer), matrix.zeroPoints]) {
 					const part = options.layout.parts[partIndex];
@@ -299,12 +444,15 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 	/**
 	 * Reads a set of located tensors in as few contiguous range requests as their placement allows.
 	 *
-	 * @param {SafetensorsReader} reader The reader for the source model.
-	 * @param {{tensor: object}[]} located The tensors to read.
-	 * @returns {Promise<Map<string, Float32Array>>} Each tensor's values, keyed by tensor name.
+	 * @param reader The reader for the source model.
+	 * @param located The tensors to read.
+	 * @returns Each tensor's values, keyed by tensor name.
 	 */
-	static async _readInRuns(reader, located) {
-		const byShard = new Map();
+	private static async _readInRuns(
+		reader: SafetensorsReader,
+		located: { tensor: LocatedTensor }[],
+	): Promise<Map<string, Float32Array>> {
+		const byShard = new Map<string, LocatedTensor[]>();
 		for (const entry of located) {
 			const existing = byShard.get(entry.tensor.shardName);
 			if (existing === undefined) {
@@ -314,8 +462,7 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 			}
 		}
 
-		/** @type {Map<string, Float32Array>} */
-		const values = new Map();
+		const values = new Map<string, Float32Array>();
 		for (const [shardName, tensors] of byShard) {
 			tensors.sort((left, right) => left.byteStart - right.byteStart);
 			let runStart = 0;
@@ -345,14 +492,19 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 	 * Fetches one contiguous byte range, retrying because a conversion runs for hours and one refused request should
 	 * not throw away the work already done.
 	 *
-	 * @param {SafetensorsReader} reader The reader, used only for its URL building.
-	 * @param {string} shardName The shard to read from.
-	 * @param {number} firstByte The first byte to read.
-	 * @param {number} lastByte The byte after the last byte to read.
-	 * @returns {Promise<Uint8Array>} The bytes.
+	 * @param reader The reader, used only for its URL building.
+	 * @param shardName The shard to read from.
+	 * @param firstByte The first byte to read.
+	 * @param lastByte The byte after the last byte to read.
+	 * @returns The bytes.
 	 */
-	static async _fetchRange(reader, shardName, firstByte, lastByte) {
-		let lastError;
+	private static async _fetchRange(
+		reader: SafetensorsReader,
+		shardName: string,
+		firstByte: number,
+		lastByte: number,
+	): Promise<Uint8Array> {
+		let lastError: unknown;
 		for (let attempt = 0; attempt < REQUEST_ATTEMPT_COUNT; attempt++) {
 			try {
 				const response = await fetch(reader._fileUrl(shardName), {
@@ -375,17 +527,17 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 				await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
 			}
 		}
-		throw new Error(`${shardName} could not be read after ${REQUEST_ATTEMPT_COUNT} attempts: ${lastError}`);
+		throw new Error(`${shardName} could not be read after ${REQUEST_ATTEMPT_COUNT} attempts: ${String(lastError)}`);
 	}
 
 	/**
 	 * Converts one tensor's stored bytes to single precision.
 	 *
-	 * @param {object} tensor The tensor being converted, for its element type and its name.
-	 * @param {Uint8Array} bytes The stored bytes.
-	 * @returns {Float32Array} The values.
+	 * @param tensor The tensor being converted, for its element type and its name.
+	 * @param bytes The stored bytes.
+	 * @returns The values.
 	 */
-	static _toSingle(tensor, bytes) {
+	private static _toSingle(tensor: LocatedTensor, bytes: Uint8Array): Float32Array {
 		if (tensor.dataType === 'BF16') {
 			return SafetensorsReader.brainFloatToSingle(bytes);
 		}
@@ -408,27 +560,34 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 	 * need a different path entirely. Deciding that needs the graph that consumes these tensors, and building that
 	 * graph is milestone 5. Copying them unchanged keeps every one of those choices open and loses nothing.
 	 *
-	 * @param {SafetensorsReader} reader The reader for the source model.
-	 * @param {string} outputDirectory Where to write the file.
-	 * @returns {Promise<object>} What was written, for the manifest.
+	 * @param reader The reader for the source model.
+	 * @param outputDirectory Where to write the file.
+	 * @returns What was written, for the manifest.
 	 */
-	static async _convertResidentPart(reader, outputDirectory) {
+	private static async _convertResidentPart(
+		reader: SafetensorsReader,
+		outputDirectory: string,
+	): Promise<ResidentManifestEntry> {
 		console.log('\n  gathering the resident part, which is every tensor that is not an expert');
 		if (reader.index === undefined) {
-			await reader.locate(Object.keys((await reader._fetchJson('model.safetensors.index.json')).weight_map)[0]);
+			const index = await reader._fetchJson<SafetensorsIndex>('model.safetensors.index.json');
+			await reader.locate(Object.keys(index.weight_map)[0]);
+		}
+		if (reader.index === undefined) {
+			throw new Error('the weight index could not be loaded');
 		}
 		const residentNames = Object.keys(reader.index.weight_map)
 			.filter((name) => /\.mlp\.experts\.\d+\./.test(name) === false)
 			.sort();
 
-		const located = [];
+		const located: { tensor: LocatedTensor }[] = [];
 		for (const name of residentNames) {
 			located.push({
 				tensor: await reader.locate(name),
 			});
 		}
 
-		const header = {};
+		const header: Record<string, SafetensorsHeaderEntry> = {};
 		let dataOffset = 0;
 		for (const entry of located) {
 			const byteLength = entry.tensor.byteEnd - entry.tensor.byteStart;
@@ -453,7 +612,7 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 			Fs.writeSync(residentFile, paddedHeader);
 
 			let writtenBytes = 0;
-			const byShard = new Map();
+			const byShard = new Map<string, LocatedTensor[]>();
 			for (const entry of located) {
 				const existing = byShard.get(entry.tensor.shardName);
 				if (existing === undefined) {
@@ -517,14 +676,20 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 	 * Reads blocks back out of the written file and checks them against the source, because a conversion that writes
 	 * 15 gigabytes of plausible-looking bytes at the wrong offsets would pass every other check in this pipeline.
 	 *
-	 * @param {SafetensorsReader} reader The reader for the source model.
-	 * @param {string} blocksPath The written expert block file.
-	 * @param {{blockByteLength: number, parts: BlockPart[]}} layout The block layout.
-	 * @param {{firstLayer: number, lastLayer: number}} options Which layers were converted.
-	 * @param {number} expertsForEachLayer How many experts one layer holds.
-	 * @returns {Promise<void>} Resolves once every checked block has matched.
+	 * @param reader The reader for the source model.
+	 * @param blocksPath The written expert block file.
+	 * @param layout The block layout.
+	 * @param options Which layers were converted.
+	 * @param expertsForEachLayer How many experts one layer holds.
+	 * @returns Resolves once every checked block has matched.
 	 */
-	static async _verify(reader, blocksPath, layout, options, expertsForEachLayer) {
+	private static async _verify(
+		reader: SafetensorsReader,
+		blocksPath: string,
+		layout: BlockLayout,
+		options: { firstLayer: number; lastLayer: number },
+		expertsForEachLayer: number,
+	): Promise<void> {
 		console.log('\n  verifying, by reading blocks back out of the file and quantizing the source again');
 		const blockCount = Fs.statSync(blocksPath).size / layout.blockByteLength;
 		const checked = [...new Set([0, Math.floor(blockCount / 2), blockCount - 1])];
@@ -546,6 +711,9 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 					const matrix = QuantizeMatmulnbits.quantize(await reader.read(tensor), rowCount, columnCount, SCHEME);
 					const halfScales = new Float16Array(matrix.scales.length);
 					halfScales.set(matrix.scales);
+					if (matrix.zeroPoints === undefined) {
+						throw new Error(`expert ${expertIndex}'s ${projectionName} produced no zero point tensor`);
+					}
 
 					for (const stored of [matrix.quantized, new Uint8Array(halfScales.buffer), matrix.zeroPoints]) {
 						const part = layout.parts[partIndex];
@@ -579,13 +747,12 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 	/**
 	 * Works out where every part of an expert block sits, and refuses a layout whose parts are not aligned.
 	 *
-	 * @param {number} hiddenSize The model's hidden size.
-	 * @param {number} expertWidth The width of one expert's inner projection.
-	 * @returns {{blockByteLength: number, parts: BlockPart[]}} The layout.
+	 * @param hiddenSize The model's hidden size.
+	 * @param expertWidth The width of one expert's inner projection.
+	 * @returns The layout.
 	 */
-	static _describeBlockLayout(hiddenSize, expertWidth) {
-		/** @type {BlockPart[]} */
-		const parts = [];
+	private static _describeBlockLayout(hiddenSize: number, expertWidth: number): BlockLayout {
+		const parts: BlockPart[] = [];
 		let offset = 0;
 		for (const projectionName of PROJECTION_NAMES) {
 			const rowCount = projectionName === 'down_proj' ? hiddenSize : expertWidth;
@@ -637,62 +804,62 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 	 * `--model` has no default on purpose. This pipeline reads tens of gigabytes over the network and runs for the
 	 * better part of an hour, and a default would let a mistyped command spend all of that converting the wrong model.
 	 *
-	 * @param {string[]} argumentList The arguments after the script name.
-	 * @returns {{modelName: string, outputDirectory: string, firstLayer: number, lastLayer: number}} The options.
+	 * @param argumentList The arguments after the script name.
+	 * @returns The options.
 	 */
-	static _readOptions(argumentList) {
-		const options = {
-			modelName: undefined,
-			outputDirectory: undefined,
-			firstLayer: 0,
-			lastLayer: Number.MAX_SAFE_INTEGER,
-		};
+	private static _readOptions(argumentList: string[]): ConversionOptions {
+		let modelName: string | undefined;
+		let outputDirectory: string | undefined;
+		let firstLayer = 0;
+		let lastLayer = Number.MAX_SAFE_INTEGER;
 		const usage = `Use --model <${Object.keys(MODEL_DESCRIPTIONS).join('|')}> ` +
 			'[--output <directory>] [--first-layer <index>] [--last-layer <index>]';
 		for (let index = 0; index < argumentList.length; index += 2) {
 			const name = argumentList[index];
 			const value = argumentList[index + 1];
 			if (name === '--model') {
-				options.modelName = value;
+				modelName = value;
 			} else if (name === '--output') {
-				options.outputDirectory = value;
+				outputDirectory = value;
 			} else if (name === '--first-layer') {
-				options.firstLayer = Number(value);
+				firstLayer = Number(value);
 			} else if (name === '--last-layer') {
-				options.lastLayer = Number(value);
+				lastLayer = Number(value);
 			} else {
 				throw new Error(`unknown option ${name}. ${usage}`);
 			}
 		}
-		if (options.modelName === undefined) {
+		if (modelName === undefined) {
 			throw new Error(`no --model was given. ${usage}`);
 		}
-		if (MODEL_DESCRIPTIONS[options.modelName] === undefined) {
-			throw new Error(`${options.modelName} is not a model this pipeline converts. ${usage}`);
+		if (MODEL_DESCRIPTIONS[modelName] === undefined) {
+			throw new Error(`${modelName} is not a model this pipeline converts. ${usage}`);
 		}
-		if (options.outputDirectory === undefined) {
-			options.outputDirectory = `${options.modelName.toLowerCase()}-expert-blocks`;
-		}
-		return options;
+		return {
+			modelName: modelName,
+			outputDirectory: outputDirectory ?? `${modelName.toLowerCase()}-expert-blocks`,
+			firstLayer: firstLayer,
+			lastLayer: lastLayer,
+		};
 	}
 
 	/**
 	 * Formats a byte count in megabytes.
 	 *
-	 * @param {number} bytes The byte count.
-	 * @returns {string} The formatted text.
+	 * @param bytes The byte count.
+	 * @returns The formatted text.
 	 */
-	static _megabytes(bytes) {
+	private static _megabytes(bytes: number): string {
 		return `${(bytes / 1024 / 1024).toFixed(2)} megabytes`;
 	}
 
 	/**
 	 * Formats a byte count in gigabytes.
 	 *
-	 * @param {number} bytes The byte count.
-	 * @returns {string} The formatted text.
+	 * @param bytes The byte count.
+	 * @returns The formatted text.
 	 */
-	static _gigabytes(bytes) {
+	private static _gigabytes(bytes: number): string {
 		return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} gigabytes`;
 	}
 }

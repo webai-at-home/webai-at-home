@@ -1,7 +1,6 @@
-#!/usr/bin/env node
-
-import { QuantizeMatmulnbits } from './quantize_matmulnbits.mjs';
-import { SafetensorsReader } from './safetensors_reader.mjs';
+import { QuantizeMatmulnbits } from './quantize_matmulnbits.js';
+import type { QuantizationOptions } from './quantize_matmulnbits.js';
+import { SafetensorsReader } from './safetensors_reader.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,9 +41,9 @@ const LAYER_INDEX = 0;
 /** The expert within that layer. */
 const EXPERT_INDEX = 0;
 /** The three projections one Qwen3-30B-A3B expert is made of. */
-const PROJECTION_NAMES = ['gate_proj', 'up_proj', 'down_proj'];
+const PROJECTION_NAMES = ['gate_proj', 'up_proj', 'down_proj'] as const;
 /** The quantization schemes this gate compares, before any of them is chosen. */
-const COMPARED_SCHEMES = [
+const COMPARED_SCHEMES: (QuantizationOptions & { label: string })[] = [
 	{
 		label: 'symmetric, blocks of 16',
 		blockSize: 16,
@@ -97,20 +96,69 @@ const TESTED_HIDDEN_STATE_COUNT = 8;
  */
 const ACCEPTED_RATIO_AGAINST_REFERENCE = 1.1;
 
+/** One of the expert's three projections as read from the source. */
+type Projection = {
+	/** The matrix shape, as rows then columns. */
+	shape: number[];
+	/** The weights, in row-major order. */
+	values: Float32Array;
+};
+
+/** The pass or fail of one phase of the gate. */
+type PhaseOutcome = {
+	/** Whether the phase passed. */
+	passed: boolean;
+	/** What it found, in words. */
+	summary: string;
+};
+
+/** What phase 2 found and chose. */
+type SchemePhaseResult = {
+	/** The phase's own outcome. */
+	outcome: PhaseOutcome;
+	/** The scheme it chose. */
+	chosen: QuantizationOptions & { label: string };
+};
+
+/** What phase 4 measured, which phase 5 judges against the published reference. */
+type WholeExpertPhaseResult = {
+	/** The phase's own outcome. */
+	outcome: PhaseOutcome;
+	/** The mean relative error across every tested hidden state. */
+	meanError: number;
+	/** The worst relative error across every tested hidden state. */
+	worstError: number;
+};
+
+/** The two numbers that decide whether block quantization will hurt a set of weights. */
+type WeightStatistics = {
+	/** The largest magnitude in the set. */
+	largestMagnitude: number;
+	/** The mean magnitude across the set. */
+	meanMagnitude: number;
+};
+
+/** How far one set of weights moved from another, over the whole expert. */
+type ExpertComparison = {
+	/** The mean relative error across every tested hidden state. */
+	meanError: number;
+	/** The worst relative error across every tested hidden state. */
+	worstError: number;
+};
+
 /** Proves or kills the one assumption milestone 3 rests on, against real published weights. */
 class GateQuantizeRealExpert {
 	/**
 	 * Runs the gate and prints every raw number it produces.
 	 *
-	 * @returns {Promise<void>} Resolves once the gate has finished.
+	 * @returns Resolves once the gate has finished.
 	 */
-	static async main() {
+	static async main(): Promise<void> {
 		console.log(`model: ${MODEL_REPOSITORY} at revision ${MODEL_REVISION}`);
 		console.log(`  reading layer ${LAYER_INDEX}, expert ${EXPERT_INDEX}, by range request`);
 
 		const reader = new SafetensorsReader(MODEL_REPOSITORY, MODEL_REVISION);
-		/** @type {Map<string, {shape: number[], values: Float32Array}>} */
-		const projections = new Map();
+		const projections = new Map<string, Projection>();
 		let downloadedBytes = 0;
 		for (const projectionName of PROJECTION_NAMES) {
 			const tensorName = `model.layers.${LAYER_INDEX}.mlp.experts.${EXPERT_INDEX}.${projectionName}.weight`;
@@ -128,7 +176,7 @@ class GateQuantizeRealExpert {
 		}
 		console.log(`  downloaded ${GateQuantizeRealExpert._megabytes(downloadedBytes)} in total`);
 
-		const outcomes = [];
+		const outcomes: PhaseOutcome[] = [];
 		outcomes.push(GateQuantizeRealExpert._phaseWeightsAreOrdinary(projections));
 		const schemeOutcome = GateQuantizeRealExpert._phaseChooseScheme(projections);
 		outcomes.push(schemeOutcome.outcome);
@@ -168,10 +216,10 @@ class GateQuantizeRealExpert {
 	 * Phase 1. Describes the weights before touching them, because a quantization error only means something next to
 	 * the distribution it came from.
 	 *
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The three projections.
-	 * @returns {{passed: boolean, summary: string}} The outcome.
+	 * @param projections The three projections.
+	 * @returns The outcome.
 	 */
-	static _phaseWeightsAreOrdinary(projections) {
+	private static _phaseWeightsAreOrdinary(projections: Map<string, Projection>): PhaseOutcome {
 		console.log('\n── phase 1 · what these weights actually look like');
 		let anyOutlier = false;
 		for (const [projectionName, projection] of projections) {
@@ -205,14 +253,13 @@ class GateQuantizeRealExpert {
 	 * zero point tensor declared in the graph and costs 4 more bits for every block. A smaller block fits its values
 	 * more tightly and costs more scales. None of that decides anything on its own, so all of it is measured.
 	 *
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The three projections.
-	 * @returns {{outcome: {passed: boolean, summary: string}, chosen: object}} The outcome and the chosen scheme.
+	 * @param projections The three projections.
+	 * @returns The outcome and the chosen scheme.
 	 */
-	static _phaseChooseScheme(projections) {
+	private static _phaseChooseScheme(projections: Map<string, Projection>): SchemePhaseResult {
 		console.log('\n── phase 2 · which quantization scheme costs least, measured');
 		console.log('  scheme                      weights differ by   bits each   all experts   within budget');
-		/** @type {{candidate: object, error: number, bits: number, expertBytes: number}[]} */
-		const measured = [];
+		const measured: { candidate: QuantizationOptions & { label: string }; error: number; bits: number; expertBytes: number }[] = [];
 		for (const candidate of COMPARED_SCHEMES) {
 			let worstError = 0;
 			let bitsForEachWeight = 0;
@@ -265,11 +312,14 @@ class GateQuantizeRealExpert {
 	 * a half-precision scale costs 0.5 bits for every weight and a single-precision scale costs 1, which across
 	 * 28.99 billion expert parameters is 1.69 gigabytes.
 	 *
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The three projections.
-	 * @param {object} chosen The scheme chosen in phase 2.
-	 * @returns {{passed: boolean, summary: string}} The outcome.
+	 * @param projections The three projections.
+	 * @param chosen The scheme chosen in phase 2.
+	 * @returns The outcome.
 	 */
-	static _phaseScalePrecision(projections, chosen) {
+	private static _phaseScalePrecision(
+		projections: Map<string, Projection>,
+		chosen: QuantizationOptions,
+	): PhaseOutcome {
 		console.log('\n── phase 3 · whether the block scales survive half precision');
 		let worstSingle = 0;
 		let worstHalf = 0;
@@ -309,14 +359,16 @@ class GateQuantizeRealExpert {
 	 * thing that has to survive, and it is always the larger of the two because three projections and a product
 	 * compound their errors.
 	 *
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The three projections.
-	 * @param {object} chosen The scheme chosen in phase 2.
-	 * @returns {{outcome: {passed: boolean, summary: string}, meanError: number, worstError: number}} The outcome and
-	 *   the errors, which phase 5 judges against the published reference.
+	 * @param projections The three projections.
+	 * @param chosen The scheme chosen in phase 2.
+	 * @returns The outcome and the errors, which phase 5 judges against the published reference.
 	 */
-	static _phaseWholeExpert(projections, chosen) {
+	private static _phaseWholeExpert(
+		projections: Map<string, Projection>,
+		chosen: QuantizationOptions,
+	): WholeExpertPhaseResult {
 		console.log('\n── phase 4 · the whole expert, at full precision and at 4 bits');
-		const restored = new Map();
+		const restored = new Map<string, Float32Array>();
 		for (const [projectionName, projection] of projections) {
 			const [rowCount, columnCount] = projection.shape;
 			const matrix = QuantizeMatmulnbits.quantize(projection.values, rowCount, columnCount, chosen);
@@ -348,15 +400,22 @@ class GateQuantizeRealExpert {
 	 * milestone 3 may convert the model. If it loses meaningfully more, the quantizer is at fault and 15 gigabytes
 	 * should not be written with it.
 	 *
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The three projections.
-	 * @param {{meanError: number, worstError: number}} ourError What phase 4 measured for this conversion.
-	 * @returns {Promise<{passed: boolean, summary: string}>} The outcome.
+	 * @param projections The three projections.
+	 * @param ourError What phase 4 measured for this conversion.
+	 * @returns The outcome.
 	 */
-	static async _phaseAgainstPublished(projections, ourError) {
+	private static async _phaseAgainstPublished(
+		projections: Map<string, Projection>,
+		ourError: ExpertComparison,
+	): Promise<PhaseOutcome> {
 		console.log(`\n── phase 5 · against ${REFERENCE_REPOSITORY}, which is 4-bit and already runs`);
-		const restored = new Map();
+		const restored = new Map<string, Float32Array>();
 		for (const projectionName of PROJECTION_NAMES) {
-			const [rowCount, columnCount] = projections.get(projectionName).shape;
+			const projection = projections.get(projectionName);
+			if (projection === undefined) {
+				throw new Error(`${projectionName} was never read`);
+			}
+			const [rowCount, columnCount] = projection.shape;
 			restored.set(
 				projectionName,
 				await GateQuantizeRealExpert._readPublishedProjection(projectionName, rowCount, columnCount),
@@ -367,7 +426,11 @@ class GateQuantizeRealExpert {
 		let worstMatchedWeightError = 0;
 		for (const [projectionName, projection] of projections) {
 			const [rowCount, columnCount] = projection.shape;
-			const publishedError = GateQuantizeRealExpert._relativeError(projection.values, restored.get(projectionName));
+			const publishedRestored = restored.get(projectionName);
+			if (publishedRestored === undefined) {
+				throw new Error(`${projectionName} has no published restoration`);
+			}
+			const publishedError = GateQuantizeRealExpert._relativeError(projection.values, publishedRestored);
 			const matched = QuantizeMatmulnbits.dequantize(
 				QuantizeMatmulnbits.quantize(projection.values, rowCount, columnCount, {
 					blockSize: REFERENCE_GROUP_SIZE,
@@ -420,20 +483,26 @@ class GateQuantizeRealExpert {
 	 * 0 found that `Tensor.fromGpuBuffer` binds a whole buffer rather than a range inside one, so the parts still
 	 * reach separate WebGPU buffers — but they arrive in one read, which is what this layout is for.
 	 *
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The three projections.
-	 * @param {object} chosen The scheme chosen in phase 2.
-	 * @returns {{passed: boolean, summary: string}} The outcome.
+	 * @param projections The three projections.
+	 * @param chosen The scheme chosen in phase 2.
+	 * @returns The outcome.
 	 */
-	static _phaseBlockLayout(projections, chosen) {
+	private static _phaseBlockLayout(
+		projections: Map<string, Projection>,
+		chosen: QuantizationOptions & { label: string },
+	): PhaseOutcome {
 		console.log(`\n── phase 6 · the on-disk layout of one expert block, at ${chosen.label}`);
 		let offset = 0;
 		let everyPartIsAligned = true;
 		for (const projectionName of PROJECTION_NAMES) {
 			const projection = projections.get(projectionName);
+			if (projection === undefined) {
+				throw new Error(`${projectionName} was never read`);
+			}
 			const [rowCount, columnCount] = projection.shape;
 			const matrix = QuantizeMatmulnbits.quantize(projection.values, rowCount, columnCount, chosen);
 			const byteLengths = QuantizeMatmulnbits.byteLengths(matrix);
-			const parts = [
+			const parts: { name: string; byteLength: number }[] = [
 				{
 					name: `${projectionName} quantized`,
 					byteLength: byteLengths.quantized,
@@ -486,12 +555,16 @@ class GateQuantizeRealExpert {
 	 * floating point offset for every group of 64. A value is restored as `stored * scale + offset`. Only the slice
 	 * belonging to one expert is fetched, which is contiguous because that expert is the first one.
 	 *
-	 * @param {string} projectionName Which of the three projections to read.
-	 * @param {number} rowCount The number of output rows.
-	 * @param {number} columnCount The number of input columns.
-	 * @returns {Promise<Float32Array>} The restored weights, in row-major order.
+	 * @param projectionName Which of the three projections to read.
+	 * @param rowCount The number of output rows.
+	 * @param columnCount The number of input columns.
+	 * @returns The restored weights, in row-major order.
 	 */
-	static async _readPublishedProjection(projectionName, rowCount, columnCount) {
+	private static async _readPublishedProjection(
+		projectionName: string,
+		rowCount: number,
+		columnCount: number,
+	): Promise<Float32Array> {
 		const reader = new SafetensorsReader(REFERENCE_REPOSITORY, MODEL_REVISION);
 		const stem = `model.layers.${LAYER_INDEX}.mlp.switch_mlp.${projectionName}`;
 		const groupsForEachRow = columnCount / REFERENCE_GROUP_SIZE;
@@ -538,12 +611,19 @@ class GateQuantizeRealExpert {
 	 * Runs the same hidden states through the expert twice, once with the original weights and once with a restored
 	 * set, and reports how far the outputs moved apart.
 	 *
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The original projections.
-	 * @param {Map<string, Float32Array>} restored The restored weights, keyed by projection name.
-	 * @returns {{meanError: number, worstError: number}} The errors.
+	 * @param projections The original projections.
+	 * @param restored The restored weights, keyed by projection name.
+	 * @returns The errors.
 	 */
-	static _compareExpert(projections, restored) {
-		const hiddenSize = projections.get('gate_proj').shape[1];
+	private static _compareExpert(
+		projections: Map<string, Projection>,
+		restored: Map<string, Float32Array>,
+	): ExpertComparison {
+		const gateProjection = projections.get('gate_proj');
+		if (gateProjection === undefined) {
+			throw new Error('gate_proj was never read');
+		}
+		const hiddenSize = gateProjection.shape[1];
 		let worstError = 0;
 		let totalError = 0;
 		for (let attempt = 0; attempt < TESTED_HIDDEN_STATE_COUNT; attempt++) {
@@ -551,12 +631,24 @@ class GateQuantizeRealExpert {
 			const reference = GateQuantizeRealExpert._runExpert(
 				hiddenState,
 				projections,
-				(projectionName) => projections.get(projectionName).values,
+				(projectionName) => {
+					const projection = projections.get(projectionName);
+					if (projection === undefined) {
+						throw new Error(`${projectionName} was never read`);
+					}
+					return projection.values;
+				},
 			);
 			const measured = GateQuantizeRealExpert._runExpert(
 				hiddenState,
 				projections,
-				(projectionName) => restored.get(projectionName),
+				(projectionName) => {
+					const values = restored.get(projectionName);
+					if (values === undefined) {
+						throw new Error(`${projectionName} has no restored weights`);
+					}
+					return values;
+				},
 			);
 			const error = GateQuantizeRealExpert._relativeError(reference, measured);
 			totalError += error;
@@ -571,30 +663,40 @@ class GateQuantizeRealExpert {
 	/**
 	 * Runs one Qwen3-30B-A3B expert, which is `down_proj(silu(gate_proj(x)) * up_proj(x))`.
 	 *
-	 * @param {Float32Array} hiddenState The input activation.
-	 * @param {Map<string, {shape: number[], values: Float32Array}>} projections The three projections and their shapes.
-	 * @param {(projectionName: string) => Float32Array} weightsFor Chooses which weights to use.
-	 * @returns {Float32Array} The expert's output.
+	 * @param hiddenState The input activation.
+	 * @param projections The three projections and their shapes.
+	 * @param weightsFor Chooses which weights to use.
+	 * @returns The expert's output.
 	 */
-	static _runExpert(hiddenState, projections, weightsFor) {
-		const gated = GateQuantizeRealExpert._project(hiddenState, weightsFor('gate_proj'), projections.get('gate_proj').shape);
-		const lifted = GateQuantizeRealExpert._project(hiddenState, weightsFor('up_proj'), projections.get('up_proj').shape);
+	private static _runExpert(
+		hiddenState: Float32Array,
+		projections: Map<string, Projection>,
+		weightsFor: (projectionName: string) => Float32Array,
+	): Float32Array {
+		const gateShape = projections.get('gate_proj');
+		const upShape = projections.get('up_proj');
+		const downShape = projections.get('down_proj');
+		if (gateShape === undefined || upShape === undefined || downShape === undefined) {
+			throw new Error('one of the three projections was never read');
+		}
+		const gated = GateQuantizeRealExpert._project(hiddenState, weightsFor('gate_proj'), gateShape.shape);
+		const lifted = GateQuantizeRealExpert._project(hiddenState, weightsFor('up_proj'), upShape.shape);
 		const activated = new Float32Array(gated.length);
 		for (let index = 0; index < gated.length; index++) {
 			activated[index] = (gated[index] / (1 + Math.exp(-gated[index]))) * lifted[index];
 		}
-		return GateQuantizeRealExpert._project(activated, weightsFor('down_proj'), projections.get('down_proj').shape);
+		return GateQuantizeRealExpert._project(activated, weightsFor('down_proj'), downShape.shape);
 	}
 
 	/**
 	 * Multiplies a row-major weight matrix by a vector.
 	 *
-	 * @param {Float32Array} vector The input vector, of length `shape[1]`.
-	 * @param {Float32Array} weights The weights, in row-major order.
-	 * @param {number[]} shape The matrix shape, as rows then columns.
-	 * @returns {Float32Array} The product, of length `shape[0]`.
+	 * @param vector The input vector, of length `shape[1]`.
+	 * @param weights The weights, in row-major order.
+	 * @param shape The matrix shape, as rows then columns.
+	 * @returns The product, of length `shape[0]`.
 	 */
-	static _project(vector, weights, shape) {
+	private static _project(vector: Float32Array, weights: Float32Array, shape: number[]): Float32Array {
 		const [rowCount, columnCount] = shape;
 		const product = new Float32Array(rowCount);
 		for (let row = 0; row < rowCount; row++) {
@@ -612,11 +714,11 @@ class GateQuantizeRealExpert {
 	 * Builds a repeatable hidden state. A real one is not available without running the model, and what this gate
 	 * measures is how the expert's arithmetic degrades, which does not need a real activation.
 	 *
-	 * @param {number} length The length of the hidden state.
-	 * @param {number} seed The seed, which fixes the values.
-	 * @returns {Float32Array} The hidden state.
+	 * @param length The length of the hidden state.
+	 * @param seed The seed, which fixes the values.
+	 * @returns The hidden state.
 	 */
-	static _makeHiddenState(length, seed) {
+	private static _makeHiddenState(length: number, seed: number): Float32Array {
 		const values = new Float32Array(length);
 		let state = (seed + 1) >>> 0;
 		for (let index = 0; index < length; index++) {
@@ -637,10 +739,10 @@ class GateQuantizeRealExpert {
 	/**
 	 * Describes a set of values by the two numbers that decide whether block quantization will hurt.
 	 *
-	 * @param {Float32Array} values The values to describe.
-	 * @returns {{largestMagnitude: number, meanMagnitude: number}} The description.
+	 * @param values The values to describe.
+	 * @returns The description.
 	 */
-	static _describe(values) {
+	private static _describe(values: Float32Array): WeightStatistics {
 		let largestMagnitude = 0;
 		let totalMagnitude = 0;
 		for (let index = 0; index < values.length; index++) {
@@ -659,11 +761,11 @@ class GateQuantizeRealExpert {
 	/**
 	 * Reports how far one set of values moved from another, as a share of the size of the original.
 	 *
-	 * @param {Float32Array} reference The original values.
-	 * @param {Float32Array} measured The values after a trip through quantization.
-	 * @returns {number} The relative error.
+	 * @param reference The original values.
+	 * @param measured The values after a trip through quantization.
+	 * @returns The relative error.
 	 */
-	static _relativeError(reference, measured) {
+	private static _relativeError(reference: Float32Array, measured: Float32Array): number {
 		let errorEnergy = 0;
 		let referenceEnergy = 0;
 		for (let index = 0; index < reference.length; index++) {
@@ -680,20 +782,20 @@ class GateQuantizeRealExpert {
 	/**
 	 * Formats a byte count in megabytes.
 	 *
-	 * @param {number} bytes The byte count.
-	 * @returns {string} The formatted text.
+	 * @param bytes The byte count.
+	 * @returns The formatted text.
 	 */
-	static _megabytes(bytes) {
+	private static _megabytes(bytes: number): string {
 		return `${(bytes / 1024 / 1024).toFixed(2)} megabytes`;
 	}
 
 	/**
 	 * Formats a byte count in gigabytes.
 	 *
-	 * @param {number} bytes The byte count.
-	 * @returns {string} The formatted text.
+	 * @param bytes The byte count.
+	 * @returns The formatted text.
 	 */
-	static _gigabytes(bytes) {
+	private static _gigabytes(bytes: number): string {
 		return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} gigabytes`;
 	}
 }

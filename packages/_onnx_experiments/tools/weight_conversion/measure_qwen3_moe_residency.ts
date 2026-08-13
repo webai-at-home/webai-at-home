@@ -1,10 +1,10 @@
-#!/usr/bin/env node
-
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 //	MeasureQwen3MoeResidency — milestone 1 of issue #169, measured from the published weights
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+
+export {};
 
 /**
  * Answers milestone 1 of https://github.com/webai-at-home/webai-at-home/issues/169:
@@ -36,27 +36,75 @@ const GRAPHICS_MEMORY_TARGETS = [8, 12, 16, 24];
 /** The context lengths to report a key-value cache size for. */
 const REPORTED_CONTEXT_LENGTHS = [4096, 8192, 16384, 40960];
 
-/** One tensor as the published safetensors headers describe it. */
-/**
- * @typedef {object} PublishedTensor
- * @property {string} name The tensor's name in the model.
- * @property {string} dataType The stored element type, such as `BF16`.
- * @property {number[]} shape The tensor's dimensions.
- * @property {number} parameterCount The number of values the tensor holds.
- */
+/** The parts of the published `config.json` this tool reads. */
+type Configuration = {
+	/** How many decoder layers the model has. */
+	num_hidden_layers: number;
+	/** The width of one token's activation. */
+	hidden_size: number;
+	/** How many experts one layer holds. */
+	num_experts: number;
+	/** How many experts each token selects in each layer. */
+	num_experts_per_tok: number;
+	/** The width of one expert's inner projection. */
+	moe_intermediate_size: number;
+	/** How many attention heads each layer has. */
+	num_attention_heads: number;
+	/** How many key and value heads each layer has. */
+	num_key_value_heads: number;
+	/** How wide one attention head is. */
+	head_dim: number;
+	/** How many tokens the model knows. */
+	vocab_size: number;
+	/** Whether the output head shares its weights with the token embedding. */
+	tie_word_embeddings: boolean;
+	/** How often a layer is a mixture-of-experts layer, where 1 means every layer is. */
+	decoder_sparse_step: number;
+	/** Which layers, if any, are dense rather than mixture-of-experts. */
+	mlp_only_layers: number[];
+};
 
-/**
- * Reads the published Qwen3-30B-A3B tensor headers and reports how much of the model must stay resident.
- */
+/** The parsed `model.safetensors.index.json` of a published model. */
+type SafetensorsIndex = {
+	/** Which shard file holds each tensor, keyed by tensor name. */
+	weight_map: Record<string, string>;
+	/** Whole-model metadata the index carries alongside the weight map. */
+	metadata: {
+		/** The total byte size of every shard, at the element type the model was published in. */
+		total_size: number;
+	};
+};
+
+/** One entry of a parsed safetensors header. */
+type SafetensorsHeaderEntry = {
+	/** The stored element type, such as `BF16`. */
+	dtype: string;
+	/** The tensor's dimensions. */
+	shape: number[];
+};
+
+/** One tensor as the published safetensors headers describe it. */
+type PublishedTensor = {
+	/** The tensor's name in the model. */
+	name: string;
+	/** The stored element type, such as `BF16`. */
+	dataType: string;
+	/** The tensor's dimensions. */
+	shape: number[];
+	/** The number of values the tensor holds. */
+	parameterCount: number;
+};
+
+/** Reads the published Qwen3-30B-A3B tensor headers and reports how much of the model must stay resident. */
 class MeasureQwen3MoeResidency {
 	/**
 	 * Runs the measurement and prints the report.
 	 *
-	 * @returns {Promise<void>} Resolves once the report has been printed.
+	 * @returns Resolves once the report has been printed.
 	 */
-	static async main() {
-		const configuration = await MeasureQwen3MoeResidency._fetchJson('config.json');
-		const index = await MeasureQwen3MoeResidency._fetchJson('model.safetensors.index.json');
+	static async main(): Promise<void> {
+		const configuration = await MeasureQwen3MoeResidency._fetchJson<Configuration>('config.json');
+		const index = await MeasureQwen3MoeResidency._fetchJson<SafetensorsIndex>('model.safetensors.index.json');
 		const shardNames = [...new Set(Object.values(index.weight_map))].sort();
 
 		console.log(`model: ${MODEL_REPOSITORY} at revision ${MODEL_REVISION}`);
@@ -78,8 +126,7 @@ class MeasureQwen3MoeResidency {
 		);
 		console.log(`  reading ${shardNames.length} safetensors headers over range requests…`);
 
-		/** @type {PublishedTensor[]} */
-		const tensors = [];
+		const tensors: PublishedTensor[] = [];
 		for (const shardName of shardNames) {
 			tensors.push(...(await MeasureQwen3MoeResidency._readShardHeader(shardName)));
 		}
@@ -206,25 +253,25 @@ class MeasureQwen3MoeResidency {
 	/**
 	 * Builds the download URL for one file in the model repository.
 	 *
-	 * @param {string} fileName The file to address.
-	 * @returns {string} The URL.
+	 * @param fileName The file to address.
+	 * @returns The URL.
 	 */
-	static _fileUrl(fileName) {
+	private static _fileUrl(fileName: string): string {
 		return `https://huggingface.co/${MODEL_REPOSITORY}/resolve/${MODEL_REVISION}/${fileName}`;
 	}
 
 	/**
 	 * Downloads and parses one JSON file from the model repository.
 	 *
-	 * @param {string} fileName The file to read.
-	 * @returns {Promise<any>} The parsed contents.
+	 * @param fileName The file to read.
+	 * @returns The parsed contents.
 	 */
-	static async _fetchJson(fileName) {
+	private static async _fetchJson<T>(fileName: string): Promise<T> {
 		const response = await fetch(MeasureQwen3MoeResidency._fileUrl(fileName));
 		if (response.ok === false) {
 			throw new Error(`${fileName} could not be read: ${response.status} ${response.statusText}`);
 		}
-		return await response.json();
+		return await response.json() as T;
 	}
 
 	/**
@@ -233,10 +280,10 @@ class MeasureQwen3MoeResidency {
 	 * A safetensors file starts with an unsigned 64-bit little-endian header length, followed by that many bytes of
 	 * JSON. Only those bytes are fetched, so a 4-gigabyte shard costs a request of a few megabytes.
 	 *
-	 * @param {string} shardName The shard file to read.
-	 * @returns {Promise<PublishedTensor[]>} Every tensor described by that shard's header.
+	 * @param shardName The shard file to read.
+	 * @returns Every tensor described by that shard's header.
 	 */
-	static async _readShardHeader(shardName) {
+	private static async _readShardHeader(shardName: string): Promise<PublishedTensor[]> {
 		const url = MeasureQwen3MoeResidency._fileUrl(shardName);
 		const lengthResponse = await fetch(url, { headers: { Range: 'bytes=0-7' } });
 		if (lengthResponse.ok === false) {
@@ -249,21 +296,18 @@ class MeasureQwen3MoeResidency {
 		if (headerResponse.ok === false) {
 			throw new Error(`${shardName} header could not be read: ${headerResponse.status}`);
 		}
-		const header = JSON.parse(await headerResponse.text());
+		const header = JSON.parse(await headerResponse.text()) as Record<string, SafetensorsHeaderEntry>;
 
-		/** @type {PublishedTensor[]} */
-		const tensors = [];
+		const tensors: PublishedTensor[] = [];
 		for (const [name, description] of Object.entries(header)) {
 			if (name === '__metadata__') {
 				continue;
 			}
-			/** @type {{dtype: string, shape: number[]}} */
-			const typedDescription = description;
 			tensors.push({
 				name: name,
-				dataType: typedDescription.dtype,
-				shape: typedDescription.shape,
-				parameterCount: typedDescription.shape.reduce((product, dimension) => product * dimension, 1),
+				dataType: description.dtype,
+				shape: description.shape,
+				parameterCount: description.shape.reduce((product, dimension) => product * dimension, 1),
 			});
 		}
 		return tensors;
@@ -278,22 +322,21 @@ class MeasureQwen3MoeResidency {
 	/**
 	 * Adds up the parameter counts of a group of tensors.
 	 *
-	 * @param {PublishedTensor[]} tensors The tensors to add up.
-	 * @returns {number} The total parameter count.
+	 * @param tensors The tensors to add up.
+	 * @returns The total parameter count.
 	 */
-	static _sumParameters(tensors) {
+	private static _sumParameters(tensors: PublishedTensor[]): number {
 		return tensors.reduce((total, tensor) => total + tensor.parameterCount, 0);
 	}
 
 	/**
 	 * Groups resident tensors by the role their name states, so the report names each part rather than one total.
 	 *
-	 * @param {PublishedTensor[]} tensors The tensors to group.
-	 * @returns {Map<string, PublishedTensor[]>} Each role and the tensors filling it.
+	 * @param tensors The tensors to group.
+	 * @returns Each role and the tensors filling it.
 	 */
-	static _groupByKind(tensors) {
-		/** @type {Map<string, PublishedTensor[]>} */
-		const groups = new Map();
+	private static _groupByKind(tensors: PublishedTensor[]): Map<string, PublishedTensor[]> {
+		const groups = new Map<string, PublishedTensor[]>();
 		for (const tensor of tensors) {
 			const kind = tensor.name
 				.replace(/^model\.layers\.\d+\./, 'per layer · ')
@@ -312,13 +355,18 @@ class MeasureQwen3MoeResidency {
 	/**
 	 * Prints one line describing a group of tensors and its share of the model.
 	 *
-	 * @param {string} title The group's name.
-	 * @param {PublishedTensor[]} tensors The tensors in the group.
-	 * @param {number} parameters The group's parameter count.
-	 * @param {number} totalParameters The whole model's parameter count.
-	 * @returns {void}
+	 * @param title The group's name.
+	 * @param tensors The tensors in the group.
+	 * @param parameters The group's parameter count.
+	 * @param totalParameters The whole model's parameter count.
+	 * @returns Nothing.
 	 */
-	static _printGroup(title, tensors, parameters, totalParameters) {
+	private static _printGroup(
+		title: string,
+		tensors: PublishedTensor[],
+		parameters: number,
+		totalParameters: number,
+	): void {
 		console.log(
 			`  ${title.padEnd(28)} ${String(tensors.length).padStart(6)} tensors  ` +
 				`${MeasureQwen3MoeResidency._billions(parameters).padStart(12)}  ` +
@@ -333,60 +381,60 @@ class MeasureQwen3MoeResidency {
 	 * Block quantization is not free: at a block size of 32 with half-precision scales, 32 weights cost 16 bytes of
 	 * packed values plus 2 bytes of scale, which is 4.5 bits per weight rather than 4.
 	 *
-	 * @param {number} parameters The parameter count.
-	 * @returns {number} The byte size.
+	 * @param parameters The parameter count.
+	 * @returns The byte size.
 	 */
-	static _quantizedBytes(parameters) {
+	private static _quantizedBytes(parameters: number): number {
 		return parameters / 2 + (parameters / BLOCK_SIZE) * SCALE_BYTES;
 	}
 
 	/**
 	 * Formats a parameter count in billions.
 	 *
-	 * @param {number} count The parameter count.
-	 * @returns {string} The formatted text.
+	 * @param count The parameter count.
+	 * @returns The formatted text.
 	 */
-	static _billions(count) {
+	private static _billions(count: number): string {
 		return `${(count / 1e9).toFixed(2)} billion`;
 	}
 
 	/**
 	 * Formats a parameter count in millions.
 	 *
-	 * @param {number} count The parameter count.
-	 * @returns {string} The formatted text.
+	 * @param count The parameter count.
+	 * @returns The formatted text.
 	 */
-	static _millions(count) {
+	private static _millions(count: number): string {
 		return `${(count / 1e6).toFixed(2)} million`;
 	}
 
 	/**
 	 * Formats a byte count in gigabytes.
 	 *
-	 * @param {number} bytes The byte count.
-	 * @returns {string} The formatted text.
+	 * @param bytes The byte count.
+	 * @returns The formatted text.
 	 */
-	static _gigabytes(bytes) {
+	private static _gigabytes(bytes: number): string {
 		return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} gigabytes`;
 	}
 
 	/**
 	 * Formats a byte count in megabytes.
 	 *
-	 * @param {number} bytes The byte count.
-	 * @returns {string} The formatted text.
+	 * @param bytes The byte count.
+	 * @returns The formatted text.
 	 */
-	static _megabytes(bytes) {
+	private static _megabytes(bytes: number): string {
 		return `${(bytes / 1024 / 1024).toFixed(2)} megabytes`;
 	}
 
 	/**
 	 * Formats a byte count in kilobytes.
 	 *
-	 * @param {number} bytes The byte count.
-	 * @returns {string} The formatted text.
+	 * @param bytes The byte count.
+	 * @returns The formatted text.
 	 */
-	static _kilobytes(bytes) {
+	private static _kilobytes(bytes: number): string {
 		return `${(bytes / 1024).toFixed(2)} kilobytes`;
 	}
 }

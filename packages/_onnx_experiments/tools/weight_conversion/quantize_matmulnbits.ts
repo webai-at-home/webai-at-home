@@ -23,36 +23,74 @@
 /** The stored value that stands for zero when `MatMulNBits` is given no zero point tensor. */
 export const FIXED_ZERO_POINT = 8;
 
-/**
- * One weight matrix quantized to 4 bits in blocks.
- *
- * @typedef {object} QuantizedMatrix
- * @property {Uint8Array} quantized The packed values, two to a byte, with the even value in the low half.
- * @property {Float32Array} scales One scale for every block, in row-major order.
- * @property {Uint8Array|undefined} zeroPoints One packed zero point for every block, or undefined when the scheme is
- *   symmetric and the fixed zero point of 8 applies. Every row starts on a whole byte, because that is how
- *   `MatMulNBits` reads the tensor, so a row holding an odd number of blocks wastes the top half of its last byte.
- * @property {number} rowCount The number of output rows, which `MatMulNBits` calls N.
- * @property {number} columnCount The number of input columns, which `MatMulNBits` calls K.
- * @property {number} blockSize The number of weights sharing one scale.
- * @property {number} blocksForEachRow How many blocks one row is divided into.
- * @property {'symmetric'|'asymmetric'} scheme Which scheme produced this matrix.
- */
+/** Which of the two quantization schemes a matrix was quantized with. */
+export type QuantizationScheme = 'symmetric' | 'asymmetric';
+
+/** How to quantize one weight matrix. */
+export type QuantizationOptions = {
+	/** The number of weight values that share one scale. */
+	blockSize: number;
+	/** Which scheme to use. */
+	scheme: QuantizationScheme;
+	/** Symmetric only: what the largest magnitude in a block is divided by to make its scale. Defaults to 8. */
+	divisor?: number;
+};
+
+/** One weight matrix quantized to 4 bits in blocks. */
+export type QuantizedMatrix = {
+	/** The packed values, two to a byte, with the even value in the low half. */
+	quantized: Uint8Array;
+	/** One scale for every block, in row-major order. Mutable so it can be rounded to half precision in place. */
+	scales: Float32Array;
+	/**
+	 * One packed zero point for every block, or undefined when the scheme is symmetric and the fixed zero point of 8
+	 * applies. Every row starts on a whole byte, because that is how `MatMulNBits` reads the tensor, so a row holding
+	 * an odd number of blocks wastes the top half of its last byte.
+	 */
+	zeroPoints: Uint8Array | undefined;
+	/** The number of output rows, which `MatMulNBits` calls N. */
+	rowCount: number;
+	/** The number of input columns, which `MatMulNBits` calls K. */
+	columnCount: number;
+	/** The number of weights sharing one scale. */
+	blockSize: number;
+	/** How many blocks one row is divided into. */
+	blocksForEachRow: number;
+	/** Which scheme produced this matrix. */
+	scheme: QuantizationScheme;
+};
+
+/** How many bytes one quantized matrix occupies on disk, part by part. */
+export type QuantizedByteLengths = {
+	/** The byte length of the packed values. */
+	quantized: number;
+	/** The byte length of the scales. */
+	scales: number;
+	/** The byte length of the zero points, or 0 when the scheme is symmetric. */
+	zeroPoints: number;
+	/** The sum of the three. */
+	total: number;
+	/** What the total costs for every weight, in bits. */
+	bitsForEachWeight: number;
+};
 
 /** Quantizes weight matrices to 4 bits in the layout `MatMulNBits` reads, and restores them again. */
 export class QuantizeMatmulnbits {
 	/**
 	 * Quantizes one weight matrix.
 	 *
-	 * @param {Float32Array} values The weights, in row-major order, of length `rowCount * columnCount`.
-	 * @param {number} rowCount The number of output rows, which `MatMulNBits` calls N.
-	 * @param {number} columnCount The number of input columns, which `MatMulNBits` calls K.
-	 * @param {{blockSize: number, scheme: 'symmetric'|'asymmetric', divisor?: number}} options How to quantize. The
-	 *   divisor applies to the symmetric scheme only, and says what the largest magnitude in a block is divided by to
-	 *   make its scale.
-	 * @returns {QuantizedMatrix} The quantized matrix.
+	 * @param values The weights, in row-major order, of length `rowCount * columnCount`.
+	 * @param rowCount The number of output rows, which `MatMulNBits` calls N.
+	 * @param columnCount The number of input columns, which `MatMulNBits` calls K.
+	 * @param options How to quantize.
+	 * @returns The quantized matrix.
 	 */
-	static quantize(values, rowCount, columnCount, options) {
+	static quantize(
+		values: Float32Array,
+		rowCount: number,
+		columnCount: number,
+		options: QuantizationOptions,
+	): QuantizedMatrix {
 		const blockSize = options.blockSize;
 		const blocksForEachRow = Math.ceil(columnCount / blockSize);
 		const blobSize = (blockSize * 4) / 8;
@@ -69,8 +107,8 @@ export class QuantizeMatmulnbits {
 				const lastColumn = Math.min(firstColumn + blockSize, columnCount);
 				const blockIndex = row * blocksForEachRow + block;
 
-				let scale;
-				let zeroPoint;
+				let scale: number;
+				let zeroPoint: number;
 				if (options.scheme === 'symmetric') {
 					let largestMagnitude = 0;
 					for (let column = firstColumn; column < lastColumn; column++) {
@@ -88,7 +126,7 @@ export class QuantizeMatmulnbits {
 					}
 					scale = largest === smallest ? 1 : (largest - smallest) / 15;
 					zeroPoint = Math.min(15, Math.max(0, Math.round(-smallest / scale)));
-					QuantizeMatmulnbits._packNibble(zeroPoints, row * zeroPointBytesForEachRow * 2 + block, zeroPoint);
+					QuantizeMatmulnbits._packNibble(zeroPoints as Uint8Array, row * zeroPointBytesForEachRow * 2 + block, zeroPoint);
 				}
 				scales[blockIndex] = scale;
 
@@ -122,10 +160,10 @@ export class QuantizeMatmulnbits {
 	/**
 	 * Restores a quantized matrix to single precision, exactly as `MatMulNBits` restores it before multiplying.
 	 *
-	 * @param {QuantizedMatrix} matrix The quantized matrix.
-	 * @returns {Float32Array} The restored weights, in row-major order.
+	 * @param matrix The quantized matrix.
+	 * @returns The restored weights, in row-major order.
 	 */
-	static dequantize(matrix) {
+	static dequantize(matrix: QuantizedMatrix): Float32Array {
 		const restored = new Float32Array(matrix.rowCount * matrix.columnCount);
 		const zeroPointBytesForEachRow = Math.ceil(matrix.blocksForEachRow / 2);
 		for (let row = 0; row < matrix.rowCount; row++) {
@@ -151,11 +189,10 @@ export class QuantizeMatmulnbits {
 	/**
 	 * Reports how many bytes one quantized matrix occupies on disk, part by part.
 	 *
-	 * @param {QuantizedMatrix} matrix The quantized matrix.
-	 * @returns {{quantized: number, scales: number, zeroPoints: number, total: number, bitsForEachWeight: number}}
-	 *   The byte counts, and what they cost for every weight.
+	 * @param matrix The quantized matrix.
+	 * @returns The byte counts, and what they cost for every weight.
 	 */
-	static byteLengths(matrix) {
+	static byteLengths(matrix: QuantizedMatrix): QuantizedByteLengths {
 		const quantized = matrix.quantized.length;
 		const scales = matrix.scales.length * 2;
 		const zeroPoints = matrix.zeroPoints === undefined ? 0 : matrix.zeroPoints.length;
@@ -172,10 +209,10 @@ export class QuantizeMatmulnbits {
 	/**
 	 * Rounds every scale through half precision and back, which is how they are stored on disk.
 	 *
-	 * @param {Float32Array} scales The scales at single precision.
-	 * @returns {Float32Array} The same scales after a trip through half precision.
+	 * @param scales The scales at single precision.
+	 * @returns The same scales after a trip through half precision.
 	 */
-	static roundScalesToHalfPrecision(scales) {
+	static roundScalesToHalfPrecision(scales: Float32Array): Float32Array {
 		const rounded = new Float32Array(scales.length);
 		const halves = new Float16Array(scales.length);
 		halves.set(scales);
@@ -192,12 +229,12 @@ export class QuantizeMatmulnbits {
 	/**
 	 * Writes one 4-bit value into a packed array, with the even value in the low half of its byte.
 	 *
-	 * @param {Uint8Array} packed The array to write into.
-	 * @param {number} index The index of the value, counted in 4-bit values rather than bytes.
-	 * @param {number} value The value to write, from 0 to 15.
-	 * @returns {void}
+	 * @param packed The array to write into.
+	 * @param index The index of the value, counted in 4-bit values rather than bytes.
+	 * @param value The value to write, from 0 to 15.
+	 * @returns Nothing.
 	 */
-	static _packNibble(packed, index, value) {
+	private static _packNibble(packed: Uint8Array, index: number, value: number): void {
 		const byteIndex = index >> 1;
 		if ((index & 1) === 0) {
 			packed[byteIndex] = (packed[byteIndex] & 0xf0) | value;
@@ -209,11 +246,11 @@ export class QuantizeMatmulnbits {
 	/**
 	 * Reads one 4-bit value out of a packed array.
 	 *
-	 * @param {Uint8Array} packed The array to read from.
-	 * @param {number} index The index of the value, counted in 4-bit values rather than bytes.
-	 * @returns {number} The value, from 0 to 15.
+	 * @param packed The array to read from.
+	 * @param index The index of the value, counted in 4-bit values rather than bytes.
+	 * @returns The value, from 0 to 15.
 	 */
-	static _readNibble(packed, index) {
+	private static _readNibble(packed: Uint8Array, index: number): number {
 		const stored = packed[index >> 1];
 		return (index & 1) === 0 ? stored & 0x0f : stored >> 4;
 	}

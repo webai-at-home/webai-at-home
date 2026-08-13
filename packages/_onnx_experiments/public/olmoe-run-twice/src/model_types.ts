@@ -8,7 +8,7 @@
  * This page joins two sets of files written by two different tools, and they are only ever brought together here at
  * run time:
  *
- * - `convert_mixture_of_experts_to_expert_blocks.mjs` wrote `expert_blocks.bin`, 1024 expert blocks of 3,637,248
+ * - `convert_mixture_of_experts_to_expert_blocks.ts` wrote `expert_blocks.bin`, 1024 expert blocks of 3,637,248
  *   bytes each, and it is the only thing this page streams.
  * - `build_olmoe_graphs.py` wrote the 16 layer graphs, the head graph, the weightless expert graph, the token
  *   embedding table, and the `graphs.json` these types describe.

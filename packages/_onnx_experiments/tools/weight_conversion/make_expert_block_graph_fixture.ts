@@ -1,8 +1,7 @@
-#!/usr/bin/env node
-
 import Fs from 'node:fs';
 import Path from 'node:path';
-import { QuantizeMatmulnbits } from './quantize_matmulnbits.mjs';
+import { QuantizeMatmulnbits } from './quantize_matmulnbits.js';
+import type { ConversionManifest } from './convert_mixture_of_experts_to_expert_blocks.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -12,7 +11,7 @@ import { QuantizeMatmulnbits } from './quantize_matmulnbits.mjs';
 
 /**
  * `public/expert-block-graph-gate/` asks whether ONNX Runtime Web computes an expert correctly from the exact bytes
- * `convert_mixture_of_experts_to_expert_blocks.mjs` wrote. A browser cannot answer that on its own: it needs one real
+ * `convert_mixture_of_experts_to_expert_blocks.ts` wrote. A browser cannot answer that on its own: it needs one real
  * block, and it needs an answer computed somewhere else to compare against.
  *
  * This writes both. The reference is computed by restoring the block's own bytes with
@@ -25,32 +24,46 @@ import { QuantizeMatmulnbits } from './quantize_matmulnbits.mjs';
  */
 
 /** The three projections one expert is made of, in the order the block holds them. */
-const PROJECTION_NAMES = ['gate_proj', 'up_proj', 'down_proj'];
+const PROJECTION_NAMES = ['gate_proj', 'up_proj', 'down_proj'] as const;
 /** How many parts one projection contributes to a block: the quantized matrix, its scales, and its zero points. */
 const PARTS_FOR_EACH_PROJECTION = 3;
 /** The seed of the input vector, fixed so that regenerating the fixture does not change what the gate measures. */
 const INPUT_SEED = 20250814;
 
-/**
- * One projection restored from a block, ready to multiply.
- *
- * @typedef {object} RestoredProjection
- * @property {string} name Which projection this is.
- * @property {number} rowCount The number of output rows, which `MatMulNBits` calls N.
- * @property {number} columnCount The number of input columns, which `MatMulNBits` calls K.
- * @property {Float32Array} weights The restored weights, in row-major order.
- */
+/** One projection restored from a block, ready to multiply. */
+type RestoredProjection = {
+	/** Which projection this is. */
+	name: string;
+	/** The number of output rows, which `MatMulNBits` calls N. */
+	rowCount: number;
+	/** The number of input columns, which `MatMulNBits` calls K. */
+	columnCount: number;
+	/** The restored weights, in row-major order. */
+	weights: Float32Array;
+};
+
+/** The command line options this tool accepts. */
+type FixtureOptions = {
+	/** The directory written by `convert_mixture_of_experts_to_expert_blocks.ts`. */
+	blocksDirectory: string;
+	/** Which block to write a fixture for. */
+	blockIndex: number;
+	/** Where to write the fixture. */
+	outputDirectory: string;
+};
 
 /** Writes one real expert block and an independently computed answer for it. */
 class MakeExpertBlockGraphFixture {
 	/**
 	 * Writes the fixture.
 	 *
-	 * @returns {Promise<void>} Resolves once both files have been written.
+	 * @returns Resolves once both files have been written.
 	 */
-	static async main() {
+	static async main(): Promise<void> {
 		const options = MakeExpertBlockGraphFixture._readOptions(process.argv.slice(2));
-		const manifest = JSON.parse(Fs.readFileSync(Path.join(options.blocksDirectory, 'manifest.json'), 'utf8'));
+		const manifest = JSON.parse(
+			Fs.readFileSync(Path.join(options.blocksDirectory, 'manifest.json'), 'utf8'),
+		) as ConversionManifest;
 		const layout = manifest.experts;
 		const expertsForEachLayer = layout.expertsForEachLayer;
 
@@ -86,7 +99,7 @@ class MakeExpertBlockGraphFixture {
 		Fs.writeFileSync(Path.join(options.outputDirectory, 'expert_block.bin'), block);
 
 		const reference = {
-			producedBy: 'packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs',
+			producedBy: 'packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.ts',
 			issue: 'https://github.com/webai-at-home/webai-at-home/issues/169',
 			modelName: manifest.modelName,
 			sourceRepository: manifest.sourceRepository,
@@ -144,15 +157,14 @@ class MakeExpertBlockGraphFixture {
 	 * `MatMulNBits` does with them too. Reading them any other way would make this reference an answer about a
 	 * different set of numbers.
 	 *
-	 * @param {Buffer} block The block's bytes.
-	 * @param {object} manifest The conversion manifest, for the layout and the scheme.
-	 * @returns {RestoredProjection[]} The three projections.
+	 * @param block The block's bytes.
+	 * @param manifest The conversion manifest, for the layout and the scheme.
+	 * @returns The three projections.
 	 */
-	static _restore(block, manifest) {
+	private static _restore(block: Buffer, manifest: ConversionManifest): RestoredProjection[] {
 		const parts = manifest.experts.parts;
 		const blockSize = manifest.quantization.blockSize;
-		/** @type {RestoredProjection[]} */
-		const restored = [];
+		const restored: RestoredProjection[] = [];
 
 		for (let index = 0; index < PROJECTION_NAMES.length; index++) {
 			const name = PROJECTION_NAMES[index];
@@ -169,7 +181,7 @@ class MakeExpertBlockGraphFixture {
 				scaleBytes.buffer.slice(
 					scaleBytes.byteOffset,
 					scaleBytes.byteOffset + scaleBytes.byteLength,
-				),
+				) as ArrayBuffer,
 			);
 
 			restored.push({
@@ -188,7 +200,7 @@ class MakeExpertBlockGraphFixture {
 					columnCount: columnCount,
 					blockSize: blockSize,
 					blocksForEachRow: blocksForEachRow,
-					scheme: manifest.quantization.scheme,
+					scheme: manifest.quantization.scheme as 'symmetric' | 'asymmetric',
 				}),
 			});
 		}
@@ -209,12 +221,16 @@ class MakeExpertBlockGraphFixture {
 	 * rather than one term after another, and a tree is more accurate. So the two answers bracket the graph rather
 	 * than predicting it.
 	 *
-	 * @param {RestoredProjection[]} projections The three restored projections.
-	 * @param {Float32Array} input The expert input, one value for each hidden channel.
-	 * @param {boolean} atHalfPrecision Whether to round every intermediate value to half precision.
-	 * @returns {Float32Array} The expert output, one value for each hidden channel.
+	 * @param projections The three restored projections.
+	 * @param input The expert input, one value for each hidden channel.
+	 * @param atHalfPrecision Whether to round every intermediate value to half precision.
+	 * @returns The expert output, one value for each hidden channel.
 	 */
-	static _computeExpert(projections, input, atHalfPrecision) {
+	private static _computeExpert(
+		projections: RestoredProjection[],
+		input: Float32Array,
+		atHalfPrecision: boolean,
+	): Float32Array {
 		const round = MakeExpertBlockGraphFixture._rounder(atHalfPrecision);
 		const [gateProjection, upProjection, downProjection] = projections;
 		const started = new Float32Array(input.length);
@@ -236,15 +252,15 @@ class MakeExpertBlockGraphFixture {
 	/**
 	 * Makes the function that rounds one value to the precision being emulated.
 	 *
-	 * @param {boolean} atHalfPrecision Whether to round to half precision rather than leaving the value alone.
-	 * @returns {(value: number) => number} The rounding function.
+	 * @param atHalfPrecision Whether to round to half precision rather than leaving the value alone.
+	 * @returns The rounding function.
 	 */
-	static _rounder(atHalfPrecision) {
+	private static _rounder(atHalfPrecision: boolean): (value: number) => number {
 		if (atHalfPrecision === false) {
-			return (value) => value;
+			return (value: number) => value;
 		}
 		const scratch = new Float16Array(1);
-		return (value) => {
+		return (value: number) => {
 			scratch[0] = value;
 			return scratch[0];
 		};
@@ -253,12 +269,16 @@ class MakeExpertBlockGraphFixture {
 	/**
 	 * Multiplies one restored projection by a vector, as a linear layer does: `output[n] = sum over k of W[n][k] * x[k]`.
 	 *
-	 * @param {RestoredProjection} projection The projection.
-	 * @param {Float32Array} input The vector, of length `projection.columnCount`.
-	 * @param {(value: number) => number} round What to round every intermediate value with.
-	 * @returns {Float32Array} The result, of length `projection.rowCount`.
+	 * @param projection The projection.
+	 * @param input The vector, of length `projection.columnCount`.
+	 * @param round What to round every intermediate value with.
+	 * @returns The result, of length `projection.rowCount`.
 	 */
-	static _multiply(projection, input, round) {
+	private static _multiply(
+		projection: RestoredProjection,
+		input: Float32Array,
+		round: (value: number) => number,
+	): Float32Array {
 		const output = new Float32Array(projection.rowCount);
 		for (let row = 0; row < projection.rowCount; row++) {
 			let total = 0;
@@ -277,10 +297,10 @@ class MakeExpertBlockGraphFixture {
 	 * The values are scaled to the size a real expert input has after the normalization in front of it, so that the
 	 * gate measures the accuracy of a plausible multiplication rather than of an extreme one.
 	 *
-	 * @param {number} hiddenSize How many values the vector holds.
-	 * @returns {Float32Array} The vector.
+	 * @param hiddenSize How many values the vector holds.
+	 * @returns The vector.
 	 */
-	static _makeInput(hiddenSize) {
+	private static _makeInput(hiddenSize: number): Float32Array {
 		const input = new Float32Array(hiddenSize);
 		let state = INPUT_SEED;
 		for (let index = 0; index < hiddenSize; index++) {
@@ -302,34 +322,36 @@ class MakeExpertBlockGraphFixture {
 	/**
 	 * Reads the command line.
 	 *
-	 * @param {string[]} argumentList The arguments after the script name.
-	 * @returns {{blocksDirectory: string, blockIndex: number, outputDirectory: string}} The options.
+	 * @param argumentList The arguments after the script name.
+	 * @returns The options.
 	 */
-	static _readOptions(argumentList) {
-		const options = {
-			blocksDirectory: undefined,
-			blockIndex: 0,
-			outputDirectory: 'packages/_onnx_experiments/public/expert-block-graph-gate/fixture',
-		};
-		const usage = 'Use --blocks <directory written by convert_mixture_of_experts_to_expert_blocks.mjs> ' +
+	private static _readOptions(argumentList: string[]): FixtureOptions {
+		let blocksDirectory: string | undefined;
+		let blockIndex = 0;
+		let outputDirectory = 'packages/_onnx_experiments/public/expert-block-graph-gate/fixture';
+		const usage = 'Use --blocks <directory written by convert_mixture_of_experts_to_expert_blocks.ts> ' +
 			'[--block <index>] [--output <directory>]';
 		for (let index = 0; index < argumentList.length; index += 2) {
 			const name = argumentList[index];
 			const value = argumentList[index + 1];
 			if (name === '--blocks') {
-				options.blocksDirectory = value;
+				blocksDirectory = value;
 			} else if (name === '--block') {
-				options.blockIndex = Number(value);
+				blockIndex = Number(value);
 			} else if (name === '--output') {
-				options.outputDirectory = value;
+				outputDirectory = value;
 			} else {
 				throw new Error(`unknown option ${name}. ${usage}`);
 			}
 		}
-		if (options.blocksDirectory === undefined) {
+		if (blocksDirectory === undefined) {
 			throw new Error(`no --blocks was given. ${usage}`);
 		}
-		return options;
+		return {
+			blocksDirectory: blocksDirectory,
+			blockIndex: blockIndex,
+			outputDirectory: outputDirectory,
+		};
 	}
 }
 

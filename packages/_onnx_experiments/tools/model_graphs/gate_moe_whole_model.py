@@ -63,7 +63,7 @@ class WholeModel:
         """Load every graph, the embedding table, and the expert block file.
 
         :param graphs_directory: what build_olmoe_graphs.py wrote.
-        :param blocks_directory: what convert_mixture_of_experts_to_expert_blocks.mjs wrote.
+        :param blocks_directory: what convert_mixture_of_experts_to_expert_blocks.ts wrote.
         :returns: nothing.
         """
         self.index = json.loads((graphs_directory / "graphs.json").read_text())

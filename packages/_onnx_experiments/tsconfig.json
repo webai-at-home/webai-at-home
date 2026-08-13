@@ -5,6 +5,7 @@
         "moduleResolution": "bundler",
         "lib": [
             "ES2022",
+            "ES2025",
             "DOM",
             "DOM.Iterable"
         ],
@@ -25,6 +26,7 @@
         "noEmit": true
     },
     "include": [
-        "public/*/src/**/*.ts"
+        "public/*/src/**/*.ts",
+        "tools/**/*.ts"
     ]
 }

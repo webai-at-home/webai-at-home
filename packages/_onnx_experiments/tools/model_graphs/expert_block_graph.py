@@ -14,7 +14,7 @@ does that, on a WebGPU buffer this project allocated, without a new session.
                           down_proj_quantized, down_proj_scales, down_proj_zero_points)
 
 The nine inputs are exactly the nine parts, in exactly the order,
-`convert_mixture_of_experts_to_expert_blocks.mjs` writes into one block on disk.
+`convert_mixture_of_experts_to_expert_blocks.ts` writes into one block on disk.
 
 The arithmetic inside is half precision and the seam is single precision. That
 is not a preference: milestone 3 measured that storing the scales at half
@@ -174,7 +174,7 @@ def main() -> None:
     parser.add_argument(
         "--manifest",
         required=True,
-        help="the manifest.json written by convert_mixture_of_experts_to_expert_blocks.mjs",
+        help="the manifest.json written by convert_mixture_of_experts_to_expert_blocks.ts",
     )
     parser.add_argument("--output", required=True, help="where to write expert.onnx")
     arguments = parser.parse_args()

@@ -7,7 +7,7 @@ Splits the published Qwen3-0.6B ONNX model into three independent graphs, and ch
 ## Key Exports & Entry Points
 
 - `split_qwen3_onnx.py`: writes `shard-1.onnx`, `shard-2.onnx` and `shard-3.onnx`. Run it with the Python virtual environment one level up, at `tools/.venv`.
-- `verify_qwen3_shards.mjs`: runs three autoregressive steps through the three shards with ONNX Runtime Node, optionally comparing against the original monolithic model.
+- `verify_qwen3_shards.ts`: runs three autoregressive steps through the three shards with ONNX Runtime Node, optionally comparing against the original monolithic model.
 
 ## Local Rules & Boundaries
 

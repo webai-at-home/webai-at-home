@@ -18,44 +18,85 @@
  * gigabytes, and the whole point of a de-risking gate is that it costs less than the thing it guards.
  */
 
-/**
- * One tensor as a published safetensors header describes it, including where its bytes live in its shard.
- *
- * @typedef {object} LocatedTensor
- * @property {string} name The tensor's name in the model.
- * @property {string} shardName The shard file holding it.
- * @property {string} dataType The stored element type, such as `BF16`.
- * @property {number[]} shape The tensor's dimensions.
- * @property {number} byteStart The first byte of the tensor, counted from the start of the shard.
- * @property {number} byteEnd The byte after the last byte of the tensor, counted from the start of the shard.
- */
+/** One entry of a parsed safetensors header, before it is located in its shard. */
+export type SafetensorsHeaderEntry = {
+	/** The stored element type, such as `BF16`. */
+	dtype: string;
+	/** The tensor's dimensions. */
+	shape: number[];
+	/** The tensor's byte range inside the shard's data section, as `[start, end)`. */
+	data_offsets: [number, number];
+};
+
+/** A parsed safetensors file header: one entry for every tensor it holds. */
+export type SafetensorsHeader = Record<string, SafetensorsHeaderEntry>;
+
+/** The parsed `model.safetensors.index.json` of a published model. */
+export type SafetensorsIndex = {
+	/** Which shard file holds each tensor, keyed by tensor name. */
+	weight_map: Record<string, string>;
+	/** Whole-model metadata the index carries alongside the weight map. */
+	metadata: {
+		/** The total byte size of every shard, at the element type the model was published in. */
+		total_size: number;
+	};
+};
+
+/** One tensor as a published safetensors header describes it, including where its bytes live in its shard. */
+export type LocatedTensor = {
+	/** The tensor's name in the model. */
+	name: string;
+	/** The shard file holding it. */
+	shardName: string;
+	/** The stored element type, such as `BF16`. */
+	dataType: string;
+	/** The tensor's dimensions. */
+	shape: number[];
+	/** The first byte of the tensor, counted from the start of the shard. */
+	byteStart: number;
+	/** The byte after the last byte of the tensor, counted from the start of the shard. */
+	byteEnd: number;
+};
+
+/** One shard header, cached after its first read. */
+type CachedHeader = {
+	/** The parsed header. */
+	header: SafetensorsHeader;
+	/** How many bytes the header occupies, counted after the 8-byte length prefix. */
+	headerLength: number;
+};
 
 /** Reads tensors out of one published model repository. */
 export class SafetensorsReader {
+	/** The Hugging Face repository being read. */
+	readonly repository: string;
+	/** The revision being read. */
+	readonly revision: string;
+	/** The parsed weight index, once it has been read. */
+	index: SafetensorsIndex | undefined;
+	/** Headers already read, keyed by shard name, so each shard's header is fetched once. */
+	readonly headers: Map<string, CachedHeader>;
+
 	/**
-	 * @param {string} repository The Hugging Face repository, such as `Qwen/Qwen3-30B-A3B`.
-	 * @param {string} revision The revision to read.
+	 * @param repository The Hugging Face repository, such as `Qwen/Qwen3-30B-A3B`.
+	 * @param revision The revision to read.
 	 */
-	constructor(repository, revision) {
-		/** The Hugging Face repository being read. */
+	constructor(repository: string, revision: string) {
 		this.repository = repository;
-		/** The revision being read. */
 		this.revision = revision;
-		/** The parsed weight index, once it has been read. */
 		this.index = undefined;
-		/** Headers already read, keyed by shard name, so each shard's header is fetched once. */
 		this.headers = new Map();
 	}
 
 	/**
 	 * Finds where one named tensor's bytes live, reading only the index and the header of the shard that holds it.
 	 *
-	 * @param {string} tensorName The tensor to locate.
-	 * @returns {Promise<LocatedTensor>} Where the tensor's bytes are.
+	 * @param tensorName The tensor to locate.
+	 * @returns Where the tensor's bytes are.
 	 */
-	async locate(tensorName) {
+	async locate(tensorName: string): Promise<LocatedTensor> {
 		if (this.index === undefined) {
-			this.index = await this._fetchJson('model.safetensors.index.json');
+			this.index = await this._fetchJson<SafetensorsIndex>('model.safetensors.index.json');
 		}
 		const shardName = this.index.weight_map[tensorName];
 		if (shardName === undefined) {
@@ -83,10 +124,10 @@ export class SafetensorsReader {
 	/**
 	 * Downloads one whole tensor and converts it to single precision.
 	 *
-	 * @param {LocatedTensor} tensor The tensor to read.
-	 * @returns {Promise<Float32Array>} The tensor's values, in row-major order.
+	 * @param tensor The tensor to read.
+	 * @returns The tensor's values, in row-major order.
 	 */
-	async read(tensor) {
+	async read(tensor: LocatedTensor): Promise<Float32Array> {
 		const bytes = await this.readSlice(tensor, 0, tensor.byteEnd - tensor.byteStart);
 		if (tensor.dataType === 'BF16') {
 			return SafetensorsReader.brainFloatToSingle(bytes);
@@ -106,12 +147,12 @@ export class SafetensorsReader {
 	 * This is what reads one expert out of a tensor that stacks all 128 experts of a layer together, and what reads
 	 * packed 4-bit weights that no floating point conversion applies to.
 	 *
-	 * @param {LocatedTensor} tensor The tensor to read from.
-	 * @param {number} offset The first byte to read, counted from the start of the tensor.
-	 * @param {number} byteLength How many bytes to read.
-	 * @returns {Promise<Uint8Array>} The stored bytes.
+	 * @param tensor The tensor to read from.
+	 * @param offset The first byte to read, counted from the start of the tensor.
+	 * @param byteLength How many bytes to read.
+	 * @returns The stored bytes.
 	 */
-	async readSlice(tensor, offset, byteLength) {
+	async readSlice(tensor: LocatedTensor, offset: number, byteLength: number): Promise<Uint8Array> {
 		const start = tensor.byteStart + offset;
 		const end = start + byteLength - 1;
 		if (end >= tensor.byteEnd) {
@@ -139,10 +180,10 @@ export class SafetensorsReader {
 	 * Converts brain floating point values to single precision. A brain floating point value is the top 16 bits of a
 	 * single-precision value, so the conversion is exact and costs one shift.
 	 *
-	 * @param {Uint8Array} bytes The stored bytes, little-endian.
-	 * @returns {Float32Array} The values at single precision.
+	 * @param bytes The stored bytes, little-endian.
+	 * @returns The values at single precision.
 	 */
-	static brainFloatToSingle(bytes) {
+	static brainFloatToSingle(bytes: Uint8Array): Float32Array {
 		const count = bytes.length / 2;
 		const values = new Float32Array(count);
 		const asSingle = new Uint32Array(values.buffer);
@@ -162,36 +203,42 @@ export class SafetensorsReader {
 	/**
 	 * Builds the download URL for one file in the model repository.
 	 *
-	 * @param {string} fileName The file to address.
-	 * @returns {string} The URL.
+	 * Kept accessible rather than made private: the conversion pipeline builds its own retried range requests directly
+	 * against this URL, so that one failed request does not throw away the hours of work already done.
+	 *
+	 * @param fileName The file to address.
+	 * @returns The URL.
 	 */
-	_fileUrl(fileName) {
+	_fileUrl(fileName: string): string {
 		return `https://huggingface.co/${this.repository}/resolve/${this.revision}/${fileName}`;
 	}
 
 	/**
 	 * Downloads and parses one JSON file from the model repository.
 	 *
-	 * @param {string} fileName The file to read.
-	 * @returns {Promise<any>} The parsed contents.
+	 * Kept accessible rather than made private: the conversion pipeline reads `config.json` and the weight index
+	 * directly through this reader rather than duplicating the fetch.
+	 *
+	 * @param fileName The file to read.
+	 * @returns The parsed contents.
 	 */
-	async _fetchJson(fileName) {
+	async _fetchJson<T>(fileName: string): Promise<T> {
 		const response = await fetch(this._fileUrl(fileName), {
 			redirect: 'follow',
 		});
 		if (response.ok === false) {
 			throw new Error(`${fileName} could not be read: ${response.status} ${response.statusText}`);
 		}
-		return await response.json();
+		return await response.json() as T;
 	}
 
 	/**
 	 * Reads one safetensors file's header.
 	 *
-	 * @param {string} shardName The shard file to read.
-	 * @returns {Promise<{header: any, headerLength: number}>} The parsed header and its byte length.
+	 * @param shardName The shard file to read.
+	 * @returns The parsed header and its byte length.
 	 */
-	async _readShardHeader(shardName) {
+	private async _readShardHeader(shardName: string): Promise<CachedHeader> {
 		const url = this._fileUrl(shardName);
 		const lengthResponse = await fetch(url, {
 			headers: {
@@ -212,7 +259,7 @@ export class SafetensorsReader {
 			throw new Error(`${shardName} header could not be read: ${headerResponse.status}`);
 		}
 		return {
-			header: JSON.parse(await headerResponse.text()),
+			header: JSON.parse(await headerResponse.text()) as SafetensorsHeader,
 			headerLength: headerLength,
 		};
 	}

@@ -23,7 +23,7 @@ import { WebgpuProbes, type AllocationCeilingMeasurement } from './webgpu_probes
  */
 
 /**
- * One Qwen3-30B-A3B expert at 4 bits, in bytes, as measured by `tools/weight_conversion/measure_qwen3_moe_residency.mjs` in milestone
+ * One Qwen3-30B-A3B expert at 4 bits, in bytes, as measured by `tools/weight_conversion/measure_qwen3_moe_residency.ts` in milestone
  * one. Three projections of 768 by 2048, at 4.5 bits for every weight once the block scales are counted. It is also
  * exactly 648 pages of 4096 bytes, so every block in the test file starts on a page boundary without any padding.
  */
@@ -901,7 +901,7 @@ class Main {
 	}
 
 	/**
-	 * Formats a byte count, in the same units of 1024 that `tools/weight_conversion/measure_qwen3_moe_residency.mjs` reports.
+	 * Formats a byte count, in the same units of 1024 that `tools/weight_conversion/measure_qwen3_moe_residency.ts` reports.
 	 *
 	 * @param bytes - The byte count.
 	 * @returns The formatted text.

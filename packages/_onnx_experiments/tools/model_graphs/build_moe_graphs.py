@@ -17,7 +17,7 @@ else is built here with its weights baked in as ordinary initializers:
   - `graphs.json`, saying what was written and what shape the model is.
 
 The source is the `resident.safetensors` that
-`convert_mixture_of_experts_to_expert_blocks.mjs` wrote, which is the published
+`convert_mixture_of_experts_to_expert_blocks.ts` wrote, which is the published
 weights copied unchanged at BF16. Reading that file rather than the published
 repository again keeps both halves of the split provably from one conversion.
 
@@ -292,7 +292,7 @@ def main() -> None:
     parser.add_argument(
         "--blocks",
         required=True,
-        help="the directory written by convert_mixture_of_experts_to_expert_blocks.mjs",
+        help="the directory written by convert_mixture_of_experts_to_expert_blocks.ts",
     )
     parser.add_argument("--output", required=True, help="where to write the graphs")
     arguments = parser.parse_args()

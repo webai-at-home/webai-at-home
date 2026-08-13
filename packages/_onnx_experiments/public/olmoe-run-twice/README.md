@@ -73,7 +73,7 @@ Both pages now check the count and say what the browser's quota is when it comes
 Everything is generated and nothing is committed. Convert the model, which takes about ten minutes:
 
 ```sh
-node packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
+npx tsx packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.ts --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
 ```
 
 Build the graphs from the resident half of that conversion:

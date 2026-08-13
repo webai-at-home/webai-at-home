@@ -57,13 +57,13 @@ The answer here is computed from the block's **own bytes** rather than from the 
 The three files under `fixture/` are generated and are not committed. Convert the model, which takes about ten minutes and writes 4.36 gigabytes:
 
 ```sh
-node packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
+npx tsx packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.ts --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
 ```
 
 Take one block out of it, together with the two answers computed for it:
 
 ```sh
-node packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --block 0
+npx tsx packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.ts --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --block 0
 ```
 
 Write the graph, sized from that conversion's own manifest rather than from numbers typed by hand:
