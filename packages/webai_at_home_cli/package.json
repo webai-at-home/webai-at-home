@@ -1,6 +1,6 @@
 {
 	"name": "webai-at-home",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Run one participant of the WebAI@Home cluster: the central gateway, the OpenAI-compatible server, the native worker, or the command line client, without cloning the repository.",
 	"license": "MIT",
 	"repository": {
@@ -21,7 +21,8 @@
 		"typecheck": "tsc -p tsconfig.json",
 		"pretest": "npm run build:dependencies",
 		"test": "npx tsx --test tests/index.test.ts",
-		"prepack": "npm run build:dependencies && npm run build && npx tsx scripts/vendor_wrapped_programs.ts"
+		"prepack": "npm run build:dependencies && npm run build && npx tsx scripts/vendor_wrapped_programs.ts",
+		"publish:all": "npm version patch && npm publish"
 	},
 	"dependencies": {
 		"@huggingface/tokenizers": "^0.1.3",
