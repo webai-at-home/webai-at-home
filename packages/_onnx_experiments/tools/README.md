@@ -100,4 +100,16 @@ One expert block is 2,727,936 bytes, in nine parts — a quantized matrix, its s
 
 The pipeline verifies itself rather than being trusted: the written file length must be exactly the block count times the block length, and three blocks are read back and compared byte for byte against a fresh quantization of the same tensors.
 
+### The published result
+
+The full 48-layer conversion is published, so nothing needs to run this pipeline to use the blocks:
+
+- [`jerome-etienne/webai-at-home-qwen3-30b-a3b-expert-blocks`](https://huggingface.co/jerome-etienne/webai-at-home-qwen3-30b-a3b-expert-blocks), at the immutable revision [`d8db887997f90a003bea1f67478cfd7cc2a2b84a`](https://huggingface.co/jerome-etienne/webai-at-home-qwen3-30b-a3b-expert-blocks/tree/d8db887997f90a003bea1f67478cfd7cc2a2b84a).
+- Converted from `Qwen/Qwen3-30B-A3B` at the pinned revision [`ad44e777bcd18fa416d9da3bd8f70d33ebb85d39`](https://huggingface.co/Qwen/Qwen3-30B-A3B/tree/ad44e777bcd18fa416d9da3bd8f70d33ebb85d39).
+- `expert_blocks.bin` at 15.61 gigabytes, `resident.safetensors` at 2.87 gigabytes, and `manifest.json`.
+
+Hugging Face answers an HTTP range request against that revision with status 206 and exactly the bytes asked for, so one expert can be fetched on its own without downloading the 15.61-gigabyte file. Three published blocks and the head of the published resident file were read that way and compared byte for byte against the local copies.
+
+### The resident part
+
 The resident part is copied unchanged, at BF16, and is not quantized. That is a deliberate limit of this milestone. Which resident tensors may be quantized depends on how each is used — an attention projection goes through a matrix multiplication and could be quantized exactly as an expert is, while the token embedding is looked up rather than multiplied and would need a different path — and deciding that needs the graph that consumes them, which is milestone 4. Copying them unchanged keeps every one of those choices open.
