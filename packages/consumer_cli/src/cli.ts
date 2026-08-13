@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as Commander from 'commander';
 import Fs from 'node:fs';
+import Os from 'node:os';
 import Path from 'node:path';
 import { TaskInputFactory, taskTypeNames } from './libs/task_input_factory.js';
 import { CliError } from './libs/cli_errors.js';
@@ -25,7 +26,6 @@ import { AccountIdentityFile } from '@webai/protocol/account_identity_file';
 ///////////////////////////////////////////////////////////////////////////////
 
 const __filename = import.meta.filename;
-const __dirname = import.meta.dirname;
 
 /** The default bearer token, matching the gateway's own `--auth-token` default. */
 const DEFAULT_AUTHENTICATION_TOKEN = 'development-token';
@@ -38,17 +38,16 @@ const DEFAULT_GATEWAY_URL = 'ws://localhost:8787';
  * holds the account key pair in `default.account_key.json` and the account profile in
  * `default.identity.json`.
  *
- * This is `consumer_cli`'s own identity for this checkout of the repository, kept separate from
- * `consumer_openai`'s in `data/consumer_openai_config/` and `worker_openai`'s in
- * `data/worker_openai_config/`, so every `consumer_cli` command run here uses one consistent
- * account without `--config_dir` being passed by hand.
+ * This is `consumer_cli`'s own identity on this machine, kept separate from `consumer_openai`'s in
+ * `~/.webai-at-home/consumer_openai_config/` and `worker_openai`'s in
+ * `~/.webai-at-home/worker_openai_config/`, so every `consumer_cli` command run here uses one
+ * consistent account without `--config_dir` being passed by hand.
  *
- * Resolved from this file's own location rather than written as a bare `data/consumer_cli_config`
- * string, because a relative path resolves against the process's working directory, not this file's —
- * and `npm run dev --workspace @webai/consumer-cli --` and `npx tsx src/cli.ts` both run with the
- * working directory somewhere other than the repository root.
+ * Kept under the user's home directory rather than this package's own folder, because `consumer_cli`
+ * installed and run through `npx` has no writable folder of its own to keep an account key pair in
+ * between runs — that folder is a cache directory `npx` may clear. See issue #170.
  */
-const DEFAULT_CONFIG_DIR = Path.resolve(__dirname, '../../../data/consumer_cli_config');
+const DEFAULT_CONFIG_DIR = Path.join(Os.homedir(), '.webai-at-home', 'consumer_cli_config');
 
 /** The shared options every subcommand accepts, before each subcommand's own options. */
 type GlobalOptions = {

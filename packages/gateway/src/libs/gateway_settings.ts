@@ -23,6 +23,7 @@ type RawOptions = {
 	deviceActivityCoalesceMs: string;
 	commitSha: string;
 	heartbeatIntervalMs: string;
+	dev?: boolean;
 };
 
 /**
@@ -63,6 +64,8 @@ export class GatewaySettings {
 	readonly commitSha: string;
 	/** How often an open WebSocket connection is pinged to keep it alive through a reverse proxy's own idle timeout. */
 	readonly heartbeatIntervalMs: number;
+	/** Whether to serve the browser pages through a Vite development server instead of the already built `web/dist`. */
+	readonly dev: boolean;
 
 	/**
 	 * @param argv The command line arguments. Defaults to this process's own.
@@ -83,7 +86,8 @@ export class GatewaySettings {
 			.option('--pipeline-file <path>', 'JSON file containing additional pipeline specifications')
 			.option('--device-activity-coalesce-ms <number>', 'How long device activity changes are batched before one combined update is sent', '250')
 			.option('--commit-sha <sha>', 'Git commit this build was made from', 'unknown')
-			.option('--heartbeat-interval-ms <number>', 'How often an open WebSocket connection is pinged to keep it alive through a reverse proxy', '30000');
+			.option('--heartbeat-interval-ms <number>', 'How often an open WebSocket connection is pinged to keep it alive through a reverse proxy', '30000')
+			.option('--dev', 'serve the browser pages through a Vite development server, instead of the already built web/dist');
 		const options = (argv === undefined ? command.parse() : command.parse(argv, { from: 'user' })).opts<RawOptions>();
 
 		this.port = Number(options.port);
@@ -101,5 +105,6 @@ export class GatewaySettings {
 		this.deviceActivityCoalesceMs = Number(options.deviceActivityCoalesceMs);
 		this.commitSha = options.commitSha;
 		this.heartbeatIntervalMs = Number(options.heartbeatIntervalMs);
+		this.dev = options.dev === true;
 	}
 }

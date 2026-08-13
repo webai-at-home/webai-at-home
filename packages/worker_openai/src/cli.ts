@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import * as Commander from 'commander';
+import Fs from 'node:fs';
+import Os from 'node:os';
 import Path from 'node:path';
 import Url from 'node:url';
 import { AccountKeyFile } from '@webai/protocol/account_key_file';
@@ -22,17 +24,16 @@ const defaultGatewayUrl = 'ws://localhost:8787';
  * Where this worker defaults to reading its configuration directory, which holds its own account key
  * pair in `default.account_key.json`.
  *
- * This is `worker_openai`'s own identity for this checkout of the repository, kept separate from
- * `consumer_cli`'s in `data/consumer_cli_config/` and `consumer_openai`'s in
- * `data/consumer_openai_config/`, so every stage this worker completes earns credit for one
- * consistent account without `--config_dir` being passed by hand.
+ * This is `worker_openai`'s own identity on this machine, kept separate from `consumer_cli`'s in
+ * `~/.webai-at-home/consumer_cli_config/` and `consumer_openai`'s in
+ * `~/.webai-at-home/consumer_openai_config/`, so every stage this worker completes earns credit for
+ * one consistent account without `--config_dir` being passed by hand.
  *
- * Resolved from this file's own location rather than written as a bare
- * `data/worker_openai_config` string, because a relative path resolves against the process's
- * working directory, not this file's — and `npm run dev --workspace @webai/worker-openai --` and
- * `npx tsx src/cli.ts` both run with the working directory somewhere other than the repository root.
+ * Kept under the user's home directory rather than this package's own folder, because a worker
+ * installed and run through `npx` has no writable folder of its own to keep an account key pair
+ * in between runs — that folder is a cache directory `npx` may clear. See issue #170.
  */
-const defaultConfigDir = Path.resolve(Path.dirname(Url.fileURLToPath(import.meta.url)), '../../../data/worker_openai_config');
+const defaultConfigDir = Path.join(Os.homedir(), '.webai-at-home', 'worker_openai_config');
 
 /** The options this worker was started with. */
 type WorkerOptions = {
@@ -210,6 +211,29 @@ export class Cli {
 	private static print(text: string): void {
 		process.stdout.write(`${new Date().toISOString()} ${text}\n`);
 	}
+
+	/**
+	 * Reports whether this module was started directly, rather than imported.
+	 *
+	 * `npx`, and the `bin` symlink `npm install` creates for it, invoke this file through a
+	 * symlink under `node_modules/.bin`, so `process.argv[1]` is the symlink path while
+	 * `import.meta.url` is Node's already-resolved real path. Comparing both sides after
+	 * resolving symlinks handles that invocation the same as running this file directly.
+	 *
+	 * @returns `true` when this process was started to run this file.
+	 */
+	static isMainModule(): boolean {
+		if (process.argv[1] === undefined) {
+			return false;
+		}
+		try {
+			return Url.fileURLToPath(import.meta.url) === Fs.realpathSync(process.argv[1]);
+		} catch {
+			return false;
+		}
+	}
 }
 
-await Cli.run();
+if (Cli.isMainModule()) {
+	await Cli.run();
+}

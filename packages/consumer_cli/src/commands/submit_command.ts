@@ -1,4 +1,3 @@
-import Url from 'node:url';
 import Path from 'node:path';
 import WebSocket from 'ws';
 import { MessageLogger } from '@webai/protocol/message_logger';
@@ -48,7 +47,10 @@ export class SubmitCommand {
 		// with that as the reason, rather than half-way through the history with the gateway.
 		const accountKeyPair = await AccountKeyFile.readIfPresent(options.keyFilePath);
 
-		const logsDirectory = Url.fileURLToPath(new URL('../../logs', import.meta.url));
+		// Written to whichever directory this command was run from, rather than into this
+		// package's own folder — installed through `npx`, that folder is a cache directory
+		// nothing should write into. See issue #170.
+		const logsDirectory = 'logs';
 		const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const messageLogger = new MessageLogger(Path.join(logsDirectory, `consumer-cli-${runTimestamp}.log_entry.jsonl`));
 

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
+import Os from 'node:os';
 import Path from 'node:path';
-import Url from 'node:url';
 import { AccountKeyFile } from '@webai/protocol/account_key_file';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -13,17 +13,17 @@ import { AccountKeyFile } from '@webai/protocol/account_key_file';
  * Where this server defaults to reading its configuration directory, which holds its own account key
  * pair in `default.account_key.json`.
  *
- * This is `consumer_openai`'s own identity for this checkout of the repository, kept separate from
- * `consumer_cli`'s in `data/consumer_cli_config/` and `worker_openai`'s in
- * `data/worker_openai_config/`, so every task this server submits lands on one consistent account
- * without `--config_dir` being passed by hand.
+ * This is `consumer_openai`'s own identity on this machine, kept separate from `consumer_cli`'s in
+ * `~/.webai-at-home/consumer_cli_config/` and `worker_openai`'s in
+ * `~/.webai-at-home/worker_openai_config/`, so every task this server submits lands on one
+ * consistent account without `--config_dir` being passed by hand.
  *
- * Resolved from this file's own location rather than written as a bare
- * `data/consumer_openai_config` string, because a relative path resolves against the process's
- * working directory, not this file's — and `npm run dev --workspace @webai/consumer-openai --` and
- * `npx tsx src/cli.ts` both run with the working directory somewhere other than the repository root.
+ * Kept under the user's home directory rather than this package's own folder, because
+ * `consumer_openai` installed and run through `npx` has no writable folder of its own to keep an
+ * account key pair in between runs — that folder is a cache directory `npx` may clear. See
+ * issue #170.
  */
-const defaultConfigDir = Path.resolve(Path.dirname(Url.fileURLToPath(import.meta.url)), '../../../../data/consumer_openai_config');
+const defaultConfigDir = Path.join(Os.homedir(), '.webai-at-home', 'consumer_openai_config');
 
 /** The command line options exactly as they arrive, before they are converted. */
 type RawOptions = {

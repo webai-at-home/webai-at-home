@@ -10,10 +10,10 @@
     "build": "vite build && tsc -p tsconfig.build.json",
     "build:dependencies": "npm run build --workspace @webai/protocol",
     "prestart": "npm run build:dependencies",
-    "start": "NODE_ENV=production node dist/cli.js",
+    "start": "node dist/cli.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "predev": "npm run build:dependencies",
-    "dev": "tsx watch src/cli.ts",
+    "dev": "tsx watch src/cli.ts --dev",
     "test": "npx tsx --test tests/index.test.ts"
   },
   "dependencies": {

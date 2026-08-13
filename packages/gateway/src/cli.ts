@@ -92,8 +92,11 @@ export class Cli {
 		const diagnosticsRateLimiter = new DiagnosticsRateLimiter();
 
 		// Logs this gateway's own message traffic (one file per run), plus one log file per
-		// connected worker, relayed to us since a browser page cannot write files itself.
-		const logsDirectory = Path.join(Path.dirname(Url.fileURLToPath(import.meta.url)), '../logs');
+		// connected worker, relayed to us since a browser page cannot write files itself. Written
+		// next to the state, account and ledger files, in whichever directory the gateway was
+		// started from, rather than into this package's own folder — installed through `npx`,
+		// that folder is a cache directory nothing should write into. See issue #170.
+		const logsDirectory = 'logs';
 		const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const gatewayMessageLogger = new MessageLogger(Path.join(logsDirectory, `gateway-${runTimestamp}.log_entry.jsonl`));
 
@@ -132,13 +135,12 @@ export class Cli {
 			challengeRegistry,
 		);
 
-		const isProduction = process.env.NODE_ENV === 'production';
 		// The configuration file is named rather than left to Vite to discover, because Vite looks
 		// for it in the root directory it is given — `web` — and this package keeps it one level
 		// above that, next to `package.json`. Without naming it, a page would be served in
 		// development without the `define` values the production build bakes in, and every page
 		// script that reads one would fail with a ReferenceError. See issue #159.
-		const pageDevServer: PageDevServer | undefined = isProduction
+		const pageDevServer: PageDevServer | undefined = settings.dev === false
 			? undefined
 			: await (await import('vite')).createServer({
 				configFile: Path.join(Path.dirname(Url.fileURLToPath(import.meta.url)), '../vite.config.ts'),

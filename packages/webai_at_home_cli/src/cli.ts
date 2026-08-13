@@ -53,11 +53,6 @@ export class Cli {
 			.passThroughOptions()
 			.argument('[gatewayArgs...]', "the gateway's own options")
 			.action(async (gatewayArgs: string[]): Promise<void> => {
-				// Milestone 1 gives the gateway's own `Cli.run` an arguments parameter and stops
-				// it from starting a Vite development server outside production. Until then, this
-				// throwaway forces production mode so the gateway serves its already-built
-				// `web/dist` assets, the only files this tarball carries.
-				process.env.NODE_ENV = process.env.NODE_ENV ?? 'production';
 				await GatewayCli.run(gatewayArgs);
 			});
 
