@@ -85,6 +85,7 @@ export default defineConfig({
           'public/browser-storage-and-webgpu-buffer-measurements/index.html',
         ),
         expertResidencyLayer: resolve(import.meta.dirname, 'public/expert-residency-layer/index.html'),
+        expertBlockGraphGate: resolve(import.meta.dirname, 'public/expert-block-graph-gate/index.html'),
       },
     },
   },

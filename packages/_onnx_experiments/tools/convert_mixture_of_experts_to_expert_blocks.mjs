@@ -7,14 +7,14 @@ import { SafetensorsReader } from './safetensors_reader.mjs';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	ConvertQwen3MoeToExpertBlocks — the conversion pipeline of milestone 3 of issue #169
+//	ConvertMixtureOfExpertsToExpertBlocks — the conversion pipeline of issue #169
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * Milestone 3 of https://github.com/webai-at-home/webai-at-home/issues/169 splits Qwen3-30B-A3B into the part that
- * must stay in graphics memory and the 6144 expert blocks that may live on disk, and writes each expert block as one
- * contiguous aligned region holding its quantized weights, its scales, and its zero points together.
+ * Milestone 3 of https://github.com/webai-at-home/webai-at-home/issues/169 splits a mixture-of-experts model into the
+ * part that must stay in graphics memory and the expert blocks that may live on disk, and writes each expert block as
+ * one contiguous aligned region holding its quantized weights, its scales, and its zero points together.
  *
  * The one-read requirement is the whole point of the layout. The residency layer of milestone 4 reads an expert when
  * it misses, and a layout that put the scales in some other file would turn every miss into two reads and every
@@ -25,18 +25,42 @@ import { SafetensorsReader } from './safetensors_reader.mjs';
  * chose: 4 bits, blocks of 32, each block fitted to its own range with its own zero point.
  *
  * Nothing is downloaded whole. Every tensor is read out of the published safetensors shards by HTTP range request,
- * in contiguous runs, so the machine never holds more than one run at a time and no copy of the 57-gigabyte model is
- * ever written to disk.
+ * in contiguous runs, so the machine never holds more than one run at a time and no copy of the source model is ever
+ * written to disk.
+ *
+ * Two models are converted by the same code because they are the same shape of problem. Qwen3-30B-A3B is what issue
+ * #168 is ultimately about, and OLMoE-1B-7B-0924 is the stepping stone milestone 5 uses, because at 4.65 gigabytes
+ * its converted form still fits on the target machine and so it can be run both ways and compared.
  */
 
-/** The Hugging Face repository holding the model this pipeline converts. */
-const MODEL_REPOSITORY = 'Qwen/Qwen3-30B-A3B';
 /**
- * The revision to read, pinned rather than left at `main`, so that anything published from this pipeline names the
- * exact bytes it was made from. This is the commit `main` pointed at on 13 August 2026, last changed on
- * 26 July 2025.
+ * One model this pipeline knows how to convert.
+ *
+ * @typedef {object} ModelDescription
+ * @property {string} repository The Hugging Face repository holding the published weights.
+ * @property {string} revision The revision to read, pinned rather than left at `main`, so that anything published
+ *     from this pipeline names the exact bytes it was made from.
+ * @property {string} expertWidthKey Which configuration key holds the width of one expert's inner projection. The two
+ *     models disagree on the name, and reading the wrong key produces a plausible layout of the wrong size.
  */
-const MODEL_REVISION = 'ad44e777bcd18fa416d9da3bd8f70d33ebb85d39';
+
+/**
+ * Every model this pipeline converts, named as `--model` names them.
+ *
+ * @type {Record<string, ModelDescription>}
+ */
+const MODEL_DESCRIPTIONS = {
+	'Qwen3-30B-A3B': {
+		repository: 'Qwen/Qwen3-30B-A3B',
+		revision: 'ad44e777bcd18fa416d9da3bd8f70d33ebb85d39',
+		expertWidthKey: 'moe_intermediate_size',
+	},
+	'OLMoE-1B-7B-0924': {
+		repository: 'allenai/OLMoE-1B-7B-0924',
+		revision: '6d84c48581ece794365f2b8e9cfb043c68ade9c5',
+		expertWidthKey: 'intermediate_size',
+	},
+};
 /** The quantization scheme, as chosen by `gate_quantize_real_expert.mjs` against real weights. */
 const SCHEME = {
 	blockSize: 32,
@@ -60,36 +84,42 @@ const REQUEST_ATTEMPT_COUNT = 5;
  * @property {number} byteLength How long the part is, in bytes.
  */
 
-/** Converts Qwen3-30B-A3B into a resident part and 6144 expert blocks. */
-class ConvertQwen3MoeToExpertBlocks {
+/** Converts a mixture-of-experts model into a resident part and one block for each expert. */
+class ConvertMixtureOfExpertsToExpertBlocks {
 	/**
 	 * Runs the conversion.
 	 *
 	 * @returns {Promise<void>} Resolves once everything asked for has been written and verified.
 	 */
 	static async main() {
-		const options = ConvertQwen3MoeToExpertBlocks._readOptions(process.argv.slice(2));
+		const options = ConvertMixtureOfExpertsToExpertBlocks._readOptions(process.argv.slice(2));
+		const description = MODEL_DESCRIPTIONS[options.modelName];
 		Fs.mkdirSync(options.outputDirectory, {
 			recursive: true,
 		});
 
-		const reader = new SafetensorsReader(MODEL_REPOSITORY, MODEL_REVISION);
+		const reader = new SafetensorsReader(description.repository, description.revision);
 		const configuration = await reader._fetchJson('config.json');
 		const layerCount = configuration.num_hidden_layers;
 		const expertsForEachLayer = configuration.num_experts;
+		const expertWidth = configuration[description.expertWidthKey];
+		if (expertWidth === undefined) {
+			throw new Error(
+				`${description.repository} has no ${description.expertWidthKey} in its configuration, so the expert ` +
+					'width this pipeline would lay blocks out from is unknown',
+			);
+		}
 		const lastLayer = Math.min(options.lastLayer, layerCount - 1);
 		const convertedLayerCount = lastLayer - options.firstLayer + 1;
 
-		const layout = ConvertQwen3MoeToExpertBlocks._describeBlockLayout(
-			configuration.hidden_size,
-			configuration.moe_intermediate_size,
-		);
+		const layout = ConvertMixtureOfExpertsToExpertBlocks._describeBlockLayout(configuration.hidden_size, expertWidth);
 
-		console.log(`converting ${MODEL_REPOSITORY} at revision ${MODEL_REVISION}`);
+		console.log(`converting ${description.repository} at revision ${description.revision}`);
 		console.log(`  ${layerCount} layers, ${expertsForEachLayer} experts each, ` +
-			`hidden size ${configuration.hidden_size}, expert width ${configuration.moe_intermediate_size}`);
+			`hidden size ${configuration.hidden_size}, expert width ${expertWidth}`);
 		console.log(`  scheme: 4 bits, blocks of ${SCHEME.blockSize}, ${SCHEME.scheme}`);
-		console.log(`  one expert block is ${ConvertQwen3MoeToExpertBlocks._megabytes(layout.blockByteLength)}, ` +
+		console.log(`  one expert block is ` +
+			`${ConvertMixtureOfExpertsToExpertBlocks._megabytes(layout.blockByteLength)}, ` +
 			`in ${layout.parts.length} parts, every one aligned to ${PART_ALIGNMENT} bytes`);
 		console.log(`  converting layers ${options.firstLayer} to ${lastLayer}, which is ` +
 			`${convertedLayerCount * expertsForEachLayer} experts of ${layerCount * expertsForEachLayer}`);
@@ -103,7 +133,7 @@ class ConvertQwen3MoeToExpertBlocks {
 
 		try {
 			for (let layerIndex = options.firstLayer; layerIndex <= lastLayer; layerIndex++) {
-				const outcome = await ConvertQwen3MoeToExpertBlocks._convertLayer({
+				const outcome = await ConvertMixtureOfExpertsToExpertBlocks._convertLayer({
 					reader: reader,
 					blocksFile: blocksFile,
 					layerIndex: layerIndex,
@@ -118,7 +148,7 @@ class ConvertQwen3MoeToExpertBlocks {
 				const remaining = (convertedLayerCount * expertsForEachLayer) - writtenExpertCount;
 				console.log(
 					`  layer ${String(layerIndex).padStart(2)}: ${outcome.expertCount} experts, ` +
-						`${ConvertQwen3MoeToExpertBlocks._megabytes(outcome.readBytes)} read, ` +
+						`${ConvertMixtureOfExpertsToExpertBlocks._megabytes(outcome.readBytes)} read, ` +
 						`${elapsedSeconds.toFixed(0)} seconds so far, ` +
 						`about ${((elapsedSeconds / writtenExpertCount) * remaining / 60).toFixed(0)} minutes left`,
 				);
@@ -127,13 +157,17 @@ class ConvertQwen3MoeToExpertBlocks {
 			Fs.closeSync(blocksFile);
 		}
 
-		const resident = await ConvertQwen3MoeToExpertBlocks._convertResidentPart(reader, options.outputDirectory);
+		const resident = await ConvertMixtureOfExpertsToExpertBlocks._convertResidentPart(
+			reader,
+			options.outputDirectory,
+		);
 
 		const manifest = {
-			producedBy: 'packages/_onnx_experiments/tools/convert_qwen3_moe_to_expert_blocks.mjs',
+			producedBy: 'packages/_onnx_experiments/tools/convert_mixture_of_experts_to_expert_blocks.mjs',
 			issue: 'https://github.com/webai-at-home/webai-at-home/issues/169',
-			sourceRepository: MODEL_REPOSITORY,
-			sourceRevision: MODEL_REVISION,
+			modelName: options.modelName,
+			sourceRepository: description.repository,
+			sourceRevision: description.revision,
 			quantization: {
 				bits: 4,
 				blockSize: SCHEME.blockSize,
@@ -154,7 +188,8 @@ class ConvertQwen3MoeToExpertBlocks {
 			},
 			resident: resident,
 			hiddenSize: configuration.hidden_size,
-			expertWidth: configuration.moe_intermediate_size,
+			expertWidth: expertWidth,
+			expertsForEachToken: configuration.num_experts_per_tok,
 		};
 		Fs.writeFileSync(
 			Path.join(options.outputDirectory, 'manifest.json'),
@@ -163,8 +198,8 @@ class ConvertQwen3MoeToExpertBlocks {
 
 		const writtenBytes = Fs.statSync(blocksPath).size;
 		console.log(`\n  wrote ${writtenExpertCount} expert blocks, ` +
-			`${ConvertQwen3MoeToExpertBlocks._gigabytes(writtenBytes)}, after reading ` +
-			`${ConvertQwen3MoeToExpertBlocks._gigabytes(readBytes)}`);
+			`${ConvertMixtureOfExpertsToExpertBlocks._gigabytes(writtenBytes)}, after reading ` +
+			`${ConvertMixtureOfExpertsToExpertBlocks._gigabytes(readBytes)}`);
 		if (writtenBytes !== writtenExpertCount * layout.blockByteLength) {
 			throw new Error(
 				`the file is ${writtenBytes} bytes where ${writtenExpertCount * layout.blockByteLength} were expected, ` +
@@ -173,7 +208,7 @@ class ConvertQwen3MoeToExpertBlocks {
 		}
 		console.log('  the file length is exactly the block count times the block length');
 
-		await ConvertQwen3MoeToExpertBlocks._verify(reader, blocksPath, layout, options, expertsForEachLayer);
+		await ConvertMixtureOfExpertsToExpertBlocks._verify(reader, blocksPath, layout, options, expertsForEachLayer);
 		console.log(`\n  done in ${((Date.now() - startedAt) / 60000).toFixed(1)} minutes`);
 	}
 
@@ -213,7 +248,7 @@ class ConvertQwen3MoeToExpertBlocks {
 			}
 		}
 
-		const values = await ConvertQwen3MoeToExpertBlocks._readInRuns(options.reader, located);
+		const values = await ConvertMixtureOfExpertsToExpertBlocks._readInRuns(options.reader, located);
 		let readBytes = 0;
 		for (const entry of located) {
 			readBytes += entry.tensor.byteEnd - entry.tensor.byteStart;
@@ -294,11 +329,11 @@ class ConvertQwen3MoeToExpertBlocks {
 				}
 				const firstByte = tensors[runStart].byteStart;
 				const lastByte = tensors[runEnd].byteEnd;
-				const bytes = await ConvertQwen3MoeToExpertBlocks._fetchRange(reader, shardName, firstByte, lastByte);
+				const bytes = await ConvertMixtureOfExpertsToExpertBlocks._fetchRange(reader, shardName, firstByte, lastByte);
 				for (let index = runStart; index <= runEnd; index++) {
 					const tensor = tensors[index];
 					const slice = bytes.subarray(tensor.byteStart - firstByte, tensor.byteEnd - firstByte);
-					values.set(tensor.name, ConvertQwen3MoeToExpertBlocks._toSingle(tensor, slice));
+					values.set(tensor.name, ConvertMixtureOfExpertsToExpertBlocks._toSingle(tensor, slice));
 				}
 				runStart = runEnd + 1;
 			}
@@ -371,7 +406,7 @@ class ConvertQwen3MoeToExpertBlocks {
 	 * nothing here knows that yet: an attention projection goes through a matrix multiplication and could be
 	 * quantized the same way an expert is, while the token embedding is looked up rather than multiplied and would
 	 * need a different path entirely. Deciding that needs the graph that consumes these tensors, and building that
-	 * graph is milestone 4. Copying them unchanged keeps every one of those choices open and loses nothing.
+	 * graph is milestone 5. Copying them unchanged keeps every one of those choices open and loses nothing.
 	 *
 	 * @param {SafetensorsReader} reader The reader for the source model.
 	 * @param {string} outputDirectory Where to write the file.
@@ -439,7 +474,7 @@ class ConvertQwen3MoeToExpertBlocks {
 						runEnd++;
 					}
 					const firstByte = tensors[runStart].byteStart;
-					const bytes = await ConvertQwen3MoeToExpertBlocks._fetchRange(
+					const bytes = await ConvertMixtureOfExpertsToExpertBlocks._fetchRange(
 						reader,
 						shardName,
 						firstByte,
@@ -456,7 +491,7 @@ class ConvertQwen3MoeToExpertBlocks {
 				}
 			}
 
-			console.log(`    ${located.length} tensors, ${ConvertQwen3MoeToExpertBlocks._gigabytes(writtenBytes)}, ` +
+			console.log(`    ${located.length} tensors, ${ConvertMixtureOfExpertsToExpertBlocks._gigabytes(writtenBytes)}, ` +
 				'copied unchanged at BF16');
 			return {
 				fileName: 'resident.safetensors',
@@ -465,7 +500,7 @@ class ConvertQwen3MoeToExpertBlocks {
 				isQuantized: false,
 				elementType: 'BF16',
 				note: 'copied exactly as published. Which of these may be quantized depends on the graph that consumes ' +
-					'them, which milestone 4 builds.',
+					'them, which milestone 5 builds.',
 			};
 		} finally {
 			Fs.closeSync(residentFile);
@@ -599,29 +634,44 @@ class ConvertQwen3MoeToExpertBlocks {
 	/**
 	 * Reads the command line.
 	 *
+	 * `--model` has no default on purpose. This pipeline reads tens of gigabytes over the network and runs for the
+	 * better part of an hour, and a default would let a mistyped command spend all of that converting the wrong model.
+	 *
 	 * @param {string[]} argumentList The arguments after the script name.
-	 * @returns {{outputDirectory: string, firstLayer: number, lastLayer: number}} The options.
+	 * @returns {{modelName: string, outputDirectory: string, firstLayer: number, lastLayer: number}} The options.
 	 */
 	static _readOptions(argumentList) {
 		const options = {
-			outputDirectory: 'qwen3-30b-a3b-expert-blocks',
+			modelName: undefined,
+			outputDirectory: undefined,
 			firstLayer: 0,
 			lastLayer: Number.MAX_SAFE_INTEGER,
 		};
+		const usage = `Use --model <${Object.keys(MODEL_DESCRIPTIONS).join('|')}> ` +
+			'[--output <directory>] [--first-layer <index>] [--last-layer <index>]';
 		for (let index = 0; index < argumentList.length; index += 2) {
 			const name = argumentList[index];
 			const value = argumentList[index + 1];
-			if (name === '--output') {
+			if (name === '--model') {
+				options.modelName = value;
+			} else if (name === '--output') {
 				options.outputDirectory = value;
 			} else if (name === '--first-layer') {
 				options.firstLayer = Number(value);
 			} else if (name === '--last-layer') {
 				options.lastLayer = Number(value);
 			} else {
-				throw new Error(
-					`unknown option ${name}. Use --output <directory>, --first-layer <index>, --last-layer <index>`,
-				);
+				throw new Error(`unknown option ${name}. ${usage}`);
 			}
+		}
+		if (options.modelName === undefined) {
+			throw new Error(`no --model was given. ${usage}`);
+		}
+		if (MODEL_DESCRIPTIONS[options.modelName] === undefined) {
+			throw new Error(`${options.modelName} is not a model this pipeline converts. ${usage}`);
+		}
+		if (options.outputDirectory === undefined) {
+			options.outputDirectory = `${options.modelName.toLowerCase()}-expert-blocks`;
 		}
 		return options;
 	}
@@ -647,4 +697,4 @@ class ConvertQwen3MoeToExpertBlocks {
 	}
 }
 
-await ConvertQwen3MoeToExpertBlocks.main();
+await ConvertMixtureOfExpertsToExpertBlocks.main();

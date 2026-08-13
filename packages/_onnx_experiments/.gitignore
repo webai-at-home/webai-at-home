@@ -1,2 +1,10 @@
 tools/.venv/
 public/onnxruntime_qwen3-0.6b-with-shards/shards/
+
+# One real converted expert block, an answer computed for it, and the graph that reads it.
+# Written by tools/make_expert_block_graph_fixture.mjs, several megabytes, and reproducible
+# from the pinned revision the conversion pipeline names.
+public/expert-block-graph-gate/fixture/
+
+# Python bytecode caches, written whenever one tool imports another.
+tools/__pycache__/

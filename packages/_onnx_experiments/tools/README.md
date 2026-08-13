@@ -1,6 +1,6 @@
 # Tools
 
-Two unrelated groups of tools live here. The Qwen3 shard exporter, below, supports the `onnxruntime_qwen3-0.6b-with-shards` experiment. Everything after it belongs to [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): the Qwen3-30B-A3B residency measurement answers milestone 1, and the quantization gate and the conversion pipeline answer milestone 3.
+Two unrelated groups of tools live here. The Qwen3 shard exporter, below, supports the `onnxruntime_qwen3-0.6b-with-shards` experiment. Everything after it belongs to [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): the Qwen3-30B-A3B residency measurement answers milestone 1, the quantization gate and the conversion pipeline answer milestone 3, and the OLMoE gates, the expert graph, and the fixture generator belong to milestone 5.
 
 ## Qwen3 shard exporter
 
@@ -121,19 +121,52 @@ The gate checks the graph plus separately computed experts against the reference
 
 The attention bias is a graph input rather than a mask built into the graph. Decoding one token at a time needs no mask at all, since that token may attend to the whole history. The gate's negative control replaces the causal bias with zeros for a multi-token case and the difference jumps to **3.872e-01**, 188288 times the worst real case, which is what makes the other four rows worth believing.
 
-## Qwen3-30B-A3B conversion pipeline
+## The expert graph, and the fixture that checks it
 
-Writes the on-disk layout milestone 3 asks for: the always-resident part in one file, and the 6144 expert blocks in another, each block one contiguous 256-byte-aligned region holding one expert's quantized weights, scales, and zero points together.
+`expert_block_graph.py` builds one expert as an ONNX graph holding **no weights at all**. All nine tensors of an expert — a quantized matrix, its scales, and its zero points, for each of `gate_proj`, `up_proj`, and `down_proj` — arrive as graph inputs, in exactly the order the conversion pipeline writes them into a block. The whole file is 1379 bytes.
+
+The arithmetic inside is half precision and the seam is single precision. That is forced rather than chosen: `MatMulNBits` requires the activation and the scales to share an element type, and milestone 3 stored the scales at half precision because that saved 1.69 gigabytes. Two `Cast` nodes keep that consequence inside the one file where it is written down.
 
 ```sh
-node packages/_onnx_experiments/tools/convert_qwen3_moe_to_expert_blocks.mjs \
-  --output /tmp/qwen3-30b-a3b-expert-blocks \
-  --first-layer 0 --last-layer 47
+packages/_onnx_experiments/tools/.venv/bin/python \
+  packages/_onnx_experiments/tools/expert_block_graph.py \
+  --manifest /tmp/olmoe-1b-7b-0924-expert-blocks/manifest.json \
+  --output packages/_onnx_experiments/public/expert-block-graph-gate/fixture/expert.onnx
 ```
 
-Nothing is downloaded whole. Every tensor is read out of the published safetensors shards by HTTP range request, sorted by where it sits in its shard and fetched in contiguous runs of at most 96 megabytes, so no copy of the 57-gigabyte model is ever written to disk and the machine never holds more than one run at a time.
+The sizes come out of the conversion's own manifest rather than off the command line, because a graph built to sizes that do not match the blocks on disk loads perfectly well and then reads the wrong bytes.
 
-One expert block is 2,727,936 bytes, in nine parts — a quantized matrix, its scales, and its zero points, for each of `gate_proj`, `up_proj`, and `down_proj` — every part starting on a 256-byte boundary, and the whole block covering exactly 666 pages of 4096 bytes. The block for layer `l` and expert `e` starts at `(l * 128 + e) * 2727936`. All 6144 blocks come to 15.61 gigabytes.
+`make_expert_block_graph_fixture.mjs` writes what [the expert block graph gate](../public/expert-block-graph-gate/README.md) compares against: one real converted block, and the same expert computed twice on the processor side from that block's own bytes — once in single precision, and once with every intermediate value and every running total rounded to half precision.
+
+```sh
+node packages/_onnx_experiments/tools/make_expert_block_graph_fixture.mjs \
+  --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --block 0
+```
+
+Two answers rather than one, because the gate needs a bracket instead of a threshold. The graph is a half precision graph and cannot reproduce the single precision answer, so any single tolerance written down by hand either fails the gate for rounding or passes it for anything. The two answers are both measured, and they move with the model.
+
+## The conversion pipeline
+
+Writes the on-disk layout milestone 3 asks for: the always-resident part in one file, and every expert block in another, each block one contiguous 256-byte-aligned region holding one expert's quantized weights, scales, and zero points together.
+
+```sh
+node packages/_onnx_experiments/tools/convert_mixture_of_experts_to_expert_blocks.mjs \
+  --model Qwen3-30B-A3B \
+  --output /tmp/qwen3-30b-a3b-expert-blocks
+```
+
+Two models are converted by the same code, because they are the same shape of problem and both name their expert tensors `model.layers.N.mlp.experts.M.{gate_proj,up_proj,down_proj}.weight`:
+
+| `--model` | layers | experts each | one block | all blocks | resident part |
+| --- | --- | --- | --- | --- | --- |
+| `Qwen3-30B-A3B` | 48 | 128 | 2,727,936 bytes | 15.61 GB | 2.87 GB, 435 tensors |
+| `OLMoE-1B-7B-0924` | 16 | 64 | 3,637,248 bytes | 3.47 GB | 0.89 GB, 147 tensors |
+
+`--model` has no default on purpose. The pipeline reads tens of gigabytes and runs for the better part of an hour, and a default would let a mistyped command spend all of that converting the wrong model.
+
+Nothing is downloaded whole. Every tensor is read out of the published safetensors shards by HTTP range request, sorted by where it sits in its shard and fetched in contiguous runs of at most 96 megabytes, so no copy of the source model is ever written to disk and the machine never holds more than one run at a time.
+
+One block is nine parts — a quantized matrix, its scales, and its zero points, for each of `gate_proj`, `up_proj`, and `down_proj` — every part starting on a 256-byte boundary. The block for layer `l` and expert `e` starts at `(l * expertsForEachLayer + e) * blockByteLength`.
 
 The pipeline verifies itself rather than being trusted: the written file length must be exactly the block count times the block length, and three blocks are read back and compared byte for byte against a fresh quantization of the same tensors.
 
