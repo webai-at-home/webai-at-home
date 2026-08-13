@@ -59,9 +59,14 @@ export class Cli {
 	/** The Vite development server, when the gateway is not in production. */
 	private static pageDevServer: PageDevServer | undefined;
 
-	/** Builds the gateway and starts listening. */
-	static async run(): Promise<void> {
-		const settings = new GatewaySettings();
+	/**
+	 * Builds the gateway and starts listening.
+	 *
+	 * @param args The command line arguments, without the program name. Defaults to the
+	 * arguments this process was started with.
+	 */
+	static async run(args?: string[]): Promise<void> {
+		const settings = new GatewaySettings(args);
 
 		const deviceRegistry = new DeviceRegistry();
 		const taskStore = new TaskStore(undefined, settings.submissionTimeoutMs, settings.leaseMs, settings.stateFile);

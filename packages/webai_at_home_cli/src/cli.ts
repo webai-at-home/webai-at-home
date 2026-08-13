@@ -3,6 +3,9 @@
 import Fs from 'node:fs';
 import Url from 'node:url';
 
+// npm imports
+import * as Commander from 'commander';
+
 // local imports
 import { Cli as GatewayCli } from '@webai/gateway/dist/cli.js';
 
@@ -11,9 +14,6 @@ import { Cli as GatewayCli } from '@webai/gateway/dist/cli.js';
 //	Cli — the webai-at-home command line program: gateway (milestone 0 throwaway)
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-
-/** The subcommand names this throwaway program dispatches to. */
-const subcommandNames = ['gateway'] as const;
 
 /**
  * The command line program of `webai-at-home`, milestone 0.
@@ -28,29 +28,40 @@ export class Cli {
 	/**
 	 * Runs the command line program.
 	 *
+	 * Every subcommand keeps its own options, exactly as `@webai/gateway`, `@webai/consumer-openai`,
+	 * `@webai/worker-openai` and `@webai/consumer-cli` already declare them, so this program only
+	 * has to recognise which one was named and hand the rest of the command line to it unchanged.
+	 * `allowUnknownOption` and `passThroughOptions` keep this program's own parser from rejecting
+	 * or reinterpreting options it does not itself declare, such as the gateway's `--port`.
+	 *
 	 * @param args The command line arguments, without the program name. Defaults to the
 	 * arguments this process was started with.
 	 * @returns Nothing, once the chosen subcommand has finished.
 	 */
 	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
-		const [subcommand] = args;
-		if (subcommand === 'gateway') {
-			// Milestone 1 gives the gateway's own `Cli.run` an arguments parameter and stops it
-			// from starting a Vite development server outside production. Until then, this
-			// throwaway forces production mode so the gateway serves its already-built
-			// `web/dist` assets, the only files this tarball carries.
-			process.env.NODE_ENV = process.env.NODE_ENV ?? 'production';
-			await GatewayCli.run();
-			return;
-		}
-		if (subcommand === undefined || subcommand === '-h' || subcommand === '--help') {
-			Cli._printUsage();
-			process.exitCode = subcommand === undefined ? 1 : 0;
-			return;
-		}
-		console.error(`Unknown command: ${subcommand}\n`);
-		Cli._printUsage();
-		process.exitCode = 1;
+		const program = new Commander.Command('webai-at-home')
+			.description(
+				'Run one part of the WebAI@Home cluster. This is the milestone 0 throwaway for issue'
+					+ ' #170: only "gateway" is wired so far.',
+			)
+			.enablePositionalOptions();
+
+		program
+			.command('gateway')
+			.description('start the central gateway')
+			.allowUnknownOption()
+			.passThroughOptions()
+			.argument('[gatewayArgs...]', "the gateway's own options")
+			.action(async (gatewayArgs: string[]): Promise<void> => {
+				// Milestone 1 gives the gateway's own `Cli.run` an arguments parameter and stops
+				// it from starting a Vite development server outside production. Until then, this
+				// throwaway forces production mode so the gateway serves its already-built
+				// `web/dist` assets, the only files this tarball carries.
+				process.env.NODE_ENV = process.env.NODE_ENV ?? 'production';
+				await GatewayCli.run(gatewayArgs);
+			});
+
+		await program.parseAsync([process.argv[0] ?? '', process.argv[1] ?? '', ...args]);
 	}
 
 	/**
@@ -72,16 +83,6 @@ export class Cli {
 		} catch {
 			return false;
 		}
-	}
-
-	/** Prints the one subcommand this throwaway program accepts. */
-	private static _printUsage(): void {
-		console.log('Usage: webai-at-home <command> [options]');
-		console.log();
-		console.log('Commands:');
-		console.log(`  ${subcommandNames[0]}      start the central gateway`);
-		console.log();
-		console.log('This is the milestone 0 throwaway for issue #170: only "gateway" is wired so far.');
 	}
 }
 
