@@ -1,0 +1,18 @@
+{
+	"name": "Browser storage and WebGPU buffer measurements",
+	"short_name": "Storage measurements",
+	"description": "Milestone 2 of issue #169: what one Chrome page may keep on disk, how fast it reads it back, and how much WebGPU buffer memory it can hold.",
+	"start_url": "/browser-storage-and-webgpu-buffer-measurements/",
+	"scope": "/browser-storage-and-webgpu-buffer-measurements/",
+	"display": "standalone",
+	"background_color": "#111111",
+	"theme_color": "#111111",
+	"icons": [
+		{
+			"src": "/browser-storage-and-webgpu-buffer-measurements/icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any"
+		}
+	]
+}

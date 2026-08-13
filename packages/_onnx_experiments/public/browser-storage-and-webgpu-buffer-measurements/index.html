@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser storage and WebGPU buffer measurements · issue #169 milestone 2</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin: 0 0.5rem 1rem 0; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      p { max-width: 60rem; }
+      .phase { color: #6cf; }
+      .pass { color: #6f6; }
+      .fail { color: #f66; }
+      .warning { color: #fc6; }
+    </style>
+  </head>
+  <body>
+    <h1>Browser storage and WebGPU buffer measurements — issue #169 milestone 2</h1>
+    <p><a href="https://github.com/webai-at-home/webai-at-home/issues/169">Issue #169</a> milestone 0 already proved
+      that ONNX Runtime Web will multiply against a WebGPU buffer this project owns, and will reread that buffer after
+      it is overwritten. Milestone 1 measured that Qwen3-30B-A3B keeps only 0.81 gigabytes resident and can stream the
+      other 15.19 gigabytes. <strong>This page measures everything underneath both of those:</strong></p>
+    <ul>
+      <li>how many bytes this origin is allowed to keep on disk, and whether the browser promises not to delete them;</li>
+      <li>how fast one expert-sized block of 2.53 megabytes comes off disk through the Origin Private File System and
+        into a WebGPU buffer;</li>
+      <li>whether that write overlaps a compute pass or waits behind it on the single WebGPU queue;</li>
+      <li>and how much WebGPU buffer memory one Chrome page can hold at once before allocation fails.</li>
+    </ul>
+    <p>No model is downloaded and ONNX Runtime Web is never loaded. The page writes a test file of about 1.27 gigabytes
+      into the Origin Private File System, reads it back, and removes it again at the end of the run.</p>
+    <p>Persistence is granted differently to an ordinary tab and to an installed Progressive Web Application, so
+      <strong>run this page twice</strong>: once in a tab, and once after installing it from the address bar.</p>
+    <button id="run-button" type="button" disabled>Loading…</button>
+    <button id="run-ceiling-button" type="button" disabled>Loading…</button>
+    <p class="warning">The allocation ceiling probe is behind its own button on purpose. It deliberately takes WebGPU
+      buffer memory until the device refuses, and a device pushed that far can be lost, which takes the tab with it.
+      Run the measurements first, read them, and only then press the second button.</p>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/browser-storage-and-webgpu-buffer-measurements/src/main.ts"></script>
+  </body>
+</html>

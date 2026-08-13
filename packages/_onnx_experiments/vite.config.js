@@ -6,6 +6,13 @@ const ortDist = resolve(import.meta.dirname, 'node_modules/onnxruntime-web/dist'
 const ortAssets = ['ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
 const qwenShardDirectory = resolve(import.meta.dirname, 'public/onnxruntime_qwen3-0.6b-with-shards/shards');
 const qwenShardPrefix = '/onnxruntime_qwen3-0.6b-with-shards/shards/';
+// The milestone 2 measurement page has to be installable as a Progressive Web Application, because one of the things
+// it measures only has an answer once the page is installed. Chrome wants an icon and a service worker for that, and
+// neither is imported by any module, so Vite would not emit either of them on its own.
+const installableAssets = [
+  'browser-storage-and-webgpu-buffer-measurements/icon.svg',
+  'browser-storage-and-webgpu-buffer-measurements/service_worker.js',
+];
 
 export default defineConfig({
   root: resolve(import.meta.dirname, 'public'),
@@ -35,6 +42,13 @@ export default defineConfig({
       for (const fileName of ortAssets) {
         this.emitFile({ type: 'asset', fileName, source: readFileSync(resolve(ortDist, fileName)) });
       }
+      for (const fileName of installableAssets) {
+        this.emitFile({
+          type: 'asset',
+          fileName,
+          source: readFileSync(resolve(import.meta.dirname, 'public', fileName)),
+        });
+      }
       for (const shardName of ['shard-1.onnx', 'shard-2.onnx', 'shard-3.onnx']) {
         const shardPath = resolve(qwenShardDirectory, shardName);
         try {
@@ -63,6 +77,10 @@ export default defineConfig({
         matmulNBitsOwnedWebgpuBufferGate: resolve(
           import.meta.dirname,
           'public/matmulnbits-owned-webgpu-buffer-gate/index.html',
+        ),
+        browserStorageAndWebgpuBufferMeasurements: resolve(
+          import.meta.dirname,
+          'public/browser-storage-and-webgpu-buffer-measurements/index.html',
         ),
       },
     },
