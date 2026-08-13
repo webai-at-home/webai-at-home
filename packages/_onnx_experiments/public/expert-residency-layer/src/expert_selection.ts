@@ -25,6 +25,16 @@ import type { SelectionKind } from './residency_types.js';
 
 /** How strongly the skewed sequence favours the experts it favours. Chosen for shape, not measured. */
 const SKEW_EXPONENT = 1.2;
+/**
+ * The seed behind which experts a layer favours.
+ *
+ * This is deliberately **not** the seed a run is given. Which experts a layer prefers is a property of the model and
+ * does not change between prompts; what changes between prompts is which of them each token happens to draw. Deriving
+ * the preference from the run's seed instead made a warm-up on a different seed favour an entirely different set of
+ * experts, so a pinned set learned from it was 192 experts chosen at random. That reported pinning as harmful — the
+ * skewed hit rate fell from 33.1 per cent to 7.6 — which was a bug in this file rather than anything about pinning.
+ */
+const PREFERENCE_SEED = 20250813;
 
 /** Produces deterministic sequences of expert choices for the measurement loop. */
 export class ExpertSelection {
@@ -66,7 +76,6 @@ export class ExpertSelection {
 		this._layerCount = layerCount;
 		this._expertsForEachLayer = expertsForEachLayer;
 		this._selectedForEachLayer = selectedForEachLayer;
-		this._randomState = seed;
 
 		if (this._kind === 'skewed') {
 			let runningTotal = 0;
@@ -74,10 +83,14 @@ export class ExpertSelection {
 				runningTotal += 1 / Math.pow(rank + 1, SKEW_EXPONENT);
 				this._cumulativeWeights.push(runningTotal);
 			}
+			// Which experts a layer prefers comes from the fixed preference seed, so that two sequences differing only
+			// in their run seed draw different tokens from the same model rather than from two different models.
+			this._randomState = PREFERENCE_SEED;
 			for (let layerIndex = 0; layerIndex < this._layerCount; layerIndex++) {
 				this._layerPermutations.push(this._shuffledExpertNumbers());
 			}
 		}
+		this._randomState = seed;
 	}
 
 	/**
