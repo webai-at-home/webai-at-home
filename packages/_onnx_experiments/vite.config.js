@@ -16,8 +16,8 @@ const installableAssets = [
   'expert-residency-layer/service_worker.js',
 ];
 // The issue #169 milestone 5 page reads a converted OLMoE-1B-7B-0924: 1.78 gigabytes of graphs and 3.47 gigabytes of
-// expert blocks, written by tools/build_olmoe_graphs.py and by
-// tools/convert_mixture_of_experts_to_expert_blocks.mjs. They are generated artifacts and are far too large to sit
+// expert blocks, written by tools/model_graphs/build_moe_graphs.py and by
+// tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs. They are generated artifacts and are far too large to sit
 // under public/, so the development server serves them from wherever they were written, with the byte range support
 // Hugging Face gives — which is what the page needs to pull one expert at a time out of a 3.47-gigabyte file.
 const olmoeArtifactDirectories = {

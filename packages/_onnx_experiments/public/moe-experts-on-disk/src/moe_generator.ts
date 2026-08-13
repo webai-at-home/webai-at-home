@@ -25,7 +25,7 @@ import type { ModelIndex } from './model_types.js';
  * This is the milestone about correctness, so it takes the shape with fewer ways to be wrong. The graph still takes
  * the mask as an input, and `gate_olmoe_non_expert_graph.py` tests it with one.
  *
- * The same sequence of graphs was run outside the browser by `tools/gate_olmoe_whole_model.py`, which produced
+ * The same sequence of graphs was run outside the browser by `tools/model_graphs/gate_moe_whole_model.py`, which produced
  * `The capital of France is Paris.` from the same files. That is the control this loop is read against.
  */
 

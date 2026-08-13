@@ -1,6 +1,23 @@
 # Tools
 
-Two unrelated groups of tools live here. The Qwen3 shard exporter, below, supports the `onnxruntime_qwen3-0.6b-with-shards` experiment. Everything after it belongs to [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): the Qwen3-30B-A3B residency measurement answers milestone 1, the quantization gate and the conversion pipeline answer milestone 3, the OLMoE gates and the expert graph and the fixture generator belong to milestone 5, and the Qwen3-30B-A3B layer graph, the graph builder, the whole-model gate and the intermediate exposer belong to milestone 6.
+Three folders, split by what the tools inside them work on.
+
+| folder | what it holds | language |
+| --- | --- | --- |
+| [`qwen3_shard_export/`](qwen3_shard_export/) | the older, separate experiment: Qwen3-0.6B split into three graphs, and the check that they still agree with the original | both |
+| [`weight_conversion/`](weight_conversion/) | reads the **published** weights over HTTP range requests and writes this project's on-disk layout: the resident part in one file, one aligned block for each expert | JavaScript |
+| [`model_graphs/`](model_graphs/) | builds every ONNX graph the browser runs — everything that is **not** an expert weight — and checks each one against the reference implementation | Python |
+
+The split between the last two is where the design's seam is. `weight_conversion/` decides what the bytes of an expert look like on disk; `model_graphs/` decides what reads them. Neither imports from the other. They meet only through the files on disk and the `manifest.json` and `graphs.json` that describe them, which is what lets a browser hold the weights and let ONNX Runtime Web do only the arithmetic.
+
+Everything except `qwen3_shard_export/` belongs to [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169). Each folder has its own `CONTEXT.md`.
+
+The Python tools share one virtual environment at `tools/.venv`, created from `tools/requirements.txt`. Both live at this level rather than inside a folder, because two folders hold Python.
+
+```sh
+python3.13 -m venv packages/_onnx_experiments/tools/.venv
+packages/_onnx_experiments/tools/.venv/bin/pip install -r packages/_onnx_experiments/tools/requirements.txt
+```
 
 ## Qwen3 shard exporter
 
@@ -8,19 +25,12 @@ The browser page expects three files in
 `packages/_onnx_experiments/public/onnxruntime_qwen3-0.6b-with-shards/shards/`. The files are generated artifacts and
 are intentionally ignored by Git because they are about 1.7 GB in total.
 
-Create the repository-local environment and install the exporter dependency:
-
-```sh
-python3.13 -m venv packages/_onnx_experiments/tools/.venv
-packages/_onnx_experiments/tools/.venv/bin/pip install -r packages/_onnx_experiments/tools/requirements.txt
-```
-
-Download the source model and export the three shards:
+Download the source model and export the three shards, with the virtual environment created above:
 
 ```sh
 curl -L --fail --output /tmp/qwen3-model_q4f16.onnx \
   https://huggingface.co/onnx-community/Qwen3-0.6B-ONNX/resolve/main/onnx/model_q4f16.onnx
-packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/split_qwen3_onnx.py \
+packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/qwen3_shard_export/split_qwen3_onnx.py \
   /tmp/qwen3-model_q4f16.onnx \
   packages/_onnx_experiments/public/onnxruntime_qwen3-0.6b-with-shards/shards
 ```
@@ -39,14 +49,14 @@ key/value cache, from one session to the next.
 Verify three autoregressive steps with ONNX Runtime Node:
 
 ```sh
-node packages/_onnx_experiments/tools/verify_qwen3_shards.mjs
+node packages/_onnx_experiments/tools/qwen3_shard_export/verify_qwen3_shards.mjs
 ```
 
 Pass the original monolithic model as an optional argument to compare the first
 shard pipeline result against the original graph:
 
 ```sh
-node packages/_onnx_experiments/tools/verify_qwen3_shards.mjs /tmp/qwen3-model_q4f16.onnx
+node packages/_onnx_experiments/tools/qwen3_shard_export/verify_qwen3_shards.mjs /tmp/qwen3-model_q4f16.onnx
 ```
 
 ## Qwen3-30B-A3B residency measurement
@@ -54,7 +64,7 @@ node packages/_onnx_experiments/tools/verify_qwen3_shards.mjs /tmp/qwen3-model_q
 Answers milestone 1 of [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): does the always-resident part of Qwen3-30B-A3B fit in the graphics memory of the target machine? Streaming only helps for the part of a model that is inactive most of the time, so if the part that must stay resident does not fit on its own, the approach of [issue #168](https://github.com/webai-at-home/webai-at-home/issues/168) stops there.
 
 ```sh
-node packages/_onnx_experiments/tools/measure_qwen3_moe_residency.mjs
+node packages/_onnx_experiments/tools/weight_conversion/measure_qwen3_moe_residency.mjs
 ```
 
 The tool downloads no model. It reads the real shape of every one of the 18867 published tensors out of the safetensors headers over HTTP range requests, which is about 20 megabytes rather than the 57 gigabytes of weights, and classifies each tensor as an expert weight or as always resident. Nothing is trusted to arithmetic done from `config.json`.
@@ -64,7 +74,7 @@ The tool downloads no model. It reads the real shape of every one of the 18867 p
 Answers the question milestone 3 of [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169) has to answer before any conversion is worth running: does 4-bit block quantization in the layout `MatMulNBits` reads keep a real Qwen3-30B-A3B expert usable, and which block size and which scheme should the conversion write?
 
 ```sh
-node packages/_onnx_experiments/tools/gate_quantize_real_expert.mjs
+node packages/_onnx_experiments/tools/weight_conversion/gate_quantize_real_expert.mjs
 ```
 
 The gate downloads about 9 megabytes by HTTP range request: three real expert weight matrices out of `Qwen/Qwen3-30B-A3B`, and the same expert as already published by `mlx-community/Qwen3-30B-A3B-4bit`. That second download is what makes the gate mean anything. Quantization error has no absolute threshold that can be argued for from first principles, so the gate compares against a 4-bit conversion of the same model that people already use, and asks only that this conversion is no worse than that one.
@@ -90,7 +100,7 @@ Answers the question milestone 5 of [issue #169](https://github.com/webai-at-hom
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/gate_olmoe_expert_decomposition.py
+  packages/_onnx_experiments/tools/model_graphs/gate_olmoe_expert_decomposition.py
 ```
 
 The gate downloads no weights. It builds one `OlmoeSparseMoeBlock` with random weights and checks that computing it by hand — router, softmax, top-8, eight independent expert feed-forwards, weighted sum — reproduces what the reference implementation produces. Two computations of the same thing either agree or they do not, and that does not need the published 13.8 gigabytes.
@@ -114,7 +124,7 @@ Only the *expert* weights ever have to be runtime inputs. Everything in this gra
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/gate_olmoe_non_expert_graph.py
+  packages/_onnx_experiments/tools/model_graphs/gate_olmoe_non_expert_graph.py
 ```
 
 The gate checks the graph plus separately computed experts against the reference layer, over four cases: one token and several, each with an empty key and value cache and with one already holding history. The worst case is **2.056e-06** relative, inside a tolerance of 2e-5, and the returned cache matches the reference cache every time.
@@ -132,7 +142,7 @@ The attention bias is a graph input rather than a mask built into the graph. Dec
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/gate_qwen3_moe_non_expert_graph.py
+  packages/_onnx_experiments/tools/model_graphs/gate_qwen3_moe_non_expert_graph.py
 ```
 
 The gate checks the graph plus separately computed experts against the reference layer, over four cases. The worst is **7.875e-06** relative, inside a tolerance of 2e-5, and the returned cache matches the reference cache every time. Its negative control replaces the causal bias with zeros and the difference jumps to **4.573e-01**, 58072 times the worst real case.
@@ -147,7 +157,7 @@ The gate checks the graph plus separately computed experts against the reference
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/build_moe_graphs.py \
+  packages/_onnx_experiments/tools/model_graphs/build_moe_graphs.py \
   --model OLMoE-1B-7B-0924 \
   --blocks /tmp/olmoe-1b-7b-0924-expert-blocks \
   --output /tmp/olmoe-1b-7b-0924-graphs
@@ -168,7 +178,7 @@ Single precision throughout for the arithmetic. The layer graphs were gated at s
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/gate_moe_whole_model.py \
+  packages/_onnx_experiments/tools/model_graphs/gate_moe_whole_model.py \
   --graphs /tmp/qwen3-30b-a3b-graphs --blocks /tmp/qwen3-30b-a3b-expert-blocks
 ```
 
@@ -191,7 +201,7 @@ It runs the same graphs the browser runs — but on the processor, and the brows
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/expose_graph_intermediates.py \
+  packages/_onnx_experiments/tools/model_graphs/expose_graph_intermediates.py \
   --graph /tmp/qwen3-30b-a3b-graphs/layer_00.onnx \
   --output /tmp/qwen3-30b-a3b-graphs/layer_00.intermediates.onnx
 ```
@@ -208,7 +218,7 @@ The arithmetic inside is half precision and the seam is single precision. That i
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/expert_block_graph.py \
+  packages/_onnx_experiments/tools/model_graphs/expert_block_graph.py \
   --manifest /tmp/olmoe-1b-7b-0924-expert-blocks/manifest.json \
   --output packages/_onnx_experiments/public/expert-block-graph-gate/fixture/expert.onnx
 ```
@@ -218,7 +228,7 @@ The sizes come out of the conversion's own manifest rather than off the command 
 `make_expert_block_graph_fixture.mjs` writes what [the expert block graph gate](../public/expert-block-graph-gate/README.md) compares against: one real converted block, and the same expert computed twice on the processor side from that block's own bytes — once in single precision, and once with every intermediate value and every running total rounded to half precision.
 
 ```sh
-node packages/_onnx_experiments/tools/make_expert_block_graph_fixture.mjs \
+node packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs \
   --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --block 0
 ```
 
@@ -229,7 +239,7 @@ Two answers rather than one, because the gate needs a bracket instead of a thres
 Writes the on-disk layout milestone 3 asks for: the always-resident part in one file, and every expert block in another, each block one contiguous 256-byte-aligned region holding one expert's quantized weights, scales, and zero points together.
 
 ```sh
-node packages/_onnx_experiments/tools/convert_mixture_of_experts_to_expert_blocks.mjs \
+node packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs \
   --model Qwen3-30B-A3B \
   --output /tmp/qwen3-30b-a3b-expert-blocks
 ```

@@ -376,7 +376,7 @@ def main() -> None:
           f"{vocabulary_size} rows of {hidden_size} at {embedding_element_type}")
 
     index = {
-        "producedBy": "packages/_onnx_experiments/tools/build_moe_graphs.py",
+        "producedBy": "packages/_onnx_experiments/tools/model_graphs/build_moe_graphs.py",
         "issue": "https://github.com/webai-at-home/webai-at-home/issues/169",
         "modelName": arguments.model,
         "sourceRepository": manifest["sourceRepository"],

@@ -163,7 +163,7 @@ class ConvertMixtureOfExpertsToExpertBlocks {
 		);
 
 		const manifest = {
-			producedBy: 'packages/_onnx_experiments/tools/convert_mixture_of_experts_to_expert_blocks.mjs',
+			producedBy: 'packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs',
 			issue: 'https://github.com/webai-at-home/webai-at-home/issues/169',
 			modelName: options.modelName,
 			sourceRepository: description.repository,

@@ -175,7 +175,7 @@ class Main {
 		if (head.ok === false) {
 			Main._print(`  ${INTERMEDIATES_GRAPH} is not there. Write it with:`);
 			Main._print('    packages/_onnx_experiments/tools/.venv/bin/python \\');
-			Main._print('      packages/_onnx_experiments/tools/expose_graph_intermediates.py \\');
+			Main._print('      packages/_onnx_experiments/tools/model_graphs/expose_graph_intermediates.py \\');
 			Main._print(`      --graph /tmp/qwen3-30b-a3b-graphs/${LAYER_GRAPH} \\`);
 			Main._print(`      --output /tmp/qwen3-30b-a3b-graphs/${INTERMEDIATES_GRAPH}`);
 			return;

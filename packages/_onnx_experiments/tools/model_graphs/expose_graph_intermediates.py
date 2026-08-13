@@ -16,7 +16,7 @@ original.
 Usage::
 
     packages/_onnx_experiments/tools/.venv/bin/python \\
-      packages/_onnx_experiments/tools/expose_graph_intermediates.py \\
+      packages/_onnx_experiments/tools/model_graphs/expose_graph_intermediates.py \\
       --graph /tmp/qwen3-30b-a3b-graphs/layer_00.onnx \\
       --output /tmp/qwen3-30b-a3b-graphs/layer_00.intermediates.onnx
 """

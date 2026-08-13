@@ -86,7 +86,7 @@ class MakeExpertBlockGraphFixture {
 		Fs.writeFileSync(Path.join(options.outputDirectory, 'expert_block.bin'), block);
 
 		const reference = {
-			producedBy: 'packages/_onnx_experiments/tools/make_expert_block_graph_fixture.mjs',
+			producedBy: 'packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs',
 			issue: 'https://github.com/webai-at-home/webai-at-home/issues/169',
 			modelName: manifest.modelName,
 			sourceRepository: manifest.sourceRepository,

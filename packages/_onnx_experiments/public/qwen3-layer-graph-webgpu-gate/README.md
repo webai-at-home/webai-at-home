@@ -32,7 +32,7 @@ There is no tolerance written down by hand. **OLMoE-1B-7B-0924 is the control**:
 
 ## What it found
 
-The gate was red, so it went on to run a copy of the graph with every intermediate value promoted to an output, written by [`expose_graph_intermediates.py`](../../tools/expose_graph_intermediates.py), and walked them in the order the graph computes them. The first value the two execution providers disagreed about was `q_proj.output`, the very first matrix multiplication of the layer, and WebGPU's answer was **exactly zero**.
+The gate was red, so it went on to run a copy of the graph with every intermediate value promoted to an output, written by [`expose_graph_intermediates.py`](../../tools/model_graphs/expose_graph_intermediates.py), and walked them in the order the graph computes them. The first value the two execution providers disagreed about was `q_proj.output`, the very first matrix multiplication of the layer, and WebGPU's answer was **exactly zero**.
 
 A matrix multiplication does not return zeros because it rounded differently. The browser console said why:
 
@@ -65,7 +65,7 @@ Then open `/qwen3-layer-graph-webgpu-gate/`. When the gate is red it wants the d
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/expose_graph_intermediates.py \
+  packages/_onnx_experiments/tools/model_graphs/expose_graph_intermediates.py \
   --graph /tmp/qwen3-30b-a3b-graphs/layer_00.onnx \
   --output /tmp/qwen3-30b-a3b-graphs/layer_00.intermediates.onnx
 ```

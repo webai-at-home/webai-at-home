@@ -50,7 +50,7 @@ The awkward part of this design applies to the experts alone. That is worth know
 
 ## The control this was read against
 
-`tools/gate_olmoe_whole_model.py` runs **the same graphs and the same block file** outside the browser, on the processor, with no residency layer at all — every expert read the moment it is wanted. It produces `The capital of France is Paris.` from the same files. So a browser that produced different words would have a browser problem rather than an assembly problem.
+`tools/model_graphs/gate_moe_whole_model.py` runs **the same graphs and the same block file** outside the browser, on the processor, with no residency layer at all — every expert read the moment it is wanted. It produces `The capital of France is Paris.` from the same files. So a browser that produced different words would have a browser problem rather than an assembly problem.
 
 It is not a bit-for-bit reference. That one runs on the processor and this one on the graphics processor, and two floating point implementations of the same arithmetic do not agree to the last bit.
 
@@ -73,19 +73,19 @@ Both pages now check the count and say what the browser's quota is when it comes
 Everything is generated and nothing is committed. Convert the model, which takes about ten minutes:
 
 ```sh
-node packages/_onnx_experiments/tools/convert_mixture_of_experts_to_expert_blocks.mjs --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
+node packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
 ```
 
 Build the graphs from the resident half of that conversion:
 
 ```sh
-packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/build_olmoe_graphs.py --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --output /tmp/olmoe-1b-7b-0924-graphs
+packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/model_graphs/build_moe_graphs.py --model OLMoE-1B-7B-0924 --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --output /tmp/olmoe-1b-7b-0924-graphs
 ```
 
 Check the assembly outside the browser first, where a wiring mistake is cheap to find:
 
 ```sh
-packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/gate_olmoe_whole_model.py --graphs /tmp/olmoe-1b-7b-0924-graphs --blocks /tmp/olmoe-1b-7b-0924-expert-blocks
+packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/model_graphs/gate_moe_whole_model.py --graphs /tmp/olmoe-1b-7b-0924-graphs --blocks /tmp/olmoe-1b-7b-0924-expert-blocks
 ```
 
 Then start the dev server, which serves both directories with byte range support:

@@ -9,7 +9,7 @@
  * `convert_mixture_of_experts_to_expert_blocks.mjs` actually wrote, so the block has to come from that pipeline, and
  * the answer to compare against has to be computed somewhere other than in this browser.
  *
- * `packages/_onnx_experiments/tools/make_expert_block_graph_fixture.mjs` writes both, and these types describe what it
+ * `packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs` writes both, and these types describe what it
  * writes.
  */
 

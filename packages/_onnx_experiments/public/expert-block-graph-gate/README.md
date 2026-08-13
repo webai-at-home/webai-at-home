@@ -57,19 +57,19 @@ The answer here is computed from the block's **own bytes** rather than from the 
 The three files under `fixture/` are generated and are not committed. Convert the model, which takes about ten minutes and writes 4.36 gigabytes:
 
 ```sh
-node packages/_onnx_experiments/tools/convert_mixture_of_experts_to_expert_blocks.mjs --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
+node packages/_onnx_experiments/tools/weight_conversion/convert_mixture_of_experts_to_expert_blocks.mjs --model OLMoE-1B-7B-0924 --output /tmp/olmoe-1b-7b-0924-expert-blocks
 ```
 
 Take one block out of it, together with the two answers computed for it:
 
 ```sh
-node packages/_onnx_experiments/tools/make_expert_block_graph_fixture.mjs --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --block 0
+node packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs --blocks /tmp/olmoe-1b-7b-0924-expert-blocks --block 0
 ```
 
 Write the graph, sized from that conversion's own manifest rather than from numbers typed by hand:
 
 ```sh
-packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/expert_block_graph.py --manifest /tmp/olmoe-1b-7b-0924-expert-blocks/manifest.json --output packages/_onnx_experiments/public/expert-block-graph-gate/fixture/expert.onnx
+packages/_onnx_experiments/tools/.venv/bin/python packages/_onnx_experiments/tools/model_graphs/expert_block_graph.py --manifest /tmp/olmoe-1b-7b-0924-expert-blocks/manifest.json --output packages/_onnx_experiments/public/expert-block-graph-gate/fixture/expert.onnx
 ```
 
 Then start the dev server:

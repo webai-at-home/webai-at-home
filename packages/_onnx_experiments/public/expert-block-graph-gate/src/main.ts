@@ -24,7 +24,7 @@ import type { BlockPart, ExpertBlockReference } from './fixture_types.ts';
  * top of that assumption, which is exactly the kind of assumption to kill before building on it.
  *
  * The answer to compare against is computed outside this browser, by
- * `packages/_onnx_experiments/tools/make_expert_block_graph_fixture.mjs`, from the block's **own bytes** rather than
+ * `packages/_onnx_experiments/tools/weight_conversion/make_expert_block_graph_fixture.mjs`, from the block's **own bytes** rather than
  * from the original model. That keeps the question about how the bytes are read, and not about how well 4 bits
  * approximate a weight, which milestone 3 already measured.
  */
