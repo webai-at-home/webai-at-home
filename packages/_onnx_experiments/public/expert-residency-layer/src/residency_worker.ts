@@ -163,10 +163,24 @@ class ResidencyWorker {
 			const firstByte = presentBlockCount * blockByteLength;
 			const byteLength = runBlockCount * blockByteLength;
 			const bytes = await ResidencyWorker._fetchRange(blocksUrl, firstByte, firstByte + byteLength);
-			handle.write(bytes, {
+			// What `write` returns is checked rather than discarded. A browser that has run out of storage may refuse
+			// the write by throwing, and may also simply write fewer bytes and say so. Ignoring the count leaves a
+			// store that is short, a block count that says it is not, and every measurement taken from it wrong in a
+			// way that looks like something else. This was found on a browser whose quota was 3.15 gigabytes, where
+			// the fill reported success and stopped writing at exactly 2000 mebibytes.
+			const writtenByteLength = handle.write(bytes, {
 				at: firstByte,
 			});
 			handle.flush();
+			if (writtenByteLength !== bytes.length) {
+				const estimate = await navigator.storage.estimate();
+				throw new Error(
+					`the store took only ${writtenByteLength} of ${bytes.length} bytes at block ${presentBlockCount}. ` +
+						`This browser reports ${((estimate.usage ?? 0) / 1024 / 1024 / 1024).toFixed(2)} gigabytes used ` +
+						`of ${((estimate.quota ?? 0) / 1024 / 1024 / 1024).toFixed(2)}, and the whole model needs ` +
+						`${((wantedBlockCount * blockByteLength) / 1024 / 1024 / 1024).toFixed(2)}.`,
+				);
+			}
 			presentBlockCount += runBlockCount;
 			downloadedByteLength += byteLength;
 			scope.postMessage({

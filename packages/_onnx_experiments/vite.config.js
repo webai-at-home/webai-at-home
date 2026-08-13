@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 
 const ortDist = resolve(import.meta.dirname, 'node_modules/onnxruntime-web/dist');
 const ortAssets = ['ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
@@ -15,6 +15,53 @@ const installableAssets = [
   'expert-residency-layer/icon.svg',
   'expert-residency-layer/service_worker.js',
 ];
+// The issue #169 milestone 5 page reads a converted OLMoE-1B-7B-0924: 1.78 gigabytes of graphs and 3.47 gigabytes of
+// expert blocks, written by tools/build_olmoe_graphs.py and by
+// tools/convert_mixture_of_experts_to_expert_blocks.mjs. They are generated artifacts and are far too large to sit
+// under public/, so the development server serves them from wherever they were written, with the byte range support
+// Hugging Face gives — which is what the page needs to pull one expert at a time out of a 3.47-gigabyte file.
+const olmoeArtifactDirectories = {
+  '/olmoe-artifacts/graphs/': process.env.OLMOE_GRAPHS_DIRECTORY ?? '/tmp/olmoe-1b-7b-0924-graphs',
+  '/olmoe-artifacts/blocks/': process.env.OLMOE_BLOCKS_DIRECTORY ?? '/tmp/olmoe-1b-7b-0924-expert-blocks',
+};
+
+/**
+ * Serves one generated OLMoE artifact, honouring a byte range request.
+ *
+ * @param {import('node:http').ServerResponse} response Where to write.
+ * @param {string} filePath The file to serve.
+ * @param {string | undefined} rangeHeader The request's Range header, if it sent one.
+ * @returns {void}
+ */
+function serveOlmoeArtifact(response, filePath, rangeHeader) {
+  const byteLength = statSync(filePath).size;
+  const match = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader ?? '');
+  response.setHeader('Content-Type', 'application/octet-stream');
+  response.setHeader('Accept-Ranges', 'bytes');
+
+  if (match === null) {
+    response.setHeader('Content-Length', String(byteLength));
+    response.end(readFileSync(filePath));
+    return;
+  }
+
+  const firstByte = Number(match[1]);
+  const lastByte = match[2] === '' ? byteLength - 1 : Math.min(Number(match[2]), byteLength - 1);
+  const wantedLength = lastByte - firstByte + 1;
+  // The file is read at an offset rather than whole. expert_blocks.bin is 3.47 gigabytes and the page asks for a few
+  // megabytes of it at a time, so reading it whole would be the slowest possible way to answer.
+  const bytes = Buffer.alloc(wantedLength);
+  const descriptor = openSync(filePath, 'r');
+  try {
+    readSync(descriptor, bytes, 0, wantedLength, firstByte);
+  } finally {
+    closeSync(descriptor);
+  }
+  response.statusCode = 206;
+  response.setHeader('Content-Range', `bytes ${firstByte}-${lastByte}/${byteLength}`);
+  response.setHeader('Content-Length', String(wantedLength));
+  response.end(bytes);
+}
 
 export default defineConfig({
   root: resolve(import.meta.dirname, 'public'),
@@ -23,7 +70,26 @@ export default defineConfig({
     name: 'copy-onnx-runtime-web-assets',
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
-        const fileName = request.url?.split('?')[0]?.slice(1);
+        const path = request.url?.split('?')[0] ?? '';
+        for (const [prefix, directory] of Object.entries(olmoeArtifactDirectories)) {
+          if (path.startsWith(prefix) === false) {
+            continue;
+          }
+          // Only the base name is taken, so nothing outside the named directory can be reached.
+          const filePath = resolve(directory, basename(path.slice(prefix.length)));
+          try {
+            serveOlmoeArtifact(response, filePath, request.headers.range);
+          } catch (error) {
+            response.statusCode = 404;
+            response.end(
+              `${filePath} is not there. The issue #169 milestone 5 artifacts are generated — see ` +
+                `packages/_onnx_experiments/tools/README.md. (${error.message})`,
+            );
+          }
+          return;
+        }
+
+        const fileName = path.slice(1);
         const shardName = request.url?.split('?')[0]?.startsWith(qwenShardPrefix)
           ? request.url.split('?')[0].slice(qwenShardPrefix.length)
           : undefined;
@@ -86,6 +152,7 @@ export default defineConfig({
         ),
         expertResidencyLayer: resolve(import.meta.dirname, 'public/expert-residency-layer/index.html'),
         expertBlockGraphGate: resolve(import.meta.dirname, 'public/expert-block-graph-gate/index.html'),
+        olmoeRunTwice: resolve(import.meta.dirname, 'public/olmoe-run-twice/index.html'),
       },
     },
   },

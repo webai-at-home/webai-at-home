@@ -121,6 +121,39 @@ The gate checks the graph plus separately computed experts against the reference
 
 The attention bias is a graph input rather than a mask built into the graph. Decoding one token at a time needs no mask at all, since that token may attend to the whole history. The gate's negative control replaces the causal bias with zeros for a multi-token case and the difference jumps to **3.872e-01**, 188288 times the worst real case, which is what makes the other four rows worth believing.
 
+## The OLMoE graphs, and the whole model assembled
+
+`build_olmoe_graphs.py` builds everything that is not an expert, with its weights baked in as ordinary initializers: 16 layer graphs from `olmoe_non_expert_graph.py`, the final normalization and language model head as `head.onnx`, the weightless `expert.onnx`, the token embedding as plain single precision values, and a `graphs.json` describing all of it.
+
+```sh
+packages/_onnx_experiments/tools/.venv/bin/python \
+  packages/_onnx_experiments/tools/build_olmoe_graphs.py \
+  --blocks /tmp/olmoe-1b-7b-0924-expert-blocks \
+  --output /tmp/olmoe-1b-7b-0924-graphs
+```
+
+It reads the `resident.safetensors` the conversion pipeline wrote rather than fetching the published weights again, so both halves of the split are provably from one conversion. It reads the published `config.json` at the **pinned** revision for the two numbers no shape on disk carries — the normalization epsilon and the rotary theta — rather than letting the library's defaults stand in silently. And it refuses to build unless that configuration describes the blocks it was pointed at, because two halves that disagree about a size still load and still generate, and what they generate is nonsense.
+
+Single precision throughout, 1.78 gigabytes. The layer graph was gated at single precision, this is the milestone about correctness, and halving the files would put every number that gate measured back in doubt.
+
+`gate_olmoe_whole_model.py` then assembles the whole thing outside the browser and makes it generate.
+
+```sh
+packages/_onnx_experiments/tools/.venv/bin/python \
+  packages/_onnx_experiments/tools/gate_olmoe_whole_model.py \
+  --graphs /tmp/olmoe-1b-7b-0924-graphs --blocks /tmp/olmoe-1b-7b-0924-expert-blocks
+```
+
+The three gates before it each checked one piece against a reference. None of them checks the **wiring**: sixteen layers in the right order, the cache carried from step to step, the routing weights on the right experts, the final normalization before the head. Nothing here can check that against a reference, because the reference is 13.8 gigabytes of weights and a machine with more memory than this one. But wiring mistakes have a very loud symptom, so the check is to generate and to read what comes out:
+
+```
+The capital of France is Paris.
+
+The capital of the United States is Washington
+```
+
+12 tokens in 10.0 seconds on the processor, with 2048 expert blocks read and no cache at all, which is 7104 megabytes. It runs the same graphs the browser runs, so a browser producing different words has a browser problem rather than an assembly problem. It is not a bit-for-bit reference: this runs on the processor and the browser on the graphics processor.
+
 ## The expert graph, and the fixture that checks it
 
 `expert_block_graph.py` builds one expert as an ONNX graph holding **no weights at all**. All nine tensors of an expert — a quantized matrix, its scales, and its zero points, for each of `gate_proj`, `up_proj`, and `down_proj` — arrive as graph inputs, in exactly the order the conversion pipeline writes them into a block. The whole file is 1379 bytes.
