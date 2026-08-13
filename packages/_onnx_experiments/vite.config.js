@@ -12,6 +12,8 @@ const qwenShardPrefix = '/onnxruntime_qwen3-0.6b-with-shards/shards/';
 const installableAssets = [
   'browser-storage-and-webgpu-buffer-measurements/icon.svg',
   'browser-storage-and-webgpu-buffer-measurements/service_worker.js',
+  'expert-residency-layer/icon.svg',
+  'expert-residency-layer/service_worker.js',
 ];
 
 export default defineConfig({
@@ -82,6 +84,7 @@ export default defineConfig({
           import.meta.dirname,
           'public/browser-storage-and-webgpu-buffer-measurements/index.html',
         ),
+        expertResidencyLayer: resolve(import.meta.dirname, 'public/expert-residency-layer/index.html'),
       },
     },
   },

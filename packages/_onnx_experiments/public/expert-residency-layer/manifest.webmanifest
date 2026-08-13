@@ -1,0 +1,18 @@
+{
+	"name": "The expert residency layer",
+	"short_name": "Expert residency",
+	"description": "Milestone 4 of issue #169: which Qwen3-30B-A3B experts are in graphics memory at any moment, and what that decision costs.",
+	"start_url": "/expert-residency-layer/",
+	"scope": "/expert-residency-layer/",
+	"display": "standalone",
+	"background_color": "#111111",
+	"theme_color": "#111111",
+	"icons": [
+		{
+			"src": "/expert-residency-layer/icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any"
+		}
+	]
+}
