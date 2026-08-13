@@ -1,10 +1,28 @@
 import { Command } from 'commander';
+import Os from 'node:os';
+import Path from 'node:path';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 //	GatewaySettings — the gateway's command line options, read once and typed
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Where this gateway keeps everything it writes: its durable task state, its account profiles, its
+ * append-only accounting ledger, and its message logs.
+ *
+ * All four used to default to whatever directory the gateway happened to be started from, so
+ * `npx webai-at-home gateway` left four files and a `logs` folder wherever the person was standing.
+ * The account key pair of every other program in this repository has been kept under the home
+ * directory since issue #170, for the same reason: a program installed through `npx` has no folder
+ * of its own to write into, because that folder is a cache directory `npx` may clear. This is the
+ * gateway's share of that same decision. See issue #171.
+ *
+ * `packages/docker_server` passes `--state-file`, `--account-file` and `--ledger-file` explicitly,
+ * so a container is unaffected by what these default to.
+ */
+export const defaultDataDirectory = Path.join(Os.homedir(), '.webai-at-home', 'gateway');
 
 /** The command line options exactly as they arrive, before they are converted. */
 type RawOptions = {
@@ -16,6 +34,7 @@ type RawOptions = {
 	accountFile: string;
 	accountChallengeMs: string;
 	ledgerFile: string;
+	logDir: string;
 	authToken?: string;
 	maxTasksPerPrincipal: string;
 	sessionMs: string;
@@ -50,6 +69,8 @@ export class GatewaySettings {
 	readonly accountChallengeMs: number;
 	/** The append-only file every accounting event is written to. */
 	readonly ledgerFile: string;
+	/** The directory this gateway writes its own message log, and one log per connected worker, into. */
+	readonly logsDirectory: string;
 	/** The bearer token every connection and every diagnostics report must present. */
 	readonly authToken: string;
 	/** How many tasks one principal may have in flight at once. */
@@ -80,10 +101,11 @@ export class GatewaySettings {
 			.option('--lease-ms <number>', 'Assignment lease duration', '15000')
 			.option('--submission-timeout-ms <number>', 'Queued task deadline', '30000')
 			.option('--max-attempts <number>', 'Maximum assignment attempts', '3')
-			.option('--state-file <path>', 'Durable task state file', 'gateway-state.json')
-			.option('--account-file <path>', 'Account profile file', 'gateway-accounts.json')
+			.option('--state-file <path>', 'Durable task state file', Path.join(defaultDataDirectory, 'gateway-state.json'))
+			.option('--account-file <path>', 'Account profile file', Path.join(defaultDataDirectory, 'gateway-accounts.json'))
 			.option('--account-challenge-ms <number>', 'How long a challenge handed out for an account to sign stays usable', '60000')
-			.option('--ledger-file <path>', 'Append-only accounting ledger file', 'gateway-ledger.jsonl')
+			.option('--ledger-file <path>', 'Append-only accounting ledger file', Path.join(defaultDataDirectory, 'gateway-ledger.jsonl'))
+			.option('--log-dir <path>', 'Directory this gateway writes its message logs into', Path.join(defaultDataDirectory, 'logs'))
 			.option(
 				'-a, --auth-token <token>',
 				'bearer token every connection to this gateway must present (falls back to the'
@@ -106,6 +128,7 @@ export class GatewaySettings {
 		this.accountFile = options.accountFile;
 		this.accountChallengeMs = Number(options.accountChallengeMs);
 		this.ledgerFile = options.ledgerFile;
+		this.logsDirectory = options.logDir;
 		this.authToken = GatewaySettings._resolveAuthToken(options.authToken);
 		this.maximumTasksPerPrincipal = Number(options.maxTasksPerPrincipal);
 		this.sessionMs = Number(options.sessionMs);

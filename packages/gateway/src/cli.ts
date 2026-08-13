@@ -70,6 +70,14 @@ export class Cli {
 	 */
 	static async run(args?: string[], programName = 'gateway'): Promise<void> {
 		const settings = new GatewaySettings(args, programName);
+		Cli.reportFilesLeftBehind(settings);
+		// The default is now a directory under the user's home that has never been written to
+		// before, so it is made here rather than left to whichever part happens to write first.
+		for (const filePath of [settings.stateFile, settings.accountFile, settings.ledgerFile]) {
+			if (filePath !== '') {
+				Fs.mkdirSync(Path.dirname(filePath), { recursive: true });
+			}
+		}
 
 		const deviceRegistry = new DeviceRegistry();
 		const taskStore = new TaskStore(undefined, settings.submissionTimeoutMs, settings.leaseMs, settings.stateFile);
@@ -96,10 +104,11 @@ export class Cli {
 
 		// Logs this gateway's own message traffic (one file per run), plus one log file per
 		// connected worker, relayed to us since a browser page cannot write files itself. Written
-		// next to the state, account and ledger files, in whichever directory the gateway was
-		// started from, rather than into this package's own folder — installed through `npx`,
-		// that folder is a cache directory nothing should write into. See issue #170.
-		const logsDirectory = 'logs';
+		// next to the state, account and ledger files, under `~/.webai-at-home/gateway/` unless
+		// `--log-dir` says otherwise — not into this package's own folder, which is a cache
+		// directory `npx` may clear (issue #170), and no longer into whichever directory the
+		// gateway happened to be started from (issue #171).
+		const logsDirectory = settings.logsDirectory;
 		const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const gatewayMessageLogger = new MessageLogger(Path.join(logsDirectory, `gateway-${runTimestamp}.log_entry.jsonl`));
 
@@ -186,6 +195,47 @@ export class Cli {
 
 		process.on('SIGINT', () => void Cli.shutdown());
 		process.on('SIGTERM', () => void Cli.shutdown());
+	}
+
+	/**
+	 * Says so when this gateway is about to start empty while an older copy of the same file sits
+	 * unread in the directory it was started from.
+	 *
+	 * Until issue #171 the three files below all defaulted to the working directory, so anyone who
+	 * had been running the gateway by hand has a state, account and ledger file sitting there. Now
+	 * that the defaults point under the home directory, that gateway would quietly come up with no
+	 * accounts and an empty ledger, and nothing on screen would say why. The ledger in particular
+	 * is an accounting record of contributed and consumed computation, so losing sight of it
+	 * silently is the one outcome worth spending a few lines of output to prevent.
+	 *
+	 * Only reports a file that exists in the working directory while the file actually being used
+	 * does not, which is exactly the case where something is about to be missed. Says nothing at
+	 * all once the new file exists, or when the path was given explicitly.
+	 *
+	 * @param settings The settings this gateway is starting with.
+	 */
+	private static reportFilesLeftBehind(settings: GatewaySettings): void {
+		const inUseByName: ReadonlyArray<readonly [string, string]> = [
+			['gateway-state.json', settings.stateFile],
+			['gateway-accounts.json', settings.accountFile],
+			['gateway-ledger.jsonl', settings.ledgerFile],
+		];
+		const leftBehind = inUseByName.filter(([name, inUse]) => {
+			if (Path.resolve(name) === Path.resolve(inUse)) {
+				return false;
+			}
+			return Fs.existsSync(name) === true && Fs.existsSync(inUse) === false;
+		});
+		if (leftBehind.length === 0) {
+			return;
+		}
+		console.log(
+			`Note: ${leftBehind.map(([name]) => name).join(', ')} exists in ${process.cwd()}, `
+				+ 'and is not being read. This gateway now keeps its files under '
+				+ `${Path.dirname(settings.ledgerFile)} instead of the directory it was started from. `
+				+ 'Move the old files there, or name them with --state-file, --account-file and '
+				+ '--ledger-file, to go on using them.',
+		);
 	}
 
 	/**

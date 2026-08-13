@@ -37,14 +37,14 @@ The gateway owns the accounting database, which records contributed and consumed
 
 | Option | Default | What it sets |
 | --- | --- | --- |
-| `--account-file <path>` | `gateway-accounts.json` | Where account profiles are kept. Profiles only: no balance and no history. |
-| `--ledger-file <path>` | `gateway-ledger.jsonl` | The append-only ledger, one JSON object per line, appended to and never rewritten. |
+| `--account-file <path>` | `~/.webai-at-home/gateway/gateway-accounts.json` | Where account profiles are kept. Profiles only: no balance and no history. |
+| `--ledger-file <path>` | `~/.webai-at-home/gateway/gateway-ledger.jsonl` | The append-only ledger, one JSON object per line, appended to and never rewritten. |
 | `--account-challenge-ms <number>` | `60000` | How long a challenge handed out for an account to sign stays usable. |
 
 Both files are written at run time and are excluded from version control. The gateway opens the ledger before it accepts a single connection, reads it once to rebuild every balance, and reports how many accounts it holds:
 
 ```
-Accounting ledger at gateway-ledger.jsonl, holding 2 account(s)
+Accounting ledger at /Users/someone/.webai-at-home/gateway/gateway-ledger.jsonl, holding 2 account(s)
 Gateway listening on http://localhost:8787
 ```
 
@@ -91,6 +91,28 @@ npm run test --workspace @webai/gateway
 ```
 
 For a production build, run `npm run build --workspace @webai/gateway` and
-then `npm run start --workspace @webai/gateway`. The default state file is
-`gateway-state.json`; gateway message logs and relayed worker logs are written
-under `packages/gateway/logs` while the gateway runs.
+then `npm run start --workspace @webai/gateway`.
+
+## Where the gateway keeps what it writes
+
+Everything this gateway writes goes under `~/.webai-at-home/gateway/` by default: `gateway-state.json`, `gateway-accounts.json`, `gateway-ledger.jsonl`, and a `logs` folder holding this gateway's own message log for each run plus one relayed log per connected worker.
+
+All four used to default to whatever directory the gateway was started from, which meant `npx webai-at-home gateway` left four files and a folder wherever the person happened to be standing. The account key pair of every other program in this repository has been kept under the home directory since [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170); this is the gateway's share of that same decision, made in [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171).
+
+| Option | Default |
+| --- | --- |
+| `--state-file <path>` | `~/.webai-at-home/gateway/gateway-state.json` |
+| `--account-file <path>` | `~/.webai-at-home/gateway/gateway-accounts.json` |
+| `--ledger-file <path>` | `~/.webai-at-home/gateway/gateway-ledger.jsonl` |
+| `--log-dir <path>` | `~/.webai-at-home/gateway/logs` |
+
+[`packages/docker_server`](../docker_server/README.md) passes the first three explicitly, at `/data`, so a container keeps its own paths and is unaffected by these defaults.
+
+A gateway that has been run by hand before this change has its old files sitting in the directory it was started from. On startup it says so, and names them, whenever such a file exists and the file it is now reading does not:
+
+```
+Note: gateway-ledger.jsonl exists in /home/someone/work, and is not being read. This gateway now
+keeps its files under /home/someone/.webai-at-home/gateway instead of the directory it was started
+from. Move the old files there, or name them with --state-file, --account-file and --ledger-file,
+to go on using them.
+```
