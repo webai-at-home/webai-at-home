@@ -1,6 +1,6 @@
 {
 	"name": "webai-at-home",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"description": "Run one participant of the WebAI@Home cluster: the central gateway, the OpenAI-compatible server, the native worker, or the command line client, without cloning the repository.",
 	"license": "MIT",
 	"repository": {
