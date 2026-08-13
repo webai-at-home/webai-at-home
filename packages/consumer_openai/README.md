@@ -37,7 +37,7 @@ The server listens on port 8788, and an OpenAI client is pointed at `http://loca
 | Option | Default | What it does |
 | --- | --- | --- |
 | `-p, --port <number>` | `8788` | The port to serve OpenAI-compatible requests on. |
-| `-u, --gateway-url <url>` | `ws://localhost:8787` | The WebSocket address of the central gateway. |
+| `-u, --gateway-url <url>` | `wss://webai-gateway.dash-menu.com/` | The WebSocket address of the central gateway. That default is the hosted gateway, so this server joins it without being told to; pass a gateway running on this machine, such as `ws://localhost:8787`, to work against that instead. |
 | `-t, --auth-token <token>` | `development-token` | The bearer token the central gateway requires. |
 | `-k, --api-key <key>` | none | The key a request must present to this server, sent in an `Authorization` header as `Bearer` followed by the key. Omitted means no key is required. |
 | `-n, --consumer_name <name>` | `consumer_openai server` | The consumer name this server registers under with the central gateway. |

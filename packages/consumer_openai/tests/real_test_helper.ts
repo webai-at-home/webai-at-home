@@ -169,7 +169,12 @@ export class RealTestHelper {
 				'--', '--host', '127.0.0.1', '--port', '8789',
 			]);
 		}
-		this._start('node', ['--import', 'tsx', 'packages/consumer_openai/src/cli.ts', 'server']);
+		// `--gateway-url` is passed rather than left to its default, because that default is the
+		// hosted gateway, and this test drives the gateway it starts on localhost above.
+		this._start('node', [
+			'--import', 'tsx', 'packages/consumer_openai/src/cli.ts', 'server',
+			'--gateway-url', 'ws://localhost:8787',
+		]);
 		await this._waitFor('the central gateway to answer', () => this._httpReady(`${this.gatewayUrl}/health`));
 		if (usesBrowserWorker) {
 			await this._waitFor('the worker web page to answer', () => this._httpReady(this.workerUrl));

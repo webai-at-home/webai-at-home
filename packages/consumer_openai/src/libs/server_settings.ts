@@ -25,6 +25,9 @@ import { AccountKeyFile } from '@webai/protocol/account_key_file';
  */
 const defaultConfigDir = Path.join(Os.homedir(), '.webai-at-home', 'consumer_openai_config');
 
+/** The default central gateway WebSocket URL, the hosted gateway this project runs. */
+const defaultGatewayUrl = 'wss://webai-gateway.dash-menu.com/';
+
 /** The command line options exactly as they arrive, before they are converted. */
 type RawOptions = {
 	port: string;
@@ -82,7 +85,7 @@ export class ServerSettings {
 	constructor(argv?: string[]) {
 		const command = new Command()
 			.option('-p, --port <number>', 'Port to serve OpenAI-compatible requests on', '8788')
-			.option('-u, --gateway-url <url>', 'Central gateway WebSocket URL', 'ws://localhost:8787')
+			.option('-u, --gateway-url <url>', 'Central gateway WebSocket URL', defaultGatewayUrl)
 			.option('-t, --auth-token <token>', 'Bearer token the central gateway requires', 'development-token')
 			.option('-k, --api-key <key>', 'Key a request must present to this server. Omit to require none')
 			.option('-n, --consumer_name <name>', 'Consumer name to register under with the central gateway', 'consumer_openai server')

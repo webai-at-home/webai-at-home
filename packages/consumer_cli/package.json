@@ -42,7 +42,7 @@
     "build:dependencies": "npm run build --workspace @webai/protocol",
     "typecheck": "tsc -p tsconfig.json",
     "predev": "npm run build:dependencies",
-    "dev": "tsx src/cli.ts",
+    "dev": "tsx src/cli.ts --url ws://localhost:8787",
     "test": "npx tsx --test tests/index.test.ts tests/log_stats.test.ts"
   },
   "dependencies": {
