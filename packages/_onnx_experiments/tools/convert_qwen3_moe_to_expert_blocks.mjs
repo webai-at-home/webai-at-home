@@ -31,8 +31,12 @@ import { SafetensorsReader } from './safetensors_reader.mjs';
 
 /** The Hugging Face repository holding the model this pipeline converts. */
 const MODEL_REPOSITORY = 'Qwen/Qwen3-30B-A3B';
-/** The revision to read. Pin this before publishing anything produced from it. */
-const MODEL_REVISION = 'main';
+/**
+ * The revision to read, pinned rather than left at `main`, so that anything published from this pipeline names the
+ * exact bytes it was made from. This is the commit `main` pointed at on 13 August 2026, last changed on
+ * 26 July 2025.
+ */
+const MODEL_REVISION = 'ad44e777bcd18fa416d9da3bd8f70d33ebb85d39';
 /** The quantization scheme, as chosen by `gate_quantize_real_expert.mjs` against real weights. */
 const SCHEME = {
 	blockSize: 32,
