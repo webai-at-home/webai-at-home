@@ -103,8 +103,31 @@ export class OpenaiApiClient {
 	/**
 	 * @param baseUrl The base URL of the local server's OpenAI-compatible API, without a
 	 * trailing slash, such as `http://localhost:1234/v1`.
+	 * @param apiKey The bearer token to present to that server, or `undefined` to send no
+	 * `Authorization` header at all, which is what a local server such as LM Studio expects,
+	 * since it requires no key. A hosted server behind `OPENAI_BASE_URL`, such as the OpenAI
+	 * API itself, requires this to be set.
 	 */
-	constructor(private readonly baseUrl: string) {
+	constructor(
+		private readonly baseUrl: string,
+		private readonly apiKey: string | undefined = undefined,
+	) {
+	}
+
+	/**
+	 * Builds the `Authorization` header to send with every request, from the API key this
+	 * client was constructed with.
+	 *
+	 * @returns The header to spread into a request's headers, empty when this client was
+	 * constructed with no API key.
+	 */
+	private authorizationHeader(): Record<string, string> {
+		if (this.apiKey === undefined) {
+			return {};
+		}
+		return {
+			Authorization: `Bearer ${this.apiKey}`,
+		};
 	}
 
 	/**
@@ -116,6 +139,7 @@ export class OpenaiApiClient {
 	 */
 	async listModelIds(): Promise<string[]> {
 		const response = await fetch(`${this.baseUrl}/models`, {
+			headers: this.authorizationHeader(),
 			signal: AbortSignal.timeout(modelListTimeoutMs),
 		}).catch((error: unknown) => {
 			throw new Error(`The server at ${this.baseUrl} could not be reached: ${error instanceof Error ? error.message : String(error)}`);
@@ -160,7 +184,10 @@ export class OpenaiApiClient {
 	): Promise<{ stream: ReadableStream<string>; usage: ChatCompletionStreamUsage }> {
 		const response = await fetch(`${this.baseUrl}/chat/completions`, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: {
+				'Content-Type': 'application/json',
+				...this.authorizationHeader(),
+			},
 			body: JSON.stringify({
 				model: modelId,
 				stream: true,

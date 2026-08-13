@@ -30,8 +30,8 @@ const __filename = import.meta.filename;
 /** The default bearer token, matching the gateway's own `--auth-token` default. */
 const DEFAULT_AUTHENTICATION_TOKEN = 'development-token';
 
-/** The default central gateway WebSocket URL, matching the gateway's own `--port` default. */
-const DEFAULT_GATEWAY_URL = 'ws://localhost:8787';
+/** The default central gateway WebSocket URL. */
+const DEFAULT_GATEWAY_URL = 'wss://webai-gateway.dash-menu.com/';
 
 /**
  * Where every account command defaults to reading this participant's configuration directory, which

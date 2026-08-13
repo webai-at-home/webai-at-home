@@ -76,7 +76,7 @@ Test('routes "consumer_openai" to that program\'s own command line program, whic
 Test('routes "worker_openai" to that program\'s own command line program, which prints its own real options', async () => {
 	const { code, stdout } = await runCli(['worker_openai', '--help']);
 	Assert.equal(code, 0);
-	Assert.match(stdout, /--base-url/);
+	Assert.match(stdout, /--openai-base-url/);
 	Assert.match(stdout, /--model/);
 });
 

@@ -21,7 +21,7 @@
     "prestart": "npm run build:dependencies",
     "start": "node dist/cli.js",
     "presample:lmstudio": "npm run build:dependencies",
-    "sample:lmstudio": "npx tsx src/cli.ts --base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct --worker_name \"worker_openai lmstudio-llama3-2-1b\"",
+    "sample:lmstudio": "npx tsx src/cli.ts --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct --worker_name \"worker_openai lmstudio-llama3-2-1b\"",
     "lmstudio:server:start": "lms server start",
     "lmstudio:server:stop": "lms server stop",
     "lmstudio:server:status": "lms server status",

@@ -111,6 +111,32 @@ const requestBodyOf = async (generationSettings: GenerationSettings | undefined)
 	return JSON.parse(receivedBody) as Record<string, unknown>;
 };
 
+/**
+ * Runs one real request through {@link OpenaiApiClient} against a local HTTP server, and returns
+ * the `Authorization` header that server received.
+ *
+ * @param apiKey The API key to construct the client with, passed to it unchanged.
+ * @returns The `Authorization` header the local server received, or `undefined` when none was sent.
+ */
+const receivedAuthorizationHeaderOf = async (apiKey: string | undefined): Promise<string | undefined> => {
+	let receivedAuthorizationHeader: string | undefined;
+	const server = Http.createServer((request, response) => {
+		receivedAuthorizationHeader = request.headers.authorization;
+		response.writeHead(200, { 'Content-Type': 'application/json' });
+		response.end(JSON.stringify({ data: [] }));
+	});
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const address = server.address();
+	const port = typeof address === 'object' && address !== null ? address.port : 0;
+	try {
+		const client = new OpenaiApiClient(`http://127.0.0.1:${port}/v1`, apiKey);
+		await client.listModelIds();
+	} finally {
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+	}
+	return receivedAuthorizationHeader;
+};
+
 /** The pipelines a gateway with the built-in specifications would answer `pipelines.get` with. */
 const loadedPipelines = [
 	{
@@ -249,6 +275,11 @@ Test('sends no generation control field at all when the consumer asked for none,
 	Assert.equal('max_tokens' in askedForOne, false);
 	Assert.equal('stop' in askedForOne, false);
 	Assert.equal('seed' in askedForOne, false);
+});
+
+Test('sends an Authorization header carrying the API key it was constructed with, and none at all when it was constructed with none', async () => {
+	Assert.equal(await receivedAuthorizationHeaderOf('sk-test-key'), 'Bearer sk-test-key');
+	Assert.equal(await receivedAuthorizationHeaderOf(undefined), undefined);
 });
 
 Test('reports the usage and finish reason the local server sent, translated into this worker\'s own stopReason vocabulary', async () => {

@@ -17,8 +17,8 @@ import { OpenaiApiClient } from './libs/openai_api_client.js';
 /** The default bearer token, matching the gateway's own `--auth-token` default. */
 const defaultAuthenticationToken = 'development-token';
 
-/** The default central gateway WebSocket URL, matching the gateway's own `--port` default. */
-const defaultGatewayUrl = 'ws://localhost:8787';
+/** The default central gateway WebSocket URL, the hosted gateway this project runs. */
+const defaultGatewayUrl = 'wss://webai-gateway.dash-menu.com/';
 
 /**
  * Where this worker defaults to reading its configuration directory, which holds its own account key
@@ -40,7 +40,8 @@ type WorkerOptions = {
 	url?: string;
 	authToken?: string;
 	worker_name: string;
-	baseUrl: string;
+	openaiBaseUrl?: string;
+	openaiApiKey?: string;
 	model: string;
 	stageNames?: string[];
 	/** The directory holding this worker's own account key pair, as `default.account_key.json`. */
@@ -74,8 +75,9 @@ export class Cli {
 			.option('-u, --url <url>', `central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment variable, then to ${defaultGatewayUrl})`)
 			.option('-a, --auth-token <token>', 'bearer token for the central gateway (falls back to the GATEWAY_AUTH_TOKEN environment variable, then to a development default)')
 			.option('-n, --worker_name <name>', 'worker name, which the gateway shows in its device list', 'openai-worker')
-			.option('-b, --base-url <url>', "base URL of the local server's OpenAI-compatible API", 'http://localhost:1234/v1')
-			.option('-m, --model <model>', 'the model the local server is asked for', 'llama-3.2-1b-instruct')
+			.option('-b, --openai-base-url <url>', "base URL of the local server's OpenAI-compatible API (falls back to the OPENAI_BASE_URL environment variable; one of the two is required)")
+			.option('-k, --openai-api-key <key>', "bearer token for the local server's OpenAI-compatible API (falls back to the OPENAI_API_KEY environment variable, then to sending no key at all, which is what a local server such as LM Studio expects)")
+			.requiredOption('-m, --model <model>', 'the model the local server is asked for, exactly as that server names it')
 			.option('-s, --stage-names <name...>', 'restrict this worker to these stages, instead of every stage it can run')
 			.option('-c, --config_dir <path>', 'the directory holding this worker\'s own account key pair, as default.account_key.json, so the stages it completes earn credits for that account. A directory with no key pair in it means no account', defaultConfigDir)
 			.option('--no-automatic-reconnection', 'stop as soon as the connection to the central gateway closes, instead of opening a connection again after a wait that grows up to one minute');
@@ -102,7 +104,10 @@ export class Cli {
 		// Read before the connection opens, so a key file this program cannot read stops the worker with
 		// that as the reason, rather than half-way through the conversation with the gateway.
 		const accountKeyPair = await AccountKeyFile.readIfPresent(AccountKeyFile.pathInConfigDir(options.config_dir));
-		const openaiApiClient = new OpenaiApiClient(options.baseUrl.replace(/\/+$/, ''));
+		const openaiApiClient = new OpenaiApiClient(
+			Cli.resolveOpenaiBaseUrl(options.openaiBaseUrl).replace(/\/+$/, ''),
+			Cli.resolveOpenaiApiKey(options.openaiApiKey),
+		);
 		const gatewayUrl = Cli.resolveGatewayUrl(options.url);
 		/**
 		 * Ends this program, once there is a promise to resolve.
@@ -201,6 +206,46 @@ export class Cli {
 			return fromEnvironment;
 		}
 		return defaultAuthenticationToken;
+	}
+
+	/**
+	 * Chooses the base URL of the local server's OpenAI-compatible API to reach.
+	 *
+	 * Unlike the central gateway's URL and its bearer token, this has no built-in default: which
+	 * server to reach, LM Studio on this machine or a hosted API elsewhere, is not something this
+	 * program can guess safely, so `--openai-base-url` or `OPENAI_BASE_URL` has to say so.
+	 *
+	 * @param fromCommandLine The base URL given on the command line, if one was given.
+	 * @returns The base URL to reach.
+	 * @throws {Error} If neither `--openai-base-url` nor `OPENAI_BASE_URL` was given.
+	 */
+	private static resolveOpenaiBaseUrl(fromCommandLine: string | undefined): string {
+		if (fromCommandLine !== undefined && fromCommandLine !== '') {
+			return fromCommandLine;
+		}
+		const fromEnvironment = process.env.OPENAI_BASE_URL;
+		if (fromEnvironment !== undefined && fromEnvironment !== '') {
+			return fromEnvironment;
+		}
+		throw new Error('The base URL of the local server\'s OpenAI-compatible API is required: give it with --openai-base-url, or the OPENAI_BASE_URL environment variable');
+	}
+
+	/**
+	 * Chooses the bearer token to present to the local server's OpenAI-compatible API.
+	 *
+	 * @param fromCommandLine The token given on the command line, if one was given.
+	 * @returns The token to present, or `undefined` to send no `Authorization` header at all,
+	 * which is what a local server such as LM Studio expects, since it requires no key.
+	 */
+	private static resolveOpenaiApiKey(fromCommandLine: string | undefined): string | undefined {
+		if (fromCommandLine !== undefined && fromCommandLine !== '') {
+			return fromCommandLine;
+		}
+		const fromEnvironment = process.env.OPENAI_API_KEY;
+		if (fromEnvironment !== undefined && fromEnvironment !== '') {
+			return fromEnvironment;
+		}
+		return undefined;
 	}
 
 	/**

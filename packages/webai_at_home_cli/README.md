@@ -6,7 +6,7 @@ The single command line program published to the npm registry as `webai-at-home`
 
 ```sh
 npx webai-at-home gateway
-npx webai-at-home worker_openai --base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
+npx webai-at-home worker_openai --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
 npx webai-at-home submit "What is the capital of France?" --task_type llm_llama3_2_1b_full
 ```
 

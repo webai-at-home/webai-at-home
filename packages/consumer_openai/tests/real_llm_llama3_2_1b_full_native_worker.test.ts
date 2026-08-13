@@ -50,7 +50,8 @@ const realTestHelper = new RealTestHelper({
 	nativeWorkerArgs: [
 		'--import', 'tsx', 'packages/worker_openai/src/cli.ts',
 		'--worker_name', 'real-test-openai-worker',
-		'--base-url', localModelBaseUrl,
+		'--url', 'ws://localhost:8787',
+		'--openai-base-url', localModelBaseUrl,
 		'--model', localModelId,
 	],
 });

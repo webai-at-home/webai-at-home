@@ -28,12 +28,23 @@ These two variables say which central gateway to connect to and how to authentic
 
 | Variable | Read by | Command line option it stands behind | Default |
 | --- | --- | --- | --- |
-| `GATEWAY_WS_URL` | `packages/worker_openai`, `packages/consumer_cli` | `-u, --url` | `ws://localhost:8787` |
+| `GATEWAY_WS_URL` | `packages/worker_openai`, `packages/consumer_cli` | `-u, --url` | `wss://webai-gateway.dash-menu.com/` |
 | `GATEWAY_AUTH_TOKEN` | `packages/worker_openai`, `packages/consumer_cli` | `-a, --auth-token` | `development-token` |
 
 `packages/consumer_openai` connects to a gateway too, but reads neither variable: it takes `-u, --gateway-url` and `-t, --auth-token` on the command line only.
 
 `GATEWAY_AUTH_TOKEN` names one token seen from two sides. On a machine running a client, it is the token that client presents. In the container, it is the token the gateway requires. Those are the same value in any working deployment — the gateway requires exactly what the clients present — which is why one name serves both, and why the container variable and the client variable were deliberately merged rather than kept apart.
+
+## Reaching the local server behind `packages/worker_openai`
+
+These say which server speaking the OpenAI-compatible API `packages/worker_openai` forwards its assigned stage to — LM Studio on the same machine, or a hosted API elsewhere — and how to authenticate with it. Unlike the two gateway variables above, neither has a built-in default here: `packages/worker_openai` stops with an error rather than guess which server to reach when neither the command line option nor the environment variable is given.
+
+| Variable | Read by | Command line option it stands behind | Default |
+| --- | --- | --- | --- |
+| `OPENAI_BASE_URL` | `packages/worker_openai` | `-b, --openai-base-url` | none, required |
+| `OPENAI_API_KEY` | `packages/worker_openai` | `-k, --openai-api-key` | none, meaning no `Authorization` header is sent at all, which is what a local server such as LM Studio expects |
+
+`packages/openai_api_tool` reads the same two names for the same purpose, on its own subcommands, with defaults of its own — see the table below. Neither program's default carries over to the other: what one falls back to is not what the other falls back to, only the variable name is shared.
 
 ## The container environment
 
