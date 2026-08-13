@@ -112,7 +112,7 @@ export class Cli {
 					+ '  capacity              estimate how many concurrent runs of a task type the cluster can support\n'
 					+ '  log_stats             measure one already recorded message log file\n'
 					+ '  account_key           generate this participant\'s account key pair\n'
-					+ '  identity_register     tell the central gateway about this participant\'s account\n'
+					+ '  account_register      tell the central gateway about this participant\'s account\n'
 					+ '  account_information   read this participant\'s own account profile\n'
 					+ '  account_balance       read this participant\'s own account balance\n'
 					+ '  account_history       read this participant\'s own account history\n'

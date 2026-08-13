@@ -22,7 +22,7 @@ export type AccountKeyCommandOptions = {
  * produces.
  *
  * It talks to nothing: an account identifier is a digest of its own public key, so it exists as soon
- * as the key pair does, and the gateway learns about it later through `identity_register`.
+ * as the key pair does, and the gateway learns about it later through `account_register`.
  */
 export class AccountKeyCommand {
 	/**
@@ -50,7 +50,7 @@ export class AccountKeyCommand {
 		if (options.format === 'text') {
 			console.log('');
 			console.log('This file is the account. Anyone holding it can spend what the account has earned, and losing it loses the account.');
-			console.log('Register it with the central gateway using: consumer_cli identity_register');
+			console.log('Register it with the central gateway using: consumer_cli account_register');
 		}
 	}
 }

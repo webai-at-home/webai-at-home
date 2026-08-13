@@ -412,6 +412,7 @@ Test('a missing key pair, and one written by a version this program cannot read,
 	const keyFilePath = newKeyFilePath();
 	await Assert.rejects(async () => AccountKeyFile.read(keyFilePath), /No account key pair is kept at .*account_key\.json\. Run "consumer_cli account_key"/);
 
+
 	await AccountKeyFile.create(keyFilePath, false);
 	const stored = JSON.parse(Fs.readFileSync(keyFilePath, 'utf8')) as { schemaVersion: number };
 	Fs.writeFileSync(keyFilePath, JSON.stringify({ ...stored, schemaVersion: 99 }), 'utf8');
@@ -468,7 +469,7 @@ Test('an error the gateway sends fails the command with the exit code that error
 	// An unregistered account is told what to do about it, rather than only what went wrong.
 	await Assert.rejects(async () => client.authenticateAccount(), (error: unknown) => {
 		Assert.equal(error instanceof CliError, true);
-		Assert.match((error as CliError).message, /Run "consumer_cli identity_register" first/);
+		Assert.match((error as CliError).message, /Run "consumer_cli account_register" first/);
 		return true;
 	});
 });

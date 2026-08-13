@@ -225,7 +225,7 @@ export class AccountClient {
 	 */
 	private static explain(error: ProtocolError): string {
 		if (error.code === 'ACCOUNT_NOT_FOUND') {
-			return `${error.message}. Run "consumer_cli identity_register" first.`;
+			return `${error.message}. Run "consumer_cli account_register" first.`;
 		}
 		if (error.code === 'ACCOUNT_REQUIRED') {
 			return `${error.message}.`;

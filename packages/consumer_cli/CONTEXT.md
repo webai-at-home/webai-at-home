@@ -6,7 +6,7 @@ The command line client of `webai-at-home`. It submits a task to the central gat
 
 ## Key Exports & Entry Points
 
-- `src/cli.ts`: the `consumer_cli` command line program, linked into the repository's `node_modules/.bin` once the package is built. Its subcommands are `submit`, `status`, `capacity`, `log_stats`, `account_key`, `identity_register`, `account_information`, `account_balance`, and `account_history`.
+- `src/cli.ts`: the `consumer_cli` command line program, linked into the repository's `node_modules/.bin` once the package is built. Its subcommands are `submit`, `status`, `capacity`, `log_stats`, `account_key`, `account_register`, `account_information`, `account_balance`, and `account_history`.
 - `src/index.ts`: what another package may import from `@webai/consumer-cli` — `ConsumerClient` and `TaskInputFactory`. `@webai/consumer-openai` reuses `ConsumerClient` to speak the consumer side of the gateway protocol.
 - `src/gateway_connection/`: `consumer_client.ts`, `observer_client.ts`, and `gateway_session.ts`.
 - `src/commands/`: one file per subcommand, each named `<subcommand>_command.ts`.

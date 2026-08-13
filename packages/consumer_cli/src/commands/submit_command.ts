@@ -75,7 +75,7 @@ export class SubmitCommand {
 				},
 				onAccountSettled: (accountId) => {
 					console.error(accountId === undefined
-						? `Submitting with no account of its own, so the stages this task runs are recorded against the shared development account. Run "consumer_cli account_key" and "consumer_cli identity_register" to have them recorded against you.`
+						? `Submitting with no account of its own, so the stages this task runs are recorded against the shared development account. Run "consumer_cli account_key" and "consumer_cli account_register" to have them recorded against you.`
 						: `Submitting as ${accountId}.`);
 				},
 				onAccountNote: (note) => console.error(note),

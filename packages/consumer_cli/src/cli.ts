@@ -12,7 +12,7 @@ import { LogStatsCommand } from './commands/log_stats_command.js';
 import { LogStatisticsFormatter, logStatisticsFormats } from './message_log/log_statistics_formatter.js';
 import { AccountOutputFormatter, accountOutputFormats } from './account/account_output_format.js';
 import { AccountKeyCommand } from './commands/account_key_command.js';
-import { IdentityRegisterCommand } from './commands/identity_register_command.js';
+import { AccountRegisterCommand } from './commands/account_register_command.js';
 import { AccountInformationCommand } from './commands/account_information_command.js';
 import { AccountBalanceCommand } from './commands/account_balance_command.js';
 import { AccountHistoryCommand, accountHistoryDirections } from './commands/account_history_command.js';
@@ -65,7 +65,7 @@ type GlobalOptions = {
  *
  * Five further commands read and write this participant's own account, which is what the accounting
  * system of issue #122 records contributed and consumed computation against: `account_key`
- * generates the key pair that is the account, `identity_register` tells the central gateway about it,
+ * generates the key pair that is the account, `account_register` tells the central gateway about it,
  * and `account_information`, `account_balance`, and `account_history` read back what the gateway
  * holds for it.
  */
@@ -249,7 +249,7 @@ export class Cli {
 			});
 
 		program
-			.command('identity_register')
+			.command('account_register')
 			.description(
 				'tell the central gateway about this machine\'s public key, so completed and'
 					+ ' consumed stages can be recorded against the account it identifies',
@@ -269,7 +269,7 @@ export class Cli {
 				if (AccountOutputFormatter.isFormat(options.format) === false) {
 					throw new Error(`Format must be one of ${accountOutputFormats.join(', ')}`);
 				}
-				await IdentityRegisterCommand.run({
+				await AccountRegisterCommand.run({
 					url: Cli.resolveGatewayUrl(options.url),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),

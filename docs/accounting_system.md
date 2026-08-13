@@ -54,7 +54,7 @@ A second file sits in the same directory, `default.identity.json`, holding this 
 }
 ```
 
-It holds no secret, it is created and edited by hand, and it may be absent — an absent file, or a missing field, reads as the empty string, which is the anonymous profile a worker browser tab registers with. Only `consumer_cli identity_register` reads it, and it reads it once: registering a public key the gateway already knows changes nothing, so editing this file after the account has been registered changes nothing at the gateway either.
+It holds no secret, it is created and edited by hand, and it may be absent — an absent file, or a missing field, reads as the empty string, which is the anonymous profile a worker browser tab registers with. Only `consumer_cli account_register` reads it, and it reads it once: registering a public key the gateway already knows changes nothing, so editing this file after the account has been registered changes nothing at the gateway either.
 
 Every one of them proves its account the same way, through `AccountAuthentication` in the shared protocol package, and every one of them proves it **before** it does the thing that would otherwise be recorded against nobody: a worker registers only once its account is settled, and a consumer submits only once its own is. A participant that could not get an account carries on without one rather than refusing to work.
 
@@ -143,7 +143,7 @@ Five [`consumer_cli`](../packages/consumer_cli/README.md) commands, described in
 | Command | What it does |
 | --- | --- |
 | `account_key` | Generates the key pair that is the account, and prints the account identifier. Talks to nothing. |
-| `identity_register` | Tells the central gateway about the public key, with the display name and the email address read from `default.identity.json`. |
+| `account_register` | Tells the central gateway about the public key, with the display name and the email address read from `default.identity.json`. |
 | `account_information` | Prints the profile the gateway holds. |
 | `account_balance` | Prints the balance, the stages completed as a worker, and the stages run as a consumer. |
 | `account_history` | Prints the entries newest first, with `--direction earned`, `spent`, or `both`. |

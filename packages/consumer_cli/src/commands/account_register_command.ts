@@ -4,12 +4,12 @@ import { AccountOutputFormatter, type AccountOutputFormat } from '../account/acc
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	IdentityRegisterCommand — tells the central gateway about this machine's public key
+//	AccountRegisterCommand — tells the central gateway about this machine's public key
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-/** What `consumer_cli identity_register` needs to connect and where to read the profile from. */
-export type IdentityRegisterCommandOptions = AccountClientOptions & {
+/** What `consumer_cli account_register` needs to connect and where to read the profile from. */
+export type AccountRegisterCommandOptions = AccountClientOptions & {
 	/** Where the account profile is kept, as `default.identity.json` in the configuration directory. */
 	identityFilePath: string;
 	/** How to write the answer out. */
@@ -29,7 +29,7 @@ export type IdentityRegisterCommandOptions = AccountClientOptions & {
  * Version 1: registration does not prove that the sender holds the private key, so it must not be
  * able to rewrite the email address or display name of an account somebody else owns.
  */
-export class IdentityRegisterCommand {
+export class AccountRegisterCommand {
 	/**
 	 * Runs the command.
 	 *
@@ -37,7 +37,7 @@ export class IdentityRegisterCommand {
 	 * @returns Nothing.
 	 * @throws {CliError} If the connection, the token, or the registration is refused.
 	 */
-	static async run(options: IdentityRegisterCommandOptions): Promise<void> {
+	static async run(options: AccountRegisterCommandOptions): Promise<void> {
 		// Read before the connection opens, so an identity file this program cannot read stops the
 		// command with that as the reason, rather than half-way through the conversation with the gateway.
 		const identity = AccountIdentityFile.read(options.identityFilePath);

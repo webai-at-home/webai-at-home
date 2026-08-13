@@ -4,7 +4,7 @@ Command-line client for the central gateway: submitting tasks, reading the worke
 
 The program has four subcommands about tasks and the cluster: `submit` sends one task and shows its updates until it completes or fails, `status` reports the connected workers and their free capacity, `capacity` estimates how many concurrent runs of a task type the cluster can currently support, and `log_stats` measures one already recorded `.log_entry.jsonl` message log file.
 
-It has five further subcommands about this participant's own account in the accounting system: `account_key` generates the key pair that is the account, `identity_register` tells the central gateway about it, and `account_information`, `account_balance`, and `account_history` read back what the gateway holds for it. [`docs/accounting_system.md`](../../docs/accounting_system.md) describes what an account and a credit are; the sections below describe the commands.
+It has five further subcommands about this participant's own account in the accounting system: `account_key` generates the key pair that is the account, `account_register` tells the central gateway about it, and `account_information`, `account_balance`, and `account_history` read back what the gateway holds for it. [`docs/accounting_system.md`](../../docs/accounting_system.md) describes what an account and a credit are; the sections below describe the commands.
 
 ## Run with `npx`
 
@@ -87,7 +87,7 @@ Submitting as account-37b98b4c860818d3396d3b4b1b04ab88.
 A machine with no key pair at that path submits anyway, and says so:
 
 ```
-Submitting with no account of its own, so the stages this task runs are recorded against the shared development account. Run "consumer_cli account_key" and "consumer_cli identity_register" to have them recorded against you.
+Submitting with no account of its own, so the stages this task runs are recorded against the shared development account. Run "consumer_cli account_key" and "consumer_cli account_register" to have them recorded against you.
 ```
 
 ## `status`
@@ -160,13 +160,13 @@ Two files live in that directory, both named exactly as written here:
 | File | What it holds |
 | --- | --- |
 | `default.account_key.json` | The key pair that is this participant's account, written by `account_key` and read by every other command. **The private key in it is the whole account.** |
-| `default.identity.json` | This participant's profile, as `{ "displayName": string, "emailAddress": string }`. Read by `identity_register` and edited by hand. An absent file, or a missing field, reads as empty. |
+| `default.identity.json` | This participant's profile, as `{ "displayName": string, "emailAddress": string }`. Read by `account_register` and edited by hand. An absent file, or a missing field, reads as empty. |
 
 All but `account_key` also accept `--timeout <ms>`, defaulting to `10000`, and the shared `--url` and `--auth-token` options.
 
 ### `account_key`
 
-Generates the key pair that is this participant's account, and prints the account identifier it produces. It connects to nothing: an account identifier is a digest of its own public key, so it exists as soon as the key pair does, and the gateway learns about it later through `identity_register`.
+Generates the key pair that is this participant's account, and prints the account identifier it produces. It connects to nothing: an account identifier is a digest of its own public key, so it exists as soon as the key pair does, and the gateway learns about it later through `account_register`.
 
 ```sh
 npm run dev --workspace @webai/consumer-cli -- account_key
@@ -186,12 +186,12 @@ The file is written readable and writable by its owner only. **The private key i
 | --- | --- | --- |
 | `--force` | off | Overwrite a key pair that is already there, losing the account it belongs to. |
 
-### `identity_register`
+### `account_register`
 
 Tells the central gateway about this machine's public key, along with the display name and the email address read from `default.identity.json` in the configuration directory.
 
 ```sh
-npm run dev --workspace @webai/consumer-cli -- identity_register
+npm run dev --workspace @webai/consumer-cli -- account_register
 ```
 
 The profile is stated in a file rather than on the command line, so it is written once and not retyped on every run:
@@ -205,7 +205,7 @@ The profile is stated in a file rather than on the command line, so it is writte
 
 A configuration directory with no `default.identity.json` in it, or a file missing either field, registers with that field empty — the same anonymous profile a worker browser tab registers with. Nothing writes this file: it is created and edited by hand.
 
-Running `identity_register` twice is harmless: registering a public key the gateway already knows changes nothing and reports the profile it already holds, with `was created now` answering `no`. Registration does not prove that the sender holds the private key, so it must not be able to rewrite the email address or display name of an account somebody else owns; editing a profile is not part of Version 1 of the accounting system. Changing `default.identity.json` after the account has been registered therefore changes nothing at the gateway.
+Running `account_register` twice is harmless: registering a public key the gateway already knows changes nothing and reports the profile it already holds, with `was created now` answering `no`. Registration does not prove that the sender holds the private key, so it must not be able to rewrite the email address or display name of an account somebody else owns; editing a profile is not part of Version 1 of the accounting system. Changing `default.identity.json` after the account has been registered therefore changes nothing at the gateway.
 
 ### `account_information`
 
