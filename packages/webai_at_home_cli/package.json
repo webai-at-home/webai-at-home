@@ -1,7 +1,13 @@
 {
 	"name": "webai-at-home",
 	"version": "0.1.0",
-	"private": true,
+	"description": "Run one participant of the WebAI@Home cluster: the central gateway, the OpenAI-compatible server, the native worker, or the command line client, without cloning the repository.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/webai-at-home/webai-at-home.git",
+		"directory": "packages/webai_at_home_cli"
+	},
 	"type": "module",
 	"bin": {
 		"webai-at-home": "./dist/cli.js"

@@ -47,10 +47,12 @@ The central research questions are still open, especially result verification, b
 
 ## Repository layout
 
+- [`packages/webai_at_home_cli`](packages/webai_at_home_cli/CONTEXT.md) — the single command line program published to the npm registry as `webai-at-home`, dispatching to the gateway, the OpenAI-compatible server, the native worker, and the command-line client below.
 - [`packages/gateway`](packages/gateway/README.md) — coordinator HTTP and WebSocket gateway, scheduling, and home and worker pages.
 - [`packages/protocol`](packages/protocol/README.md) — shared message and task definitions with validation.
 - [`packages/consumer_cli`](packages/consumer_cli/README.md) — command-line client for submitting test tasks.
 - [`packages/consumer_openai`](packages/consumer_openai/README.md) — OpenAI-compatible server, so a program that already talks to OpenAI can use the cluster by changing its base address.
+- [`packages/worker_openai`](packages/worker_openai/README.md) — native worker process that runs its assigned stage by calling a local server speaking the OpenAI-compatible API, such as LM Studio.
 - [`packages/openai_api_tool`](packages/openai_api_tool/README.md) — command-line tool that exercises and measures any server speaking the OpenAI-compatible API, this project's own and another machine's alike.
 - [`packages/flow_viewer`](packages/flow_viewer/README.md) — flow viewer for inspecting recorded message traffic.
 - [`packages/_onnx_experiments`](packages/_onnx_experiments/README.md) — browser experiments for ONNX Runtime Web.
@@ -66,6 +68,18 @@ The central research questions are still open, especially result verification, b
 - [`docs/naming_scheme.md`](docs/naming_scheme.md) — how every task, task type, pipeline, and stage name is built.
 - [`docs/environment_variables.md`](docs/environment_variables.md) — which environment variables exist, which program reads each one, and which programs read command line options only.
 - [`docs/accounting_system.md`](docs/accounting_system.md) — how contributed and consumed computation are recorded: what an account is, what a credit is, and what the ledger holds.
+
+## Run without cloning this repository
+
+`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai` and `worker_openai` each run the command line program of the same name; every other command — `submit`, `status`, `capacity`, and the account commands — runs `consumer_cli`.
+
+```sh
+npx webai-at-home gateway
+npx webai-at-home worker_openai --base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
+npx webai-at-home submit "What is the capital of France?" --task_type llm_llama3_2_1b_full
+```
+
+The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already serving a model on `http://localhost:1234/v1`. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
 
 ## Run the prototype
 
@@ -84,3 +98,7 @@ The root build and test scripts cover the protocol, gateway, command-line consum
 The intended next step is a small proof of concept using two or three older devices, a small quantised model, browser inference, and browser-to-browser connections. Measurements from that proof of concept will show whether the pipeline remains useful under real device churn, memory limits, and network latency.
 
 See [issue #1](https://github.com/webai-at-home/webai-at-home/issues/1) for the full project concept and its open questions.
+
+## License
+
+[MIT](LICENSE)
