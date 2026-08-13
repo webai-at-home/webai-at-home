@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble the whole of OLMoE-1B-7B-0924 from its parts and make it generate.
+"""Assemble a whole converted mixture-of-experts model from its parts and make it generate.
 
 The three gates before this one each checked one piece against a reference: the
 expert block decomposes exactly, the non-expert half of a layer reproduces the
@@ -56,8 +56,8 @@ DEFAULT_PROMPT = "The capital of France is"
 DEFAULT_TOKEN_COUNT = 24
 
 
-class OlmoeWholeModel:
-    """Every graph and every weight of one converted OLMoE, assembled and ready to generate."""
+class WholeModel:
+    """Every graph and every weight of one converted model, assembled and ready to generate."""
 
     def __init__(self, graphs_directory: pathlib.Path, blocks_directory: pathlib.Path) -> None:
         """Load every graph, the embedding table, and the expert block file.
@@ -93,11 +93,15 @@ class OlmoeWholeModel:
         embedding = self.index["tokenEmbedding"]
         self.embedding = numpy.memmap(
             graphs_directory / embedding["fileName"],
-            dtype=numpy.float32,
+            dtype=numpy.uint16 if embedding["elementType"] == "bfloat16" else numpy.float32,
             mode="r",
             shape=(embedding["rowCount"], embedding["columnCount"]),
         )
         """The token embedding table, looked up rather than multiplied."""
+
+        self.embedding_is_brain_float = embedding["elementType"] == "bfloat16"
+        """Whether a row has to be widened before use. BF16 is the top sixteen bits of a single precision value, so
+        widening is an exact shift rather than a conversion."""
 
         self.blocks = numpy.memmap(
             blocks_directory / self.index["expertBlocks"]["fileName"], dtype=numpy.uint8, mode="r",
@@ -113,6 +117,17 @@ class OlmoeWholeModel:
 
         self.expert_read_count = 0
         """How many expert blocks have been read, which is the figure a residency layer exists to reduce."""
+
+    def embed(self, token_id: int) -> numpy.ndarray:
+        """Look one token's row out of the embedding table.
+
+        :param token_id: which token.
+        :returns: its row at single precision, shaped for one token of one batch.
+        """
+        row = self.embedding[token_id]
+        if self.embedding_is_brain_float:
+            row = (numpy.asarray(row, dtype=numpy.uint32) << 16).view(numpy.float32)
+        return numpy.asarray(row, dtype=numpy.float32).reshape(1, 1, -1)
 
     def rotary(self, position: int) -> tuple[numpy.ndarray, numpy.ndarray]:
         """Build the cosine and sine tables for one position.
@@ -139,7 +154,7 @@ class OlmoeWholeModel:
         block = self.blocks[start:start + blocks["blockByteLength"]]
         self.expert_read_count += 1
 
-        block_size = 32
+        block_size = self.index["expertBlocks"].get("blockSize", 32)
         feeds: dict[str, numpy.ndarray] = {}
         for index, name in enumerate(PROJECTION_NAMES):
             input_size = self.index["expertWidth"] if name == "down_proj" else self.index["hiddenSize"]
@@ -182,15 +197,20 @@ class OlmoeWholeModel:
         probabilities = numpy.exp(shifted) / numpy.exp(shifted).sum()
 
         chosen = numpy.argsort(-probabilities, kind="stable")[:self.index["expertsForEachToken"]]
+        weights = probabilities[chosen]
+        # Qwen3-30B-A3B sets norm_topk_prob true and OLMoE-1B-7B-0924 sets it
+        # false, so this is read out of the model rather than assumed either way.
+        # Getting it wrong scales every expert's contribution — by about 2.64 in
+        # one direction for OLMoE — and leaves the output looking reasonable.
         if self.index["normalizeTopExpertWeights"]:
-            raise ValueError("this checkpoint renormalises its routing weights, which this loop does not do")
+            weights = weights / weights.sum()
 
         total = numpy.zeros_like(expert_input)
-        for expert_index in chosen:
+        for position, expert_index in enumerate(chosen):
             feeds = self.expert_feeds(layer_index, int(expert_index))
             feeds["expert_input"] = expert_input
             contribution = self.expert_session.run(None, feeds)[0]
-            total = total + contribution * numpy.float32(probabilities[expert_index])
+            total = total + contribution * numpy.float32(weights[position])
         return total
 
     def generate(self, token_ids: list[int], new_token_count: int, report) -> list[int]:
@@ -207,7 +227,11 @@ class OlmoeWholeModel:
         :param report: called with each newly generated token id.
         :returns: the prompt followed by what was generated.
         """
-        head_count = self.index["headCount"]
+        # The cache holds the key and value heads, of which Qwen3-30B-A3B has a
+        # quarter as many as it has query heads. Sizing this from the query head
+        # count instead gives a cache eight times too large that the graph then
+        # refuses.
+        head_count = self.index["keyValueHeadCount"]
         head_dimension = self.index["headDimension"]
         past_keys = [
             numpy.zeros((1, head_count, 0, head_dimension), dtype=numpy.float32)
@@ -222,7 +246,7 @@ class OlmoeWholeModel:
         for step in range(len(token_ids) + new_token_count - 1):
             position = step
             current = produced[step]
-            hidden = numpy.asarray(self.embedding[current], dtype=numpy.float32).reshape(1, 1, -1)
+            hidden = self.embed(current)
             cosine, sine = self.rotary(position)
             # Every token may attend to the whole history, so the bias is zero
             # everywhere. It exists as an input because the graph is also correct
@@ -258,14 +282,14 @@ def main() -> None:
 
     :returns: nothing.
     """
-    parser = argparse.ArgumentParser(description="assemble the whole of OLMoE and make it generate")
+    parser = argparse.ArgumentParser(description="assemble a whole converted model and make it generate")
     parser.add_argument("--graphs", required=True, help="the directory written by build_olmoe_graphs.py")
     parser.add_argument("--blocks", required=True, help="the directory holding expert_blocks.bin")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="what to generate from")
     parser.add_argument("--tokens", type=int, default=DEFAULT_TOKEN_COUNT, help="how many tokens to generate")
     arguments = parser.parse_args()
 
-    model = OlmoeWholeModel(pathlib.Path(arguments.graphs), pathlib.Path(arguments.blocks))
+    model = WholeModel(pathlib.Path(arguments.graphs), pathlib.Path(arguments.blocks))
     print(f"gate: does the assembled {model.index['sourceRepository']} generate anything that reads as English?")
     print(f"  {model.index['layerCount']} layer graphs, one head graph, one expert graph of 1379 bytes")
     print(f"  {model.index['expertsForEachLayer'] * model.index['layerCount']} expert blocks on disk, "

@@ -23,6 +23,11 @@ const installableAssets = [
 const olmoeArtifactDirectories = {
   '/olmoe-artifacts/graphs/': process.env.OLMOE_GRAPHS_DIRECTORY ?? '/tmp/olmoe-1b-7b-0924-graphs',
   '/olmoe-artifacts/blocks/': process.env.OLMOE_BLOCKS_DIRECTORY ?? '/tmp/olmoe-1b-7b-0924-expert-blocks',
+  '/moe-artifacts/OLMoE-1B-7B-0924/graphs/': process.env.OLMOE_GRAPHS_DIRECTORY ?? '/tmp/olmoe-1b-7b-0924-graphs',
+  '/moe-artifacts/OLMoE-1B-7B-0924/blocks/':
+    process.env.OLMOE_BLOCKS_DIRECTORY ?? '/tmp/olmoe-1b-7b-0924-expert-blocks',
+  '/moe-artifacts/Qwen3-30B-A3B/graphs/': process.env.QWEN3_GRAPHS_DIRECTORY ?? '/tmp/qwen3-30b-a3b-graphs',
+  '/moe-artifacts/Qwen3-30B-A3B/blocks/': process.env.QWEN3_BLOCKS_DIRECTORY ?? '/tmp/qwen3-30b-a3b-expert-blocks',
 };
 
 /**
@@ -153,6 +158,8 @@ export default defineConfig({
         expertResidencyLayer: resolve(import.meta.dirname, 'public/expert-residency-layer/index.html'),
         expertBlockGraphGate: resolve(import.meta.dirname, 'public/expert-block-graph-gate/index.html'),
         olmoeRunTwice: resolve(import.meta.dirname, 'public/olmoe-run-twice/index.html'),
+        qwen3LayerGraphWebgpuGate: resolve(import.meta.dirname, 'public/qwen3-layer-graph-webgpu-gate/index.html'),
+        moeExpertsOnDisk: resolve(import.meta.dirname, 'public/moe-experts-on-disk/index.html'),
       },
     },
   },

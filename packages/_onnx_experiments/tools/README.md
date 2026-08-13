@@ -1,6 +1,6 @@
 # Tools
 
-Two unrelated groups of tools live here. The Qwen3 shard exporter, below, supports the `onnxruntime_qwen3-0.6b-with-shards` experiment. Everything after it belongs to [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): the Qwen3-30B-A3B residency measurement answers milestone 1, the quantization gate and the conversion pipeline answer milestone 3, and the OLMoE gates, the expert graph, and the fixture generator belong to milestone 5.
+Two unrelated groups of tools live here. The Qwen3 shard exporter, below, supports the `onnxruntime_qwen3-0.6b-with-shards` experiment. Everything after it belongs to [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): the Qwen3-30B-A3B residency measurement answers milestone 1, the quantization gate and the conversion pipeline answer milestone 3, the OLMoE gates and the expert graph and the fixture generator belong to milestone 5, and the Qwen3-30B-A3B layer graph, the graph builder, the whole-model gate and the intermediate exposer belong to milestone 6.
 
 ## Qwen3 shard exporter
 
@@ -121,38 +121,84 @@ The gate checks the graph plus separately computed experts against the reference
 
 The attention bias is a graph input rather than a mask built into the graph. Decoding one token at a time needs no mask at all, since that token may attend to the whole history. The gate's negative control replaces the causal bias with zeros for a multi-token case and the difference jumps to **3.872e-01**, 188288 times the worst real case, which is what makes the other four rows worth believing.
 
-## The OLMoE graphs, and the whole model assembled
+## The Qwen3-30B-A3B non-expert graph, and its gate
 
-`build_olmoe_graphs.py` builds everything that is not an expert, with its weights baked in as ordinary initializers: 16 layer graphs from `olmoe_non_expert_graph.py`, the final normalization and language model head as `head.onnx`, the weightless `expert.onnx`, the token embedding as plain single precision values, and a `graphs.json` describing all of it.
+`qwen3_moe_non_expert_graph.py` is to Qwen3-30B-A3B what `olmoe_non_expert_graph.py` is to OLMoE-1B-7B-0924, and it exists as a second file rather than a flag on the first because four things differ and every one of them produces fluent-looking nonsense when it is wrong:
+
+- **Grouped-query attention.** 32 query heads read 4 key and value heads, so each key head serves eight query heads. The cache holds the four, not the thirty-two.
+- **Per-head normalization.** The query and key normalizations run across one 128-wide head, after the split. OLMoE runs them across the whole 2048-wide vector, before it.
+- **A declared head width.** `head_dim` is 128 while hidden size over head count is 64, so the query projection widens to 4096 rather than staying at 2048.
+- **Renormalized routing.** `norm_topk_prob` is true, so the eight chosen weights are divided by their own sum. OLMoE leaves them alone.
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/build_olmoe_graphs.py \
+  packages/_onnx_experiments/tools/gate_qwen3_moe_non_expert_graph.py
+```
+
+The gate checks the graph plus separately computed experts against the reference layer, over four cases. The worst is **7.875e-06** relative, inside a tolerance of 2e-5, and the returned cache matches the reference cache every time. Its negative control replaces the causal bias with zeros and the difference jumps to **4.573e-01**, 58072 times the worst real case.
+
+`onnx_graph_helpers.py` holds what the two layer graph builders share — the opset and intermediate representation versions, `initializer`, `root_mean_square_normalization`, `rotate_half` and `apply_rotary`. It was extracted from `olmoe_non_expert_graph.py`, and re-running the OLMoE gate afterwards gave identical numbers.
+
+**This gate runs on the processor, and that is not enough.** See [the WebGPU layer graph gate](../public/qwen3-layer-graph-webgpu-gate/README.md), which found a graph that passes every number here and returns zeros in a browser.
+
+## The graphs, and the whole model assembled
+
+`build_moe_graphs.py` builds everything that is not an expert, with its weights baked in as ordinary initializers: one graph for each layer, the final normalization and language model head as `head.onnx`, the weightless `expert.onnx`, the token embedding, and a `graphs.json` describing all of it.
+
+```sh
+packages/_onnx_experiments/tools/.venv/bin/python \
+  packages/_onnx_experiments/tools/build_moe_graphs.py \
+  --model OLMoE-1B-7B-0924 \
   --blocks /tmp/olmoe-1b-7b-0924-expert-blocks \
   --output /tmp/olmoe-1b-7b-0924-graphs
 ```
 
+| `--model` | layer graphs | head | embedding | in total |
+| --- | --- | --- | --- | --- |
+| `Qwen3-30B-A3B` | 48 × 73.02 MB | 1187.01 MB | 593.50 MB at BF16 | 5.16 GB |
+| `OLMoE-1B-7B-0924` | 16 × 64.54 MB | 393.00 MB | 393.00 MB at single precision | 1.78 GB |
+
 It reads the `resident.safetensors` the conversion pipeline wrote rather than fetching the published weights again, so both halves of the split are provably from one conversion. It reads the published `config.json` at the **pinned** revision for the two numbers no shape on disk carries — the normalization epsilon and the rotary theta — rather than letting the library's defaults stand in silently. And it refuses to build unless that configuration describes the blocks it was pointed at, because two halves that disagree about a size still load and still generate, and what they generate is nonsense.
 
-Single precision throughout, 1.78 gigabytes. The layer graph was gated at single precision, this is the milestone about correctness, and halving the files would put every number that gate measured back in doubt.
+It also refuses to write a graph holding a node that binds more than eight storage buffers. WebGPU limits how many one compute shader may bind, Chrome creates its device at eight, and a node over that limit fails by returning zeros rather than by raising anything. Milestone 6 lost an afternoon to one such node before this check existed.
 
-`gate_olmoe_whole_model.py` then assembles the whole thing outside the browser and makes it generate.
+Single precision throughout for the arithmetic. The layer graphs were gated at single precision, correctness is what these milestones are about, and halving the files would put every number those gates measured back in doubt. The Qwen3-30B-A3B embedding table is the one exception: it is looked up rather than multiplied, so it is kept at BF16 and widened one row at a time, which is an exact sixteen-bit shift and saves 593 megabytes.
+
+`gate_moe_whole_model.py` then assembles the whole thing outside the browser and makes it generate.
 
 ```sh
 packages/_onnx_experiments/tools/.venv/bin/python \
-  packages/_onnx_experiments/tools/gate_olmoe_whole_model.py \
-  --graphs /tmp/olmoe-1b-7b-0924-graphs --blocks /tmp/olmoe-1b-7b-0924-expert-blocks
+  packages/_onnx_experiments/tools/gate_moe_whole_model.py \
+  --graphs /tmp/qwen3-30b-a3b-graphs --blocks /tmp/qwen3-30b-a3b-expert-blocks
 ```
 
-The three gates before it each checked one piece against a reference. None of them checks the **wiring**: sixteen layers in the right order, the cache carried from step to step, the routing weights on the right experts, the final normalization before the head. Nothing here can check that against a reference, because the reference is 13.8 gigabytes of weights and a machine with more memory than this one. But wiring mistakes have a very loud symptom, so the check is to generate and to read what comes out:
+The gates before it each check one piece against a reference. None of them checks the **wiring**: every layer in the right order, the cache carried from step to step, the routing weights on the right experts, the final normalization before the head. Nothing here can check that against a reference, because the reference is 13.8 gigabytes of weights for the smaller model and 57 for the larger, on a machine with 16 gigabytes. But wiring mistakes have a very loud symptom, so the check is to generate and to read what comes out:
 
 ```
-The capital of France is Paris.
+OLMoE-1B-7B-0924:  The capital of France is Paris.
 
-The capital of the United States is Washington
+                   The capital of the United States is Washington
+Qwen3-30B-A3B:     The capital of France is Paris. Which of the following is the capital of Germany?
 ```
 
-12 tokens in 10.0 seconds on the processor, with 2048 expert blocks read and no cache at all, which is 7104 megabytes. It runs the same graphs the browser runs, so a browser producing different words has a browser problem rather than an assembly problem. It is not a bit-for-bit reference: this runs on the processor and the browser on the graphics processor.
+OLMoE-1B-7B-0924 does 12 tokens in 10.0 seconds on the processor, with 2048 expert blocks read and no cache at all, which is 7104 megabytes. Qwen3-30B-A3B does 12 tokens in 45.5 seconds, with 6144 blocks read, which is 15984 megabytes.
+
+It runs the same graphs the browser runs — but on the processor, and the browser on the graphics processor. That difference is not a detail. A graph can pass this gate and still be wrong in a browser, which is what happened, and [the WebGPU layer graph gate](../public/qwen3-layer-graph-webgpu-gate/README.md) is the answer to it.
+
+## Exposing what a graph computes in between
+
+`expose_graph_intermediates.py` writes a copy of a graph that also returns every value its nodes produce.
+
+```sh
+packages/_onnx_experiments/tools/.venv/bin/python \
+  packages/_onnx_experiments/tools/expose_graph_intermediates.py \
+  --graph /tmp/qwen3-30b-a3b-graphs/layer_00.onnx \
+  --output /tmp/qwen3-30b-a3b-graphs/layer_00.intermediates.onnx
+```
+
+Two things that disagree about a graph's answer disagree at some one node first, and every node after that one is only carrying the mistake forward. A graph whose only outputs are its real outputs cannot say which node that was. This one can: `layer_00.onnx` returns 5 values and its copy returns 71.
+
+Nothing is renamed and no node is touched — the output list grows and that is the whole change — so a divergence found in the copy is a divergence in the original. The copy is for reading rather than for running a model, because a value that has to be returned cannot be folded away, so it defeats every fusion the runtime would otherwise do and its timings mean nothing.
 
 ## The expert graph, and the fixture that checks it
 

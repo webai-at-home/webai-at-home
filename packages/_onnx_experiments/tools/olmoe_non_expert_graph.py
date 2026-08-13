@@ -37,125 +37,13 @@ import numpy
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
-
-# The opset this graph targets. Seventeen keeps ReduceMean's axes an attribute
-# rather than an input, which keeps the builder readable, and it is old enough
-# that every execution provider in play supports all of it.
-OPSET_VERSION = 17
-
-
-def _initializer(name: str, array: numpy.ndarray) -> onnx.TensorProto:
-    """Wrap an array as a named initializer in single precision.
-
-    :param name: the name the graph refers to it by.
-    :param array: the values.
-    :returns: the initializer.
-    """
-    return numpy_helper.from_array(array.astype(numpy.float32), name)
-
-
-def _root_mean_square_normalization(
-    nodes: list,
-    initializers: list,
-    prefix: str,
-    input_name: str,
-    weight: numpy.ndarray,
-    epsilon: float,
-) -> str:
-    """Append the nodes computing one root mean square normalization.
-
-    This is written out rather than fused because the reference implementation
-    computes it in single precision whatever the model's own precision is, and
-    a fused operator would hide whether that is being honoured.
-
-    :param nodes: the node list to append to.
-    :param initializers: the initializer list to append to.
-    :param prefix: a unique prefix for the names this creates.
-    :param input_name: what to normalize.
-    :param weight: the learned scale, one value for each channel.
-    :param epsilon: the value added to the variance before the square root.
-    :returns: the name of the normalized output.
-    """
-    initializers.append(_initializer(f"{prefix}.weight", weight))
-    initializers.append(_initializer(f"{prefix}.epsilon", numpy.array([epsilon])))
-
-    nodes.append(helper.make_node("Mul", [input_name, input_name], [f"{prefix}.squared"]))
-    nodes.append(helper.make_node(
-        "ReduceMean",
-        [f"{prefix}.squared"],
-        [f"{prefix}.variance"],
-        axes=[-1],
-        keepdims=1,
-    ))
-    nodes.append(helper.make_node("Add", [f"{prefix}.variance", f"{prefix}.epsilon"], [f"{prefix}.shifted"]))
-    nodes.append(helper.make_node("Sqrt", [f"{prefix}.shifted"], [f"{prefix}.deviation"]))
-    nodes.append(helper.make_node("Div", [input_name, f"{prefix}.deviation"], [f"{prefix}.normalized"]))
-    nodes.append(helper.make_node("Mul", [f"{prefix}.weight", f"{prefix}.normalized"], [f"{prefix}.scaled"]))
-    return f"{prefix}.scaled"
-
-
-def _rotate_half(nodes: list, initializers: list, prefix: str, input_name: str, head_dim: int) -> str:
-    """Append the nodes computing the rotate-half of the rotary embedding.
-
-    :param nodes: the node list to append to.
-    :param initializers: the initializer list to append to.
-    :param prefix: a unique prefix for the names this creates.
-    :param input_name: the tensor to rotate, whose last dimension is the head width.
-    :param head_dim: the head width.
-    :returns: the name of the rotated output.
-    """
-    half = head_dim // 2
-    initializers.append(numpy_helper.from_array(numpy.array([0], dtype=numpy.int64), f"{prefix}.zero"))
-    initializers.append(numpy_helper.from_array(numpy.array([half], dtype=numpy.int64), f"{prefix}.half"))
-    initializers.append(numpy_helper.from_array(numpy.array([head_dim], dtype=numpy.int64), f"{prefix}.full"))
-    initializers.append(numpy_helper.from_array(numpy.array([-1], dtype=numpy.int64), f"{prefix}.axis"))
-
-    nodes.append(helper.make_node(
-        "Slice",
-        [input_name, f"{prefix}.zero", f"{prefix}.half", f"{prefix}.axis"],
-        [f"{prefix}.first"],
-    ))
-    nodes.append(helper.make_node(
-        "Slice",
-        [input_name, f"{prefix}.half", f"{prefix}.full", f"{prefix}.axis"],
-        [f"{prefix}.second"],
-    ))
-    nodes.append(helper.make_node("Neg", [f"{prefix}.second"], [f"{prefix}.negated"]))
-    nodes.append(helper.make_node(
-        "Concat",
-        [f"{prefix}.negated", f"{prefix}.first"],
-        [f"{prefix}.rotated"],
-        axis=-1,
-    ))
-    return f"{prefix}.rotated"
-
-
-def _apply_rotary(
-    nodes: list,
-    initializers: list,
-    prefix: str,
-    input_name: str,
-    head_dim: int,
-) -> str:
-    """Append the nodes applying the rotary position embedding.
-
-    The cosine and sine tables are graph inputs rather than being built here.
-    They depend only on the position, they are the same for every layer, and
-    computing them once outside is both simpler and cheaper than building the
-    table into sixteen graphs.
-
-    :param nodes: the node list to append to.
-    :param initializers: the initializer list to append to.
-    :param prefix: a unique prefix for the names this creates.
-    :param input_name: the query or key, shaped (batch, heads, tokens, head width).
-    :param head_dim: the head width.
-    :returns: the name of the embedded output.
-    """
-    rotated = _rotate_half(nodes, initializers, f"{prefix}.rotate", input_name, head_dim)
-    nodes.append(helper.make_node("Mul", [input_name, "cos"], [f"{prefix}.straight"]))
-    nodes.append(helper.make_node("Mul", [rotated, "sin"], [f"{prefix}.turned"]))
-    nodes.append(helper.make_node("Add", [f"{prefix}.straight", f"{prefix}.turned"], [f"{prefix}.embedded"]))
-    return f"{prefix}.embedded"
+from onnx_graph_helpers import (
+    IR_VERSION,
+    OPSET_VERSION,
+    apply_rotary,
+    initializer,
+    root_mean_square_normalization,
+)
 
 
 def build_layer_graph(weights: dict[str, numpy.ndarray], configuration, layer_index: int) -> onnx.ModelProto:
@@ -176,7 +64,7 @@ def build_layer_graph(weights: dict[str, numpy.ndarray], configuration, layer_in
     nodes: list = []
     initializers: list = []
 
-    normalized = _root_mean_square_normalization(
+    normalized = root_mean_square_normalization(
         nodes, initializers, "input_layernorm", "hidden_state", weights["input_layernorm.weight"], epsilon,
     )
 
@@ -184,13 +72,13 @@ def build_layer_graph(weights: dict[str, numpy.ndarray], configuration, layer_in
     # every one of them is transposed once here rather than by a node at every
     # single step.
     for projection in ["q_proj", "k_proj", "v_proj"]:
-        initializers.append(_initializer(f"{projection}.weight", weights[f"self_attn.{projection}.weight"].T))
+        initializers.append(initializer(f"{projection}.weight", weights[f"self_attn.{projection}.weight"].T))
         nodes.append(helper.make_node("MatMul", [normalized, f"{projection}.weight"], [f"{projection}.output"]))
 
-    query = _root_mean_square_normalization(
+    query = root_mean_square_normalization(
         nodes, initializers, "q_norm", "q_proj.output", weights["self_attn.q_norm.weight"], epsilon,
     )
-    key = _root_mean_square_normalization(
+    key = root_mean_square_normalization(
         nodes, initializers, "k_norm", "k_proj.output", weights["self_attn.k_norm.weight"], epsilon,
     )
 
@@ -201,13 +89,13 @@ def build_layer_graph(weights: dict[str, numpy.ndarray], configuration, layer_in
         nodes.append(helper.make_node("Reshape", [source, "head_shape"], [f"{name}.split"], allowzero=0))
         nodes.append(helper.make_node("Transpose", [f"{name}.split"], [f"{name}.heads"], perm=[0, 2, 1, 3]))
 
-    embedded_query = _apply_rotary(nodes, initializers, "query", "query.heads", head_dim)
-    embedded_key = _apply_rotary(nodes, initializers, "key", "key.heads", head_dim)
+    embedded_query = apply_rotary(nodes, initializers, "query", "query.heads", head_dim)
+    embedded_key = apply_rotary(nodes, initializers, "key", "key.heads", head_dim)
 
     nodes.append(helper.make_node("Concat", ["past_key", embedded_key], ["present_key"], axis=2))
     nodes.append(helper.make_node("Concat", ["past_value", "value.heads"], ["present_value"], axis=2))
 
-    initializers.append(_initializer("attention.scaling", numpy.array([scaling])))
+    initializers.append(initializer("attention.scaling", numpy.array([scaling])))
     nodes.append(helper.make_node("Transpose", ["present_key"], ["key.transposed"], perm=[0, 1, 3, 2]))
     nodes.append(helper.make_node("MatMul", [embedded_query, "key.transposed"], ["attention.scores"]))
     nodes.append(helper.make_node("Mul", ["attention.scores", "attention.scaling"], ["attention.scaled"]))
@@ -224,17 +112,17 @@ def build_layer_graph(weights: dict[str, numpy.ndarray], configuration, layer_in
     nodes.append(helper.make_node("Transpose", ["attention.context"], ["context.ordered"], perm=[0, 2, 1, 3]))
     nodes.append(helper.make_node("Reshape", ["context.ordered", "merge_shape"], ["context.merged"], allowzero=0))
 
-    initializers.append(_initializer("o_proj.weight", weights["self_attn.o_proj.weight"].T))
+    initializers.append(initializer("o_proj.weight", weights["self_attn.o_proj.weight"].T))
     nodes.append(helper.make_node("MatMul", ["context.merged", "o_proj.weight"], ["o_proj.output"]))
     nodes.append(helper.make_node("Add", ["hidden_state", "o_proj.output"], ["residual"]))
 
-    expert_input = _root_mean_square_normalization(
+    expert_input = root_mean_square_normalization(
         nodes, initializers, "post_attention_layernorm", "residual",
         weights["post_attention_layernorm.weight"], epsilon,
     )
     nodes.append(helper.make_node("Identity", [expert_input], ["expert_input"]))
 
-    initializers.append(_initializer("router.weight", weights["mlp.gate.weight"].T))
+    initializers.append(initializer("router.weight", weights["mlp.gate.weight"].T))
     nodes.append(helper.make_node("MatMul", ["expert_input", "router.weight"], ["router_logits"]))
 
     graph = helper.make_graph(
@@ -260,6 +148,6 @@ def build_layer_graph(weights: dict[str, numpy.ndarray], configuration, layer_in
         initializers,
     )
     model = helper.make_model(graph, opset_imports=[helper.make_operatorsetid("", OPSET_VERSION)])
-    model.ir_version = 10
+    model.ir_version = IR_VERSION
     onnx.checker.check_model(model)
     return model
