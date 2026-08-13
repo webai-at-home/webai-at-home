@@ -10,7 +10,8 @@
         ],
         "types": [
             "vite/client",
-            "node"
+            "node",
+            "@webgpu/types"
         ],
         "strict": true,
         "noImplicitReturns": true,

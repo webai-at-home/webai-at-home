@@ -39,6 +39,7 @@ Qwen3 experiment also needs the generated shard files; see
 - [`public/qwen3_5-0.8b-gate`](public/qwen3_5-0.8b-gate) — Qwen3.5-0.8B through Transformers.js, issue #96 de-risk gate.
 - [`public/qwen3_5-2b`](public/qwen3_5-2b) — Qwen3.5-2B through Transformers.js.
 - [`public/qwen3_5-tool-calls-gate`](public/qwen3_5-tool-calls-gate) — Qwen3.5-0.8B tool calls through the chat template, issue #115 de-risk gate.
+- [`public/matmulnbits-owned-webgpu-buffer-gate`](public/matmulnbits-owned-webgpu-buffer-gate) — `MatMulNBits` reading 4-bit weights out of a WebGPU buffer this project overwrites between calls, issue #169 milestone 0 de-risk gate. Downloads no model.
 
 The experiment pages are measurements and demonstrations, not production
 model-serving endpoints.
