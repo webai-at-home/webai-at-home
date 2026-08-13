@@ -69,9 +69,13 @@ export class GatewaySettings {
 
 	/**
 	 * @param argv The command line arguments. Defaults to this process's own.
+	 * @param programName The name to print in the usage line and in every error message. Defaults
+	 * to `gateway`, which is what this program is called when it is run on its own. Without a name
+	 * commander prints `Usage: program [options]`, which names nothing a person ever typed. The
+	 * `webai-at-home` program passes `webai-at-home gateway` instead. See issue #171.
 	 */
-	constructor(argv?: string[]) {
-		const command = new Command()
+	constructor(argv?: string[], programName = 'gateway') {
+		const command = new Command(programName)
 			.option('-p, --port <number>', 'HTTP and WebSocket port', '8787')
 			.option('--lease-ms <number>', 'Assignment lease duration', '15000')
 			.option('--submission-timeout-ms <number>', 'Queued task deadline', '30000')

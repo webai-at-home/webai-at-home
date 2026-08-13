@@ -6,6 +6,7 @@ The single command line program published to the npm registry as `webai-at-home`
 
 ```sh
 npx webai-at-home gateway
+npx webai-at-home donate --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
 npx webai-at-home worker_openai --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
 npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
@@ -21,7 +22,19 @@ The first word of the command line decides:
 | `gateway` | [`@webai/gateway`](../gateway/README.md), the central gateway |
 | `consumer_openai` | [`@webai/consumer-openai`](../consumer_openai/README.md), the OpenAI-compatible server |
 | `worker_openai` | [`@webai/worker-openai`](../worker_openai/README.md), the native worker |
+| `donate` | [`@webai/worker-openai`](../worker_openai/README.md) again, under a name that says what a person is trying to do |
+| `serve` | [`@webai/consumer-openai`](../consumer_openai/README.md)'s own `server` subcommand, under the same kind of name |
 | anything else | [`@webai/consumer-cli`](../consumer_cli/README.md), on the whole command line unchanged |
+
+`donate` and `serve` run exactly what `worker_openai` and `consumer_openai server` run, and take exactly the same options. They exist because nobody arrives at this program wanting to run a "consumer" or a "worker": those two words name the parts of this cluster's architecture, not what the person in front of the keyboard is trying to do. See [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171).
+
+## `--version`
+
+```sh
+npx webai-at-home --version
+```
+
+`npx` fetches whichever version of this package the npm registry currently holds, and prints nothing about which one that was, so this is what a bug report should quote.
 
 "Anything else" covers every `consumer_cli` subcommand — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — and a global option such as `--url` written ahead of one of them, since `consumer_cli` is what reads it. See each program's own README, linked above, for its own options.
 

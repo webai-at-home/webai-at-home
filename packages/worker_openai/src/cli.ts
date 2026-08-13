@@ -68,9 +68,13 @@ export class Cli {
 	 *
 	 * @param args The command line arguments, without the program name. Defaults to the
 	 * arguments this process was started with.
+	 * @param programName The name to print in every usage line and every error message. Defaults
+	 * to `worker_openai`, which is what this program is called when it is run on its own. The
+	 * `webai-at-home` program passes its own name instead, so a person who typed
+	 * `webai-at-home worker_openai` is told about the command they actually ran. See issue #171.
 	 */
-	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
-		const program = new Commander.Command('worker_openai')
+	static async run(args: string[] = process.argv.slice(2), programName = 'worker_openai'): Promise<void> {
+		const program = new Commander.Command(programName)
 			.description('A worker that runs its assigned stage by calling a local server speaking the OpenAI-compatible Chat Completions API, such as LM Studio')
 			.option('-u, --url <url>', `central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment variable, then to ${defaultGatewayUrl})`)
 			.option('-a, --auth-token <token>', 'bearer token for the central gateway (falls back to the GATEWAY_AUTH_TOKEN environment variable, then to a development default)')

@@ -69,7 +69,7 @@ Test('routes "gateway" to the gateway\'s own command line program, which prints 
 Test('routes "consumer_openai" to that program\'s own command line program, which prints its own real usage', async () => {
 	const { code, stdout } = await runCli(['consumer_openai', '--help']);
 	Assert.equal(code, 0);
-	Assert.match(stdout, /consumer_openai <command> \[options\]/);
+	Assert.match(stdout, /Usage: webai-at-home consumer_openai <command> \[options\]/);
 	Assert.match(stdout, /server/);
 });
 
@@ -83,13 +83,13 @@ Test('routes "worker_openai" to that program\'s own command line program, which 
 Test('routes anything else to consumer_cli, including a subcommand this program has never heard of', async () => {
 	const { code, stdout } = await runCli(['account_key', '--help']);
 	Assert.equal(code, 0);
-	Assert.match(stdout, /Usage: consumer_cli account_key \[options\]/);
+	Assert.match(stdout, /Usage: webai-at-home account_key \[options\]/);
 });
 
 Test('routes a global option written ahead of a consumer_cli subcommand to consumer_cli as well, rather than failing to match any subcommand of its own', async () => {
 	const { code, stdout } = await runCli(['--url', 'ws://localhost:1', 'account_key', '--help']);
 	Assert.equal(code, 0);
-	Assert.match(stdout, /Usage: consumer_cli account_key \[options\]/);
+	Assert.match(stdout, /Usage: webai-at-home account_key \[options\]/);
 });
 
 Test('prints its own top-level help, listing all four programs, when given no arguments', async () => {
@@ -99,4 +99,49 @@ Test('prints its own top-level help, listing all four programs, when given no ar
 	Assert.match(stdout, /consumer_openai/);
 	Assert.match(stdout, /worker_openai/);
 	Assert.match(stdout, /consumer_cli commands/);
+});
+
+Test('names itself, rather than the program it dispatched to, in the usage line of every one of the four', async () => {
+	for (const [args, expected] of [
+		[['gateway', '--help'], /Usage: webai-at-home gateway \[options\]/],
+		[['consumer_openai', 'server', '--help'], /Usage: webai-at-home consumer_openai server \[options\]/],
+		[['worker_openai', '--help'], /Usage: webai-at-home worker_openai \[options\]/],
+		[['submit', '--help'], /Usage: webai-at-home submit \[options\] <input>/],
+	] as const) {
+		const { stdout } = await runCli([...args]);
+		Assert.match(stdout, expected);
+	}
+});
+
+Test('prints the version this package was published with, which is the version npx fetched', async () => {
+	const { code, stdout } = await runCli(['--version']);
+	Assert.equal(code, 0);
+	Assert.match(stdout.trim(), /^\d+\.\d+\.\d+/);
+	Assert.equal(stdout.trim(), Cli.readVersion());
+});
+
+Test('runs worker_openai for "donate", and consumer_openai\'s server subcommand for "serve"', async () => {
+	const donate = await runCli(['donate', '--help']);
+	Assert.match(donate.stdout, /Usage: webai-at-home donate \[options\]/);
+	Assert.match(donate.stdout, /--openai-base-url/);
+
+	const serve = await runCli(['serve', '--help']);
+	Assert.match(serve.stdout, /Usage: webai-at-home serve \[options\]/);
+	Assert.match(serve.stdout, /--gateway-url/);
+});
+
+Test('builds its list of consumer_cli commands from consumer_cli itself, rather than from a hand-written copy', async () => {
+	const { stdout } = await runCli([]);
+	// Every command consumer_cli declares has to appear, `log_statistics` included: it was renamed
+	// from `log_stats`, and a hand-written list is exactly what would have been left saying the old
+	// name. See issue #171.
+	for (const name of [
+		'submit', 'status', 'capacity', 'log_statistics',
+		'account_key', 'account_register', 'account_information', 'account_balance', 'account_history',
+	]) {
+		Assert.match(stdout, new RegExp(`\\n  ${name}\\s`));
+	}
+	// Only the leading clause of each command's own description is listed, so no line runs on for
+	// the whole sentence the command's own --help prints.
+	Assert.match(stdout, /\n {2}account_balance\s+print what this account holds\n/);
 });

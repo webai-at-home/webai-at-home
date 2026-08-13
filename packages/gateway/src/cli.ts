@@ -64,9 +64,12 @@ export class Cli {
 	 *
 	 * @param args The command line arguments, without the program name. Defaults to the
 	 * arguments this process was started with.
+	 * @param programName The name to print in the usage line and in every error message. Defaults
+	 * to `gateway`, which is what this program is called when it is run on its own. The
+	 * `webai-at-home` program passes `webai-at-home gateway` instead. See issue #171.
 	 */
-	static async run(args?: string[]): Promise<void> {
-		const settings = new GatewaySettings(args);
+	static async run(args?: string[], programName = 'gateway'): Promise<void> {
+		const settings = new GatewaySettings(args, programName);
 
 		const deviceRegistry = new DeviceRegistry();
 		const taskStore = new TaskStore(undefined, settings.submissionTimeoutMs, settings.leaseMs, settings.stateFile);

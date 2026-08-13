@@ -76,10 +76,37 @@ export class Cli {
 	 *
 	 * @param args The command line arguments, without the program name. Defaults to the
 	 * arguments this process was started with.
+	 * @param programName The name to print in every usage line and every error message. Defaults
+	 * to `consumer_cli`, which is what this program is called when it is run on its own. The
+	 * `webai-at-home` program passes its own name instead, so a person who typed
+	 * `webai-at-home submit` is not told about a program called `consumer_cli` that they never
+	 * ran. See issue #171.
 	 * @returns A promise that settles once the requested subcommand has finished.
 	 */
-	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
-		const program = new Commander.Command('consumer_cli')
+	static async run(args: string[] = process.argv.slice(2), programName = 'consumer_cli'): Promise<void> {
+		const program = Cli.buildProgram(programName);
+
+		try {
+			await program.parseAsync([process.argv[0] ?? '', process.argv[1] ?? '', ...args]);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(message);
+			process.exitCode = error instanceof CliError ? error.exitCode : 1;
+		}
+	}
+
+	/**
+	 * Builds every command of this program, without running any of them.
+	 *
+	 * Kept apart from {@link run} so that the `webai-at-home` program can build this one and read
+	 * back the name and the description of every command it holds, rather than keeping a
+	 * hand-written second copy of that list which drifts out of date. See issue #171.
+	 *
+	 * @param programName The name to print in every usage line and every error message.
+	 * @returns The built, not yet run, command line program.
+	 */
+	static buildProgram(programName = 'consumer_cli'): Commander.Command {
+		const program = new Commander.Command(programName)
 			.configureHelp({ showGlobalOptions: true })
 			.option(
 				'-u, --url <url>',
@@ -180,8 +207,8 @@ export class Cli {
 		program
 			.command('capacity')
 			.description(
-				'estimate how many concurrent runs of one task type the connected workers could'
-					+ ' support right now',
+				'estimate how many concurrent runs of one task type the cluster could support,'
+					+ ' from the workers connected right now',
 			)
 			.requiredOption('--task_type <type>', `task type: ${taskTypeNames.join(', ')}`)
 			.option('-f, --format <format>', `output format: ${capacityFormats.join(', ')}`, 'text')
@@ -409,13 +436,7 @@ export class Cli {
 				});
 			});
 
-		try {
-			await program.parseAsync([process.argv[0] ?? '', process.argv[1] ?? '', ...args]);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			console.error(message);
-			process.exitCode = error instanceof CliError ? error.exitCode : 1;
-		}
+		return program;
 	}
 
 	/**

@@ -71,11 +71,11 @@ The central research questions are still open, especially result verification, b
 
 ## Run without cloning this repository
 
-`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai` and `worker_openai` each run the command line program of the same name; every other command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs `consumer_cli`.
+`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai` and `worker_openai` each run the command line program of the same name, and `donate` and `serve` run `worker_openai` and `consumer_openai server` again under a name that says what a person is trying to do; every other command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs `consumer_cli`.
 
 ```sh
 npx webai-at-home gateway
-npx webai-at-home worker_openai --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
+npx webai-at-home donate --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
 npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 

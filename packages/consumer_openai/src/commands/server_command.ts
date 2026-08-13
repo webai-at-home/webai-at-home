@@ -44,9 +44,12 @@ export class ServerCommand {
 	 * @returns Once the server is listening. It keeps listening after this resolves.
 	 * @param args The command line arguments, without the program name and the `server`
 	 * subcommand name. Defaults to this process's own, for a caller that runs this file directly.
+	 * @param programName The name to print in the usage line and in every error message. Defaults
+	 * to `consumer_openai server`, which is what this command is called when this program is run
+	 * on its own. See issue #171.
 	 */
-	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
-		const settings = new ServerSettings(args);
+	static async run(args: string[] = process.argv.slice(2), programName = 'consumer_openai server'): Promise<void> {
+		const settings = new ServerSettings(args, programName);
 
 		// This server's own message traffic with the central gateway, one file per run, the way
 		// the consumer command line program records it. Written to whichever directory this

@@ -81,9 +81,13 @@ export class ServerSettings {
 
 	/**
 	 * @param argv The command line arguments. Defaults to this process's own.
+	 * @param programName The name to print in the usage line and in every error message. Defaults
+	 * to `consumer_openai server`, which is what this command is called when this program is run
+	 * on its own. Without a name commander prints `Usage: program [options]`, which names nothing
+	 * a person ever typed. See issue #171.
 	 */
-	constructor(argv?: string[]) {
-		const command = new Command()
+	constructor(argv?: string[], programName = 'consumer_openai server') {
+		const command = new Command(programName)
 			.option('-p, --port <number>', 'Port to serve OpenAI-compatible requests on', '8788')
 			.option('-u, --gateway-url <url>', 'Central gateway WebSocket URL', defaultGatewayUrl)
 			.option('-t, --auth-token <token>', 'Bearer token the central gateway requires', 'development-token')
