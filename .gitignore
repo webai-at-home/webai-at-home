@@ -30,3 +30,8 @@ gateway-ledger.jsonl
 # belongs to, so none of them may ever be committed, wherever under data/ they are kept.
 data/**/*.account_key.json
 data/**/*.identity.json
+
+# A packed tarball, and a bundled workspace member's node_modules set aside while packing, left
+# behind if packages/webai_at_home_cli's prepack/postpack cycle is interrupted partway through.
+*.tgz
+node_modules.webai_at_home_cli_pack_backup/

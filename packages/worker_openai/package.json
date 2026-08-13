@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "dist/cli.js",
+  "files": [
+    "dist"
+  ],
   "bin": {
     "worker_openai": "./dist/cli.js"
   },

@@ -2,6 +2,9 @@
 	"name": "@webai/consumer-openai",
 	"version": "0.1.0",
 	"type": "module",
+	"files": [
+		"dist"
+	],
 	"bin": {
 		"consumer_openai": "./dist/cli.js"
 	},
