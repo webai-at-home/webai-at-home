@@ -21,6 +21,19 @@ const defaultAuthenticationToken = 'development-token';
 const defaultGatewayUrl = 'wss://webai-gateway.dash-menu.com/';
 
 /**
+ * The default base URL of the local server's OpenAI-compatible API: LM Studio's own default
+ * address, on the port LM Studio itself serves on out of the box.
+ *
+ * This had no default at all and stopped the worker until issue #171, on the reasoning that which
+ * server to reach could not be guessed safely. Measured against a real LM Studio, this address is
+ * worth guessing: it is the one every example in this repository already uses, and a worker started
+ * against nothing there fails with a connection error naming this address, which says what to fix.
+ *
+ * `--model` is deliberately *not* given a default alongside it. See {@link Cli.run}.
+ */
+const defaultOpenaiBaseUrl = 'http://localhost:1234/v1';
+
+/**
  * Where this worker defaults to reading its configuration directory, which holds its own account key
  * pair in `default.account_key.json`.
  *
@@ -82,8 +95,19 @@ export class Cli {
 			.option('-u, --gateway-url <url>', `central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment variable, then to ${defaultGatewayUrl})`)
 			.option('-a, --auth-token <token>', 'bearer token for the central gateway (falls back to the GATEWAY_AUTH_TOKEN environment variable, then to a development default)')
 			.option('-n, --worker_name <name>', 'worker name, which the gateway shows in its device list', 'openai-worker')
-			.option('-b, --openai-base-url <url>', "base URL of the local server's OpenAI-compatible API (falls back to the OPENAI_BASE_URL environment variable; one of the two is required)")
+			.option('-b, --openai-base-url <url>', `base URL of the local server's OpenAI-compatible API (falls back to the OPENAI_BASE_URL environment variable, then to ${defaultOpenaiBaseUrl}, which is LM Studio's own default address)`)
 			.option('-k, --openai-api-key <key>', "bearer token for the local server's OpenAI-compatible API (falls back to the OPENAI_API_KEY environment variable, then to sending no key at all, which is what a local server such as LM Studio expects)")
+			// Required, and deliberately not discovered from the local server. Issue #171 proposed
+			// asking `GET /v1/models` and using the single loaded model when this was not given.
+			// Measured against a real LM Studio, that is not possible and would not help:
+			//   - `/v1/models` lists every downloaded model, not the loaded one — 12 entries on the
+			//     machine it was measured on, one of them a text embedding model that cannot serve a
+			//     chat completion at all.
+			//   - Its entries carry `id`, `object` and `owned_by` and nothing else, so the response
+			//     cannot say which model is loaded. Zero were loaded when it returned those 12.
+			//   - LM Studio loads a named model just in time: a chat completion naming a model that
+			//     was not loaded answered in 2.7 seconds. So naming the model is the whole
+			//     mechanism, and there is nothing to discover.
 			.requiredOption('-m, --model <model>', 'the model the local server is asked for, exactly as that server names it')
 			.option('-s, --stage-names <name...>', 'restrict this worker to these stages, instead of every stage it can run')
 			.option('-c, --config_dir <path>', 'the directory holding this worker\'s own account key pair, as default.account_key.json, so the stages it completes earn credits for that account. A directory with no key pair in it means no account', defaultConfigDir)
@@ -218,13 +242,13 @@ export class Cli {
 	/**
 	 * Chooses the base URL of the local server's OpenAI-compatible API to reach.
 	 *
-	 * Unlike the central gateway's URL and its bearer token, this has no built-in default: which
-	 * server to reach, LM Studio on this machine or a hosted API elsewhere, is not something this
-	 * program can guess safely, so `--openai-base-url` or `OPENAI_BASE_URL` has to say so.
+	 * Falls back to LM Studio's own default address, the same three-step order every other setting
+	 * here follows. It used to stop the worker instead, on the reasoning that this could not be
+	 * guessed safely; measuring a real LM Studio for issue #171 showed the guess is a good one, and
+	 * a worker pointed at nothing there fails with a connection error naming the address it tried.
 	 *
 	 * @param fromCommandLine The base URL given on the command line, if one was given.
 	 * @returns The base URL to reach.
-	 * @throws {Error} If neither `--openai-base-url` nor `OPENAI_BASE_URL` was given.
 	 */
 	private static resolveOpenaiBaseUrl(fromCommandLine: string | undefined): string {
 		if (fromCommandLine !== undefined && fromCommandLine !== '') {
@@ -234,7 +258,7 @@ export class Cli {
 		if (fromEnvironment !== undefined && fromEnvironment !== '') {
 			return fromEnvironment;
 		}
-		throw new Error('The base URL of the local server\'s OpenAI-compatible API is required: give it with --openai-base-url, or the OPENAI_BASE_URL environment variable');
+		return defaultOpenaiBaseUrl;
 	}
 
 	/**

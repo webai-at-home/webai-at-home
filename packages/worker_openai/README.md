@@ -24,7 +24,7 @@ npm run sample:lmstudio --workspace @webai/worker-openai
 To point the worker somewhere else, use `npm run dev` and give the options yourself:
 
 ```sh
-npm run dev --workspace @webai/worker-openai -- --openai-base-url http://localhost:1234/v1 --model llama-3.2-1b-instruct
+npm run dev --workspace @webai/worker-openai -- --model llama-3.2-1b-instruct
 ```
 
 Or, against a built package:
@@ -41,12 +41,14 @@ npm run start --workspace @webai/worker-openai
 | `-u, --gateway-url <url>` | `wss://webai-gateway.dash-menu.com/` | The central gateway's WebSocket URL. Falls back to the `GATEWAY_WS_URL` environment variable. |
 | `-a, --auth-token <token>` | `development-token` | The bearer token the gateway requires. Falls back to the `GATEWAY_AUTH_TOKEN` environment variable. |
 | `-n, --worker_name <name>` | `openai-worker` | The worker name shown in the gateway's device list. |
-| `-b, --openai-base-url <url>` | none, required | The base URL of the local server's OpenAI-compatible API, such as `http://localhost:1234/v1` for LM Studio. Falls back to the `OPENAI_BASE_URL` environment variable; one of the two has to be given, or this worker stops with an error rather than guess which server to reach. |
+| `-b, --openai-base-url <url>` | `http://localhost:1234/v1` | The base URL of the local server's OpenAI-compatible API. That default is LM Studio's own address, so a worker on a machine already running LM Studio needs no `--openai-base-url` at all. Falls back to the `OPENAI_BASE_URL` environment variable. |
 | `-k, --openai-api-key <key>` | none, so no `Authorization` header is sent at all | The bearer token to present to the local server's OpenAI-compatible API. A local server such as LM Studio requires none; a hosted server behind `--openai-base-url` does. Falls back to the `OPENAI_API_KEY` environment variable. |
 | `-m, --model <model>` | none, required | The model the local server is asked for, exactly as that server names it. Two servers name the same model differently, so this has to change with the base URL, and this worker refuses to start without it rather than guess. |
 | `-s, --stage-names <name...>` | every stage this worker can run | Restrict this worker to particular stages. |
 | `-c, --config_dir <path>` | `~/.webai-at-home/worker_openai_config` | The directory holding this worker's own account key pair, as `default.account_key.json`, so the stages it completes earn credits for that account. A directory with no key pair in it means no account, and the stages it completes earn credits for nobody. See [`docs/accounting_system.md`](../../docs/accounting_system.md). |
 | `--no-automatic-reconnection` | off, so this worker does connect again | Stop as soon as the connection to the central gateway closes, instead of opening a connection again after a wait. See [Connecting again after the connection is lost](#connecting-again-after-the-connection-is-lost). |
+
+`-m, --model` is required and is deliberately not read from the local server, even though `GET /v1/models` exists on every OpenAI-compatible API. Measured against a real LM Studio for [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171), that endpoint lists every downloaded model rather than the loaded one — twelve of them on the machine it was measured on, one a text embedding model that cannot serve a chat completion at all — and its entries carry only `id`, `object` and `owned_by`, so nothing in the response says which model is loaded. Zero were loaded when it returned those twelve. LM Studio loads a named model just in time instead: a chat completion naming a model that was not loaded answered in 2.7 seconds. Naming the model is therefore the whole mechanism, and there is nothing to discover.
 
 `GATEWAY_WS_URL` and `GATEWAY_AUTH_TOKEN` are the same two names `packages/docker_server` uses for the same two settings, so one pair of exported variables points every program on this machine at the same gateway. See [`docs/environment_variables.md`](../../docs/environment_variables.md) for every variable this project reads and which programs read none.
 

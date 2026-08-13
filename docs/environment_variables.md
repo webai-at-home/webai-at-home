@@ -36,11 +36,11 @@ These two variables say which central gateway to connect to and how to authentic
 
 ## Reaching the local server behind `packages/worker_openai`
 
-These say which server speaking the OpenAI-compatible API `packages/worker_openai` forwards its assigned stage to — LM Studio on the same machine, or a hosted API elsewhere — and how to authenticate with it. Unlike the two gateway variables above, neither has a built-in default here: `packages/worker_openai` stops with an error rather than guess which server to reach when neither the command line option nor the environment variable is given.
+These say which server speaking the OpenAI-compatible API `packages/worker_openai` forwards its assigned stage to — LM Studio on the same machine, or a hosted API elsewhere — and how to authenticate with it.
 
 | Variable | Read by | Command line option it stands behind | Default |
 | --- | --- | --- | --- |
-| `OPENAI_BASE_URL` | `packages/worker_openai` | `-b, --openai-base-url` | none, required |
+| `OPENAI_BASE_URL` | `packages/worker_openai` | `-b, --openai-base-url` | `http://localhost:1234/v1`, LM Studio's own default address |
 | `OPENAI_API_KEY` | `packages/worker_openai` | `-k, --openai-api-key` | none, meaning no `Authorization` header is sent at all, which is what a local server such as LM Studio expects |
 
 `packages/openai_api_tool` reads the same two names for the same purpose, on its own subcommands, with defaults of its own — see the table below. Neither program's default carries over to the other: what one falls back to is not what the other falls back to, only the variable name is shared.
