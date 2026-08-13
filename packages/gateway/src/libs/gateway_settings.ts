@@ -16,7 +16,7 @@ type RawOptions = {
 	accountFile: string;
 	accountChallengeMs: string;
 	ledgerFile: string;
-	authToken: string;
+	authToken?: string;
 	maxTasksPerPrincipal: string;
 	sessionMs: string;
 	pipelineFile?: string;
@@ -84,7 +84,11 @@ export class GatewaySettings {
 			.option('--account-file <path>', 'Account profile file', 'gateway-accounts.json')
 			.option('--account-challenge-ms <number>', 'How long a challenge handed out for an account to sign stays usable', '60000')
 			.option('--ledger-file <path>', 'Append-only accounting ledger file', 'gateway-ledger.jsonl')
-			.option('--auth-token <token>', 'Required bearer token for development connections', 'development-token')
+			.option(
+				'-a, --auth-token <token>',
+				'bearer token every connection to this gateway must present (falls back to the'
+					+ ' GATEWAY_AUTH_TOKEN environment variable, then to a development default)',
+			)
 			.option('--max-tasks-per-principal <number>', 'Maximum non-terminal tasks per principal', '20')
 			.option('--session-ms <number>', 'How long an authenticated session lasts before the client must authenticate again', '3600000')
 			.option('--pipeline-file <path>', 'JSON file containing additional pipeline specifications')
@@ -102,7 +106,7 @@ export class GatewaySettings {
 		this.accountFile = options.accountFile;
 		this.accountChallengeMs = Number(options.accountChallengeMs);
 		this.ledgerFile = options.ledgerFile;
-		this.authToken = options.authToken;
+		this.authToken = GatewaySettings._resolveAuthToken(options.authToken);
 		this.maximumTasksPerPrincipal = Number(options.maxTasksPerPrincipal);
 		this.sessionMs = Number(options.sessionMs);
 		this.pipelineFile = options.pipelineFile;
@@ -110,5 +114,34 @@ export class GatewaySettings {
 		this.commitSha = options.commitSha;
 		this.heartbeatIntervalMs = Number(options.heartbeatIntervalMs);
 		this.dev = options.dev === true;
+	}
+
+	/**
+	 * Chooses the bearer token this gateway requires, in the three-step order every other program
+	 * in this repository already follows: the `-a/--auth-token` option, then the
+	 * `GATEWAY_AUTH_TOKEN` environment variable, then the development default.
+	 *
+	 * This gateway read no environment variable at all until issue #171, so exporting
+	 * `GATEWAY_AUTH_TOKEN` configured the clients on a machine and silently did nothing to the
+	 * gateway on that same machine. `packages/docker_server`'s own `docker-entrypoint.sh` already
+	 * translated the variable into this option for the container, and still does; this makes the
+	 * gateway obey the variable on its own as well, so a gateway started by hand behaves the way
+	 * `docs/environment_variables.md` describes.
+	 *
+	 * `GATEWAY_WS_URL`, the other half of that pair, is deliberately not read here: it names which
+	 * gateway to connect to, and this program is the gateway, so it has none to connect to.
+	 *
+	 * @param fromCommandLine The token given on the command line, if one was given.
+	 * @returns The token every connection to this gateway must present.
+	 */
+	private static _resolveAuthToken(fromCommandLine: string | undefined): string {
+		if (fromCommandLine !== undefined && fromCommandLine !== '') {
+			return fromCommandLine;
+		}
+		const fromEnvironment = process.env.GATEWAY_AUTH_TOKEN;
+		if (fromEnvironment !== undefined && fromEnvironment !== '') {
+			return fromEnvironment;
+		}
+		return 'development-token';
 	}
 }

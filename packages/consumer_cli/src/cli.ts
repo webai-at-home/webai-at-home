@@ -210,7 +210,9 @@ export class Cli {
 				'estimate how many concurrent runs of one task type the cluster could support,'
 					+ ' from the workers connected right now',
 			)
-			.requiredOption('--task_type <type>', `task type: ${taskTypeNames.join(', ')}`)
+			// `-t`, the same letter `submit` gives the same option. Only the long name existed until
+			// issue #171, so the two commands named one idea two different ways.
+			.requiredOption('-t, --task_type <type>', `task type: ${taskTypeNames.join(', ')}`)
 			.option('-f, --format <format>', `output format: ${capacityFormats.join(', ')}`, 'text')
 			.option('--timeout <ms>', 'how long to wait for the central gateway to answer', '10000')
 			.action(async (

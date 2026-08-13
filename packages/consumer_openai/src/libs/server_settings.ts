@@ -31,8 +31,8 @@ const defaultGatewayUrl = 'wss://webai-gateway.dash-menu.com/';
 /** The command line options exactly as they arrive, before they are converted. */
 type RawOptions = {
 	port: string;
-	gatewayUrl: string;
-	authToken: string;
+	gatewayUrl?: string;
+	authToken?: string;
 	apiKey?: string;
 	consumer_name: string;
 	config_dir: string;
@@ -89,9 +89,24 @@ export class ServerSettings {
 	constructor(argv?: string[], programName = 'consumer_openai server') {
 		const command = new Command(programName)
 			.option('-p, --port <number>', 'Port to serve OpenAI-compatible requests on', '8788')
-			.option('-u, --gateway-url <url>', 'Central gateway WebSocket URL', defaultGatewayUrl)
-			.option('-t, --auth-token <token>', 'Bearer token the central gateway requires', 'development-token')
-			.option('-k, --api-key <key>', 'Key a request must present to this server. Omit to require none')
+			.option(
+				'-u, --gateway-url <url>',
+				'central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment'
+					+ ` variable, then to ${defaultGatewayUrl})`,
+			)
+			// `-a`, matching `consumer_cli` and `worker_openai`. It was `-t` until issue #171,
+			// where `-t` meant `--task_type` in `consumer_cli submit` and the bearer token here,
+			// so one letter meant two unrelated things depending on which command was being run.
+			.option(
+				'-a, --auth-token <token>',
+				'bearer token the central gateway requires (falls back to the GATEWAY_AUTH_TOKEN'
+					+ ' environment variable, then to a development default)',
+			)
+			// No short letter, deliberately. This is the key a caller presents *to this server*,
+			// while `worker_openai`'s `-k, --openai-api-key` is the key that program presents *to
+			// the local model server*. One letter cannot mean both directions, so `-k` is left to
+			// mean "a key we present" in the one place it already did. See issue #171.
+			.option('--api-key <key>', 'Key a request must present to this server. Omit to require none')
 			.option('-n, --consumer_name <name>', 'Consumer name to register under with the central gateway', 'consumer_openai server')
 			.option('-c, --config_dir <path>', 'The directory holding this server\'s own account key pair, as default.account_key.json, so the stages its tasks run are recorded against that account. A directory with no key pair in it means no account', defaultConfigDir)
 			.option('--request-timeout-ms <number>', 'How long one task may run before it is cancelled', '600000')
@@ -114,8 +129,8 @@ export class ServerSettings {
 		).opts<RawOptions>();
 
 		this.port = Number(options.port);
-		this.gatewayUrl = options.gatewayUrl;
-		this.authToken = options.authToken;
+		this.gatewayUrl = ServerSettings._resolve(options.gatewayUrl, 'GATEWAY_WS_URL', defaultGatewayUrl);
+		this.authToken = ServerSettings._resolve(options.authToken, 'GATEWAY_AUTH_TOKEN', 'development-token');
 		this.apiKey = options.apiKey;
 		this.name = options.consumer_name;
 		this.accountKeyFile = AccountKeyFile.pathInConfigDir(options.config_dir);
@@ -123,5 +138,29 @@ export class ServerSettings {
 		this.connectionWaitMs = Number(options.connectionWaitMs);
 		this.maximumTasksInFlight = Number(options.maxTasksInFlight);
 		this.commitSha = options.commitSha;
+	}
+
+	/**
+	 * Chooses one setting's value in the three-step order `docs/environment_variables.md` states:
+	 * the command line option, then the environment variable, then the built-in default.
+	 *
+	 * This server read no environment variable at all until issue #171, so exporting
+	 * `GATEWAY_WS_URL` and `GATEWAY_AUTH_TOKEN` pointed `consumer_cli` and `worker_openai` on a
+	 * machine at one gateway and silently did nothing to this server on that same machine.
+	 *
+	 * @param fromCommandLine The value given on the command line, if one was given.
+	 * @param variableName The environment variable to read when no option was given.
+	 * @param fallback What to use when neither the option nor the variable says anything.
+	 * @returns The value to use.
+	 */
+	private static _resolve(fromCommandLine: string | undefined, variableName: string, fallback: string): string {
+		if (fromCommandLine !== undefined && fromCommandLine !== '') {
+			return fromCommandLine;
+		}
+		const fromEnvironment = process.env[variableName];
+		if (fromEnvironment !== undefined && fromEnvironment !== '') {
+			return fromEnvironment;
+		}
+		return fallback;
 	}
 }

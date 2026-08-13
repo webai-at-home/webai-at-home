@@ -8,11 +8,10 @@ The companion document [`naming_scheme.md`](./naming_scheme.md) covers a differe
 
 This is the fact that makes the rest of the document readable, and it is the one most easily got wrong:
 
-- `packages/worker_openai` and `packages/consumer_cli` read environment variables directly, as a fallback behind their own command line options.
-- `packages/gateway` and `packages/consumer_openai` read **no** environment variables at all. They read command line options only. Setting a variable in the environment of either of these two programs does nothing.
+- `packages/worker_openai`, `packages/consumer_cli`, `packages/consumer_openai` and `packages/gateway` all read environment variables directly, as a fallback behind their own command line options. The last two did not until [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171): exporting the two gateway variables used to configure two of the four programs on a machine and silently do nothing to the other two.
 - `packages/worker_webpage` runs in a browser tab, which has no environment at all. It reads query parameters of the page URL instead: `gatewayUrl`, `authToken`, `workerName`, `enabledStages`, and `stageNames`.
 
-So a variable that appears to be ignored is usually being set for a program that never reads it. Pass a command line option to that program instead, or set the variable in the container environment described below, where [`docker-entrypoint.sh`](../packages/docker_server/docker/docker-entrypoint.sh) turns it into the matching command line option.
+The container is still the place to set these for a deployment, where [`docker-entrypoint.sh`](../packages/docker_server/docker/docker-entrypoint.sh) turns each one into the matching command line option. It keeps doing that whether or not the program it starts also reads the variable itself, since an explicit option wins over the variable either way and the two carry the same value.
 
 ## The precedence rule
 
@@ -28,10 +27,10 @@ These two variables say which central gateway to connect to and how to authentic
 
 | Variable | Read by | Command line option it stands behind | Default |
 | --- | --- | --- | --- |
-| `GATEWAY_WS_URL` | `packages/worker_openai`, `packages/consumer_cli` | `-u, --url` | `wss://webai-gateway.dash-menu.com/` |
-| `GATEWAY_AUTH_TOKEN` | `packages/worker_openai`, `packages/consumer_cli` | `-a, --auth-token` | `development-token` |
+| `GATEWAY_WS_URL` | `packages/worker_openai`, `packages/consumer_cli`, `packages/consumer_openai` | `-u, --url`, and `-u, --gateway-url` in `packages/consumer_openai` | `wss://webai-gateway.dash-menu.com/` |
+| `GATEWAY_AUTH_TOKEN` | `packages/worker_openai`, `packages/consumer_cli`, `packages/consumer_openai`, `packages/gateway` | `-a, --auth-token` | `development-token` |
 
-`packages/consumer_openai` connects to a gateway too, but reads neither variable: it takes `-u, --gateway-url` and `-t, --auth-token` on the command line only.
+`packages/gateway` reads `GATEWAY_AUTH_TOKEN` but deliberately not `GATEWAY_WS_URL`. `GATEWAY_WS_URL` names which gateway to connect to, and this program is the gateway, so it has none to connect to. It is the one program in the table that reads one of the pair and not the other, and that is on purpose rather than an omission.
 
 `GATEWAY_AUTH_TOKEN` names one token seen from two sides. On a machine running a client, it is the token that client presents. In the container, it is the token the gateway requires. Those are the same value in any working deployment — the gateway requires exactly what the clients present — which is why one name serves both, and why the container variable and the client variable were deliberately merged rather than kept apart.
 
@@ -48,7 +47,7 @@ These say which server speaking the OpenAI-compatible API `packages/worker_opena
 
 ## The container environment
 
-`packages/docker_server` runs the gateway and a static file server for the built worker page inside one container, and neither of those two reads environment variables of its own. [`docker-entrypoint.sh`](../packages/docker_server/docker/docker-entrypoint.sh) is the translator: it reads the container's environment and passes each value as a command line option.
+`packages/docker_server` runs the gateway and a static file server for the built worker page inside one container. [`docker-entrypoint.sh`](../packages/docker_server/docker/docker-entrypoint.sh) is the translator: it reads the container's environment and passes each value as a command line option. The gateway now also reads `GATEWAY_AUTH_TOKEN` on its own, so that one variable reaches it whether or not the translator is in the way; every other variable in the table below reaches it only through the translator.
 
 | Variable | Passed as | Default |
 | --- | --- | --- |

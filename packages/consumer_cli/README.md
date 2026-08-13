@@ -80,7 +80,7 @@ npm run dev --workspace @webai/consumer-cli -- submit "hello there" --task_type 
 `--stream` is not valid for `dev_formula`, which always returns one numeric
 result. `submit` writes gateway messages to `packages/consumer_cli/logs`.
 
-`submit` spends from this participant's account, so the stages its task runs are recorded against that account rather than against nobody. It reads the key pair from `default.account_key.json` inside the configuration directory given by `-c, --config_dir`, which defaults to `data/consumer_cli_config` in this checkout of the repository, and says which account it is submitting as:
+`submit` spends from this participant's account, so the stages its task runs are recorded against that account rather than against nobody. It reads the key pair from `default.account_key.json` inside the configuration directory given by `-c, --config_dir`, which defaults to `~/.webai-at-home/consumer_cli_config`, and says which account it is submitting as:
 
 ```
 Submitting as account-37b98b4c860818d3396d3b4b1b04ab88.
@@ -103,7 +103,7 @@ npm run dev --workspace @webai/consumer-cli -- status
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--watch` | off | Keep the connection open and reprint on every change, until interrupted or disconnected. |
-| `--json` | off | Print the snapshot as JSON instead of a table. |
+| `-f, --format <format>` | `text` | `text`, `markdown`, or `json`. |
 | `--timeout <ms>` | `10000` | How long to wait for the central gateway to answer. |
 
 Without `--watch`, `status` prints one snapshot and exits `0`. With `--watch`, it keeps reprinting until interrupted with Ctrl-C (clean exit `0`) or disconnected (non-zero exit); it does not reconnect on its own.
@@ -125,8 +125,8 @@ A pipeline whose every stage keeps state on one worker between rounds — such a
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--task_type <type>` | — | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
-| `--json` | off | Print the estimate as JSON instead of a sentence. |
+| `-t, --task_type <type>` | — | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
+| `-f, --format <format>` | `text` | `text`, `markdown`, or `json`. |
 | `--timeout <ms>` | `10000` | How long to wait for the central gateway to answer. |
 
 An unknown task type is an error with a non-zero exit code. `--task_type` is required.
