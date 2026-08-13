@@ -99,6 +99,28 @@ It matches to **6.069e-06** relative, inside a tolerance of 1e-5.
 
 The gate also demonstrates that it can fail. OLMoE sets `norm_topk_prob` to false, so the eight routing weights are raw softmax probabilities over all 64 experts and do not sum to one. Renormalising them, which many mixture-of-experts implementations do, would multiply every expert's contribution by about 2.64 while leaving the output looking entirely reasonable.
 
+## OLMoE non-expert graph, and its gate
+
+`olmoe_non_expert_graph.py` builds the other half of one OLMoE decoder layer as an ONNX graph — normalization, the query, key and value projections, the query and key normalizations, the rotary embedding, attention with a key and value cache, the output projection, and the router — and stops exactly where the experts begin:
+
+```
+residual, expert_input, router_logits, present_key, present_value
+    = graph(hidden_state, past_key, past_value, cos, sin, attention_bias)
+```
+
+The caller routes, computes the chosen experts from weights it owns, and adds the result to `residual`. That seam is where the residency layer lives.
+
+Only the *expert* weights ever have to be runtime inputs. Everything in this graph is resident for the life of the model and never changes, so it stays an ordinary initializer.
+
+```sh
+packages/_onnx_experiments/tools/.venv/bin/python \
+  packages/_onnx_experiments/tools/gate_olmoe_non_expert_graph.py
+```
+
+The gate checks the graph plus separately computed experts against the reference layer, over four cases: one token and several, each with an empty key and value cache and with one already holding history. The worst case is **2.056e-06** relative, inside a tolerance of 2e-5, and the returned cache matches the reference cache every time.
+
+The attention bias is a graph input rather than a mask built into the graph. Decoding one token at a time needs no mask at all, since that token may attend to the whole history. The gate's negative control replaces the causal bias with zeros for a multi-token case and the difference jumps to **3.872e-01**, 188288 times the worst real case, which is what makes the other four rows worth believing.
+
 ## Qwen3-30B-A3B conversion pipeline
 
 Writes the on-disk layout milestone 3 asks for: the always-resident part in one file, and the 6144 expert blocks in another, each block one contiguous 256-byte-aligned region holding one expert's quantized weights, scales, and zero points together.
