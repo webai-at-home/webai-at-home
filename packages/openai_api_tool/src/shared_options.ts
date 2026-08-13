@@ -56,7 +56,7 @@ export class SharedOptions {
 	 */
 	static addEndpointOptions(command: Command): Command {
 		return command
-			.option('-u, --base_url <url>', 'the OpenAI-compatible API to reach, without /chat/completions', process.env.WEBAI_OPENAI_BASE_URL ?? SharedOptions.defaultBaseUrl)
+			.option('-u, --base_url <url>', 'the OpenAI-compatible API to reach, without /chat/completions', process.env.OPENAI_BASE_URL ?? SharedOptions.defaultBaseUrl)
 			.option('-k, --api_key <key>', 'the bearer token sent to the endpoint', process.env.OPENAI_API_KEY ?? 'no-key-required')
 			.option('--timeout_ms <number>', 'how long one request may take before it is given up on', '600000');
 	}

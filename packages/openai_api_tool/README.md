@@ -53,7 +53,7 @@ Every subcommand accepts these:
 | Option | Default | What it does |
 | --- | --- | --- |
 | `-m, --model <name>` | `all` | One model identifier, a comma-separated list of identifiers, a pattern such as `llm_*`, `all`, or `list` to print the model identifiers and send nothing. |
-| `-u, --base_url <url>` | `WEBAI_OPENAI_BASE_URL`, or `http://localhost:8788/v1` | The OpenAI-compatible API to reach, without `/chat/completions`. |
+| `-u, --base_url <url>` | `OPENAI_BASE_URL`, or `http://localhost:8788/v1` | The OpenAI-compatible API to reach, without `/chat/completions`. |
 | `-k, --api_key <key>` | `OPENAI_API_KEY`, or `no-key-required` | The bearer token sent to the endpoint. |
 | `--timeout_ms <number>` | `600000` | How long one request may take before it is given up on. |
 | `-f, --format <format>` | `text` | The output format: `text`, `markdown`, or `json`. |
@@ -239,7 +239,7 @@ Beside the six subcommands, [`examples/`](./examples) holds one short runnable p
 npm run example:chat_completion_dev_formula --workspace @webai/openai-api-tool
 ```
 
-The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `WEBAI_OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
+The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
 
 The two `history` examples are the ones to run to see a real history reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole history rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
 

@@ -12,7 +12,7 @@ import OpenAI, { APIError } from 'openai';
 // gateway is running and no volunteer browser is connected.
 
 const client = new OpenAI({
-	baseURL: process.env.WEBAI_OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
+	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
 	// This server requires no key unless it was started with --api-key, and the openai package
 	// refuses to run without one, so a placeholder is passed here.
 	apiKey: process.env.OPENAI_API_KEY ?? 'no-key-required',

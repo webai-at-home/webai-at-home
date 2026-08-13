@@ -25,7 +25,7 @@ import OpenAI from 'openai';
 // the pipeline can manage, which `examples/chat_completion_nostream_llm_qwen3_5_0_8b_full.ts` shows.
 
 const client = new OpenAI({
-	baseURL: process.env.WEBAI_OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
+	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
 	apiKey: process.env.OPENAI_API_KEY ?? 'no-key-required',
 	maxRetries: 0,
 });

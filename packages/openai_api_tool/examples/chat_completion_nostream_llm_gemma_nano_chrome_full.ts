@@ -22,7 +22,7 @@ import OpenAI, { APIError } from 'openai';
 // which `examples/chat_completion_streamed_llm_gemma_nano_chrome_full.ts` shows.
 
 const client = new OpenAI({
-	baseURL: process.env.WEBAI_OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
+	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
 	apiKey: process.env.OPENAI_API_KEY ?? 'no-key-required',
 	maxRetries: 0,
 	timeout: 600_000,

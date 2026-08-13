@@ -18,7 +18,7 @@ import OpenAI, { APIError } from 'openai';
 // http://localhost:8787/debug_iframe_dev_formula, which opens the two tabs the task uses.
 
 const client = new OpenAI({
-	baseURL: process.env.WEBAI_OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
+	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
 	apiKey: process.env.OPENAI_API_KEY ?? 'no-key-required',
 	maxRetries: 0,
 	timeout: 120_000,

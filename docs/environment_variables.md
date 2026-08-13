@@ -58,7 +58,7 @@ These configure example programs and tests rather than the cluster itself. None 
 
 | Variable | Read by | Meaning | Default |
 | --- | --- | --- | --- |
-| `WEBAI_OPENAI_BASE_URL` | every example in `packages/openai_api_tool/examples` | Base URL of the OpenAI-compatible server the example sends its request to | `http://localhost:8788/v1` |
+| `OPENAI_BASE_URL` | every example in `packages/openai_api_tool/examples` | Base URL of the OpenAI-compatible server the example sends its request to | `http://localhost:8788/v1` |
 | `OPENAI_API_KEY` | the same examples, and every subcommand of `packages/openai_api_tool` | Key presented to that server | `no-key-required` |
 | `WEBAI_LOCAL_MODEL_BASE_URL` | `packages/consumer_openai/tests/real_llm_llama3_2_1b_full_native_worker.test.ts` | Base URL of the local model server the test needs running | `http://localhost:1234/v1` |
 | `WEBAI_LOCAL_MODEL` | the same test | Which model that server is asked for | `llama-3.2-1b-instruct` |
@@ -69,8 +69,8 @@ These configure example programs and tests rather than the cluster itself. None 
 Two prefixes, distinguished by what the variable is about rather than by which program reads it:
 
 - `GATEWAY_` names something about the central gateway: which one to reach, what it requires, and how it is configured inside the container.
-- `WEBAI_` names one of this project's other settings, which is why `WEBAI_OPENAI_BASE_URL`, `WEBAI_LOCAL_MODEL_BASE_URL`, and `WEBAI_LOCAL_MODEL` keep that prefix and the two gateway variables do not.
+- `WEBAI_` names one of this project's other settings, which is why `WEBAI_LOCAL_MODEL_BASE_URL` and `WEBAI_LOCAL_MODEL` keep that prefix and the two gateway variables do not.
 
-`OPENAI_API_KEY` carries neither prefix on purpose: it is the conventional name of a setting belonging to another program, so an operator who already exports it for other tools does not have to export it again under a project-specific name.
+`OPENAI_API_KEY` and `OPENAI_BASE_URL` carry neither prefix on purpose: each is the conventional name of a setting belonging to another program, so an operator who already exports it for other tools does not have to export it again under a project-specific name. `OPENAI_BASE_URL` was renamed from `WEBAI_OPENAI_BASE_URL` for the same reason in [issue #163](https://github.com/webai-at-home/webai-at-home/issues/163).
 
 Two names for the gateway's bearer token existed until [issue #138](https://github.com/webai-at-home/webai-at-home/issues/138): `WEBAI_AUTH_TOKEN`, read by the clients, and `GATEWAY_AUTH_TOKEN`, used by the container. They were merged under `GATEWAY_AUTH_TOKEN`, and nothing answers to `WEBAI_AUTH_TOKEN` any more. The gateway's WebSocket URL had the same split, between `WEBAI_GATEWAY_URL` and `GATEWAY_WS_URL`, and was merged under `GATEWAY_WS_URL` in [commit 19269e9](https://github.com/webai-at-home/webai-at-home/commit/19269e9). No compatibility aliases were kept in either case: there is no release of this project, so nothing outside this repository can be exporting the old names.
