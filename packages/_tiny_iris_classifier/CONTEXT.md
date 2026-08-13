@@ -12,10 +12,13 @@ A small end-to-end example that trains an Iris classifier in Python, exports the
 - `web/index.html` and `web/src/main.js`: the browser page that runs the same model with ONNX Runtime Web.
 - `web/public/models/iris.onnx`: the copy of the exported model the browser page loads.
 
-## Local Rules & Boundaries
+## Rules
 
 - The leading underscore in the folder name marks this package as an example. It is not an npm workspace — it has no `package.json` at this level — and no working package may import from it.
 - `web/` has its own `package.json` and its own lock file, and is installed and run from inside `web/`, not from the repository root.
-- The Python side and the browser side must use the same model file. After `training/train.py` writes `training/iris.onnx`, copy it to `web/public/models/iris.onnx`; do not let the two drift.
+- The Python side and the browser side must use the same model file: after `training/train.py` writes `training/iris.onnx`, copy it to `web/public/models/iris.onnx`.
 - `training/.venv/` is a local virtual environment and is never committed.
+
+## Background
+
 - The full step-by-step instructions live in [`README.md`](README.md). Keep them working; they are what makes this example useful.

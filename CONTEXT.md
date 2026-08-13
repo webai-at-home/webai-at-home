@@ -2,28 +2,26 @@
 
 ## Purpose
 
-`webai-at-home` is the repository root of a npm workspaces monorepo that explores whether idle web browsers can work together to run a large language model that is too large for any one volunteer device. A gateway coordinates a queue of batch tasks, splits each task into a pipeline of stages, and gives every stage to a connected browser tab.
+The root of an npm workspaces monorepo exploring whether idle web browsers can work together to run a language model too large for any one volunteer device. A gateway holds a queue of tasks, splits each into a pipeline of stages, and gives every stage to a connected browser tab.
 
 ## Key Exports & Entry Points
 
-- `package.json`: the npm workspaces root. `npm run build` builds `@webai/protocol`, `@webai/gateway`, `@webai/consumer-cli`, `@webai/consumer-openai`, and `@webai/openai-api-tool`, in that order. `npm test` runs the documentation link test and then the tests of every workspace.
-- [`packages/protocol`](packages/protocol/): shared message, task type, and pipeline definitions with Zod validation. Every other package depends on this one.
-- [`packages/gateway`](packages/gateway/): the coordinator HTTP and WebSocket gateway, the scheduling, and the home page.
-- [`packages/worker_webpage`](packages/worker_webpage/): the browser page that connects a worker browser tab to the gateway.
-- [`packages/consumer_cli`](packages/consumer_cli/) and [`packages/consumer_openai`](packages/consumer_openai/): the two ways to submit a task, a command-line client and an OpenAI-compatible server.
-- [`packages/openai_api_tool`](packages/openai_api_tool/): the command-line tool that exercises and measures any server speaking the OpenAI-compatible API, this project's own and another machine's alike.
-- [`packages/worker_openai`](packages/worker_openai/): a worker that forwards a prompt to a local server that speaks the OpenAI-compatible API.
-- [`packages/docker_server`](packages/docker_server/): the Linux Docker image that runs the gateway and serves the built worker browser page.
-- [`packages/flow_viewer`](packages/flow_viewer/): the flow viewer for inspecting recorded message traffic.
-- [`packages/_onnx_experiments`](packages/_onnx_experiments/), [`packages/_account_key_experiments`](packages/_account_key_experiments/), [`packages/_idle_experiments`](packages/_idle_experiments/), [`packages/_tiny_iris_classifier`](packages/_tiny_iris_classifier/): browser experiments, kept apart from the working system by the leading underscore.
-- [`tests/documentation_links.test.ts`](tests/documentation_links.test.ts): checks that every link in the Markdown documentation resolves.
+- `package.json`: the npm workspaces root. `npm run build` builds `@webai/protocol` first, then the packages depending on it; `npm test` runs the documentation link test and then every workspace's tests.
+- [`packages/protocol`](packages/protocol/): the shared definitions every other package depends on.
+- [`packages/gateway`](packages/gateway/): the coordinator gateway.
+- [`packages/worker_webpage`](packages/worker_webpage/), [`packages/worker_openai`](packages/worker_openai/): the two workers.
+- [`packages/consumer_cli`](packages/consumer_cli/), [`packages/consumer_openai`](packages/consumer_openai/): the two ways to submit a task.
+- [`packages/webai_at_home_cli`](packages/webai_at_home_cli/): the published `webai-at-home` program.
+- [`packages/openai_api_tool`](packages/openai_api_tool/), [`packages/docker_server`](packages/docker_server/), [`packages/flow_viewer`](packages/flow_viewer/), and the `packages/_*` experiments.
 
-## Local Rules & Boundaries
+## Rules
 
-- Every task, task type, pipeline, stage, and computation name must follow [`docs/naming_scheme.md`](docs/naming_scheme.md). That document is the one authoritative place for those names, and a new name is added there at the same time it is added to the code.
-- Never abbreviate a name. Write `packages/worker_webpage`, `@webai/worker-webpage`, and `task_type_llm_qwen3_0_6b_sharded` in full, every time, in source code, comments, commit messages, issues, and pull requests alike.
-- The agent instructions for this repository live in [`AGENTS.md`](AGENTS.md). Read that file as well as this one.
-- Package folder names are `snake_case` with a leading underscore for experiments; the npm package name of the same package is `@webai/` followed by the same words in `kebab-case`.
-- A message shape that crosses a process boundary belongs in `@webai/protocol` and is validated with Zod there. Do not restate the shape in the gateway, in a consumer, or in a worker.
-- A documentation file added under [`docs/`](docs/) must be linked from [`README.md`](README.md) or from another documentation file, because `tests/documentation_links.test.ts` and the README index are how a reader finds it.
-- `gateway-accounts.json` and `gateway-ledger.jsonl` at the root are runtime state written by the gateway during development, not source. In the Docker image the gateway writes them under the `/data` volume instead.
+- Every task, task type, pipeline, stage, and computation name follows [`docs/naming_scheme.md`](docs/naming_scheme.md), the one authoritative place for those names.
+- Never abbreviate a name, anywhere.
+- A message shape crossing a process boundary belongs in [`packages/protocol`](packages/protocol/), validated with Zod there, and is never restated in the gateway, a consumer, or a worker.
+- A package folder name is `snake_case`, with a leading underscore for an experiment; its npm package name is `@webai/` plus the same words in `kebab-case`.
+- A file added under [`docs/`](docs/) is linked from [`README.md`](README.md) or another documentation file, which is how a reader and the documentation link test find it.
+
+## Background
+
+- The agent instructions for this repository are in [`AGENTS.md`](AGENTS.md). Read that file as well as this one.
