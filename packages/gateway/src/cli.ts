@@ -194,6 +194,29 @@ export class Cli {
 		if (Cli.pageDevServer !== undefined) await Cli.pageDevServer.close();
 		process.exit(0);
 	}
+
+	/**
+	 * Reports whether this module was started directly, rather than imported.
+	 *
+	 * `npx`, and the `bin` symlink `npm install` creates for it, invoke this file through a
+	 * symlink under `node_modules/.bin`, so `process.argv[1]` is the symlink path while
+	 * `import.meta.url` is Node's already-resolved real path. Comparing both sides after
+	 * resolving symlinks handles that invocation the same as running this file directly.
+	 *
+	 * @returns `true` when this process was started to run this file.
+	 */
+	static isMainModule(): boolean {
+		if (process.argv[1] === undefined) {
+			return false;
+		}
+		try {
+			return Url.fileURLToPath(import.meta.url) === Fs.realpathSync(process.argv[1]);
+		} catch {
+			return false;
+		}
+	}
 }
 
-await Cli.run();
+if (Cli.isMainModule()) {
+	await Cli.run();
+}
