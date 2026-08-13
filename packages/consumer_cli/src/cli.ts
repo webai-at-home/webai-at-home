@@ -79,6 +79,7 @@ export class Cli {
 	 */
 	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
 		const program = new Commander.Command('consumer_cli')
+			.configureHelp({ showGlobalOptions: true })
 			.option(
 				'-u, --url <url>',
 				'central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment'
