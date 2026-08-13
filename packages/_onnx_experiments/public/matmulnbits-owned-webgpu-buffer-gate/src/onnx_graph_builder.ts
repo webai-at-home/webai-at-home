@@ -39,6 +39,11 @@ export const GRAPH_TENSOR_NAMES = {
 	expertWeightQuantized: 'expert_weight_quantized',
 	/** The per-block scale factors, shaped `[outputSize * blocksPerRow]`. */
 	expertWeightScales: 'expert_weight_scales',
+	/**
+	 * The per-block zero points, packed two to a byte and padded to a whole byte at the end of every row. Present
+	 * only when the graph is built for the asymmetric scheme that milestone 3 chose.
+	 */
+	expertWeightZeroPoints: 'expert_weight_zero_points',
 	/** The projected activation vector leaving the node, shaped `[1, outputSize]`. */
 	projected: 'projected',
 } as const;
@@ -61,6 +66,12 @@ export type MatMulNBitsGraph = {
 	quantizedByteLength: number;
 	/** The number of scale factors in the scale tensor. */
 	scaleCount: number;
+	/**
+	 * The full byte length of the zero point tensor, or zero when the graph was built without one. The operator
+	 * requires every row to start on a whole byte, so this is `outputSize * ceil(blocksPerRow / 2)` rather than half
+	 * the block count.
+	 */
+	zeroPointByteLength: number;
 };
 
 /**
@@ -73,23 +84,37 @@ export class OnnxGraphBuilder {
 	 * @param hiddenSize - The length of the activation vector entering the projection, which `MatMulNBits` calls `K`.
 	 * @param outputSize - The length of the activation vector leaving the projection, which `MatMulNBits` calls `N`.
 	 * @param blockSize - The number of weight values that share one scale factor. `MatMulNBits` requires a multiple of 16.
+	 * @param withZeroPoints - Whether to declare the fourth input that carries a zero point for every block. Milestone
+	 *   3 measured that fitting each block's own range rather than assuming the fixed zero point of 8 recovers a
+	 *   sixth of the quantization loss, so the layout it chose needs this input to exist.
 	 * @returns The serialized model together with the block geometry derived from the three sizes.
 	 */
-	static buildMatMulNBitsGraph(hiddenSize: number, outputSize: number, blockSize: number): MatMulNBitsGraph {
+	static buildMatMulNBitsGraph(
+		hiddenSize: number,
+		outputSize: number,
+		blockSize: number,
+		withZeroPoints = false,
+	): MatMulNBitsGraph {
 		const blocksPerRow = Math.ceil(hiddenSize / blockSize);
 		const blobSize = (blockSize * 4) / 8;
 		const quantizedByteLength = outputSize * blocksPerRow * blobSize;
 		const scaleCount = outputSize * blocksPerRow;
+		const zeroPointByteLength = withZeroPoints ? outputSize * Math.ceil(blocksPerRow / 2) : 0;
+
+		const nodeInputs: string[] = [
+			GRAPH_TENSOR_NAMES.hiddenState,
+			GRAPH_TENSOR_NAMES.expertWeightQuantized,
+			GRAPH_TENSOR_NAMES.expertWeightScales,
+		];
+		if (withZeroPoints) {
+			nodeInputs.push(GRAPH_TENSOR_NAMES.expertWeightZeroPoints);
+		}
 
 		const node = OnnxGraphBuilder._node({
 			opType: 'MatMulNBits',
 			name: 'expert_projection',
 			domain: MICROSOFT_DOMAIN,
-			inputs: [
-				GRAPH_TENSOR_NAMES.hiddenState,
-				GRAPH_TENSOR_NAMES.expertWeightQuantized,
-				GRAPH_TENSOR_NAMES.expertWeightScales,
-			],
+			inputs: nodeInputs,
 			outputs: [GRAPH_TENSOR_NAMES.projected],
 			attributes: [
 				OnnxGraphBuilder._integerAttribute('K', hiddenSize),
@@ -100,18 +125,27 @@ export class OnnxGraphBuilder {
 			],
 		});
 
+		const graphInputs = [
+			OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.hiddenState, ONNX_ELEMENT_TYPE_FLOAT32, [1, hiddenSize]),
+			OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.expertWeightQuantized, ONNX_ELEMENT_TYPE_UINT8, [
+				outputSize,
+				blocksPerRow,
+				blobSize,
+			]),
+			OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.expertWeightScales, ONNX_ELEMENT_TYPE_FLOAT32, [scaleCount]),
+		];
+		if (withZeroPoints) {
+			graphInputs.push(
+				OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.expertWeightZeroPoints, ONNX_ELEMENT_TYPE_UINT8, [
+					zeroPointByteLength,
+				]),
+			);
+		}
+
 		const graph = OnnxGraphBuilder._graph({
 			name: 'owned_webgpu_buffer_gate',
 			nodes: [node],
-			inputs: [
-				OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.hiddenState, ONNX_ELEMENT_TYPE_FLOAT32, [1, hiddenSize]),
-				OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.expertWeightQuantized, ONNX_ELEMENT_TYPE_UINT8, [
-					outputSize,
-					blocksPerRow,
-					blobSize,
-				]),
-				OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.expertWeightScales, ONNX_ELEMENT_TYPE_FLOAT32, [scaleCount]),
-			],
+			inputs: graphInputs,
 			outputs: [
 				OnnxGraphBuilder._valueInfo(GRAPH_TENSOR_NAMES.projected, ONNX_ELEMENT_TYPE_FLOAT32, [1, outputSize]),
 			],
@@ -137,6 +171,7 @@ export class OnnxGraphBuilder {
 			blobSize: blobSize,
 			quantizedByteLength: quantizedByteLength,
 			scaleCount: scaleCount,
+			zeroPointByteLength: zeroPointByteLength,
 		};
 	}
 

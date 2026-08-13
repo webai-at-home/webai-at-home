@@ -135,6 +135,10 @@ class Main {
 				title: '6 · the same, at real Qwen3-30B-A3B expert size, with timings',
 				run: Main.phaseExpertSizedTimings,
 			},
+			{
+				title: '7 · a zero point for every block, which is the layout milestone 3 chose',
+				run: Main.phaseOwnedZeroPoints,
+			},
 		];
 
 		for (const phase of phases) {
@@ -555,6 +559,97 @@ class Main {
 		};
 	}
 
+	/**
+	 * Phase seven, added by milestone 3 of issue #169.
+	 *
+	 * Milestone 3 measured six quantization schemes against real Qwen3-30B-A3B weights and chose the one that fits
+	 * each block's own range rather than assuming the fixed zero point of 8, because it recovers about a sixth of the
+	 * quantization loss for 4 more bits per block. That scheme needs a fourth input on the node, carrying a zero point
+	 * for every block, and phases one to six never used one.
+	 *
+	 * So the on-disk layout milestone 3 wrote down rests on something no phase here has ever run. This phase runs it:
+	 * a graph with the fourth input declared, at real expert size, with all three tensors read out of WebGPU buffers
+	 * this project owns, and the answer checked against a product recomputed in plain TypeScript. It also swaps a
+	 * second expert through the same buffers, because a runtime that quietly kept the first zero points would pass
+	 * everything above and return a stale answer here.
+	 *
+	 * If this fails, the conversion pipeline must fall back to the symmetric scheme, which costs 8.20 against 9.56
+	 * per cent of weight error but is already proved by phases two to six.
+	 *
+	 * @returns A promise that resolves to the outcome.
+	 */
+	static async phaseOwnedZeroPoints(): Promise<PhaseOutcome> {
+		const graph = OnnxGraphBuilder.buildMatMulNBitsGraph(EXPERT_HIDDEN_SIZE, EXPERT_OUTPUT_SIZE, BLOCK_SIZE, true);
+		Main._write(`  the graph declares ${Main._megabytes(graph.zeroPointByteLength)} of zero points, one for each of ` +
+			`the ${graph.outputSize * graph.blocksPerRow} blocks`);
+
+		const session = await Main._createSession(graph);
+		Main._write(`  the session takes: ${session.inputNames.join(', ')}`);
+		if (session.inputNames.includes(GRAPH_TENSOR_NAMES.expertWeightZeroPoints) === false) {
+			return {
+				passed: false,
+				summary: 'the session did not expose the zero point tensor as a runtime input',
+			};
+		}
+
+		const device = Main._requireDevice();
+		const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
+		const buffers = Main._allocateExpertBuffers(graph);
+		const zeroPointBuffer = device.createBuffer({
+			size: Math.ceil(graph.zeroPointByteLength / 16) * 16,
+			usage: usage,
+			label: 'resident expert zero points',
+		});
+		const hiddenState = QuantizedWeights.makeValues(7, graph.hiddenSize);
+
+		try {
+			let worstDifference = 0;
+			const answers: Float32Array[] = [];
+			for (const expertIndex of [0, 1]) {
+				const weights = QuantizedWeights.makeValues(expertIndex + 401, graph.outputSize * graph.hiddenSize);
+				const matrix = QuantizedWeights.quantizeAsymmetric(
+					weights,
+					graph.outputSize,
+					graph.hiddenSize,
+					graph.blockSize,
+				);
+				if (matrix.zeroPoints === undefined) {
+					return {
+						passed: false,
+						summary: 'the asymmetric quantizer produced no zero points',
+					};
+				}
+				Main._uploadExpert(buffers, matrix);
+				device.queue.writeBuffer(zeroPointBuffer, 0, matrix.zeroPoints);
+
+				const projected = await Main._runWithOwnedBuffers(session, graph, buffers, hiddenState, zeroPointBuffer);
+				const expected = QuantizedWeights.referenceProduct(hiddenState, matrix, 8);
+				const difference = QuantizedWeights.largestDifference(projected, expected);
+				const relative = difference / QuantizedWeights.largestMagnitude(expected);
+				Main._write(`  expert ${expertIndex}: ${Main._vector(projected)}`);
+				Main._write(`    recomputed: ${Main._vector(expected)}`);
+				Main._write(`    largest difference ${difference.toExponential(2)}, relative ${relative.toExponential(2)}`);
+				worstDifference = Math.max(worstDifference, relative);
+				answers.push(projected);
+			}
+
+			const betweenExperts = QuantizedWeights.largestDifference(answers[0], answers[1]);
+			Main._write(`  the two experts' answers differ by ${betweenExperts.toFixed(4)}, so the second run reread the buffers`);
+
+			const passed = worstDifference <= ACCEPTED_RELATIVE_DIFFERENCE && betweenExperts > 0;
+			return {
+				passed: passed,
+				summary: passed
+					? `zero points read from an owned buffer, matched to ${worstDifference.toExponential(2)} relative`
+					: `the answer was wrong by ${worstDifference.toExponential(2)} relative, or the two experts agreed`,
+			};
+		} finally {
+			Main._releaseExpertBuffers(buffers);
+			zeroPointBuffer.destroy();
+			await session.release();
+		}
+	}
+
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
 	//	Helpers
@@ -644,6 +739,8 @@ class Main {
 	 * @param graph - The graph the session was created from.
 	 * @param buffers - The owned buffers holding the resident expert.
 	 * @param hiddenState - The activation vector entering the projection.
+	 * @param zeroPointBuffer - The owned buffer holding one zero point for every block, when the graph declares that
+	 *   fourth input. Left out for the symmetric graph of phases two to six.
 	 * @returns The projected activation vector, read back to the processor side.
 	 */
 	static async _runWithOwnedBuffers(
@@ -651,6 +748,7 @@ class Main {
 		graph: MatMulNBitsGraph,
 		buffers: { quantized: GPUBuffer; scales: GPUBuffer },
 		hiddenState: Float32Array,
+		zeroPointBuffer?: GPUBuffer,
 	): Promise<Float32Array> {
 		const quantizedTensor = OnnxRuntimeWeb.Tensor.fromGpuBuffer(buffers.quantized, {
 			dataType: 'uint8',
@@ -661,11 +759,19 @@ class Main {
 			dims: [graph.scaleCount],
 		});
 
-		const outputs = await session.run({
+		const feeds: Record<string, OnnxRuntimeWeb.Tensor> = {
 			[GRAPH_TENSOR_NAMES.hiddenState]: new OnnxRuntimeWeb.Tensor('float32', hiddenState, [1, graph.hiddenSize]),
 			[GRAPH_TENSOR_NAMES.expertWeightQuantized]: quantizedTensor,
 			[GRAPH_TENSOR_NAMES.expertWeightScales]: scalesTensor,
-		});
+		};
+		if (zeroPointBuffer !== undefined) {
+			feeds[GRAPH_TENSOR_NAMES.expertWeightZeroPoints] = OnnxRuntimeWeb.Tensor.fromGpuBuffer(zeroPointBuffer, {
+				dataType: 'uint8',
+				dims: [graph.zeroPointByteLength],
+			});
+		}
+
+		const outputs = await session.run(feeds);
 		return outputs[GRAPH_TENSOR_NAMES.projected].data as Float32Array;
 	}
 

@@ -10,6 +10,8 @@ Browser experiments for running language models with ONNX Runtime Web and Transf
 - `public/onnxruntime_qwen3-0.6b-plain/` and `public/onnxruntime_qwen3-0.6b-with-shards/`: the Qwen3-0.6B model run whole and run as shards, which is what the sharded pipeline of the cluster is built on.
 - `public/qwen3-0.6b/`, `public/qwen3_5-0.8b-gate/`, `public/qwen3_5-usage-metadata-gate/`, `public/qwen3_5-2b/`, `public/smoll2-360m/`, and `public/gemma4-e2b-it/`: one experiment per model.
 - `tools/verify_qwen3_shards.mjs`: checks the Qwen3 shard files outside the browser.
+- `tools/safetensors_reader.mjs` and `tools/quantize_matmulnbits.mjs`: read published safetensors shards over HTTP range requests, and quantize a weight matrix to 4 bits in the layout `MatMulNBits` reads. Both are used by the issue #169 tools below.
+- `tools/gate_quantize_real_expert.mjs` and `tools/convert_qwen3_moe_to_expert_blocks.mjs`: the issue #169 milestone 3 quantization gate and the conversion pipeline that writes Qwen3-30B-A3B as a resident part and 6144 expert blocks.
 - `public/matmulnbits-owned-webgpu-buffer-gate/`: the issue #169 milestone 0 de-risk gate. It downloads no model and builds its one-node ONNX graph as protocol buffer bytes in the browser.
 - `public/browser-storage-and-webgpu-buffer-measurements/`: the issue #169 milestone 2 measurements of the storage quota, of the Origin Private File System, and of the WebGPU buffer limits. It downloads no model, and it is the only experiment here carrying a web application manifest and a service worker, because one of its measurements only exists when the page is installed.
 

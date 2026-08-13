@@ -28,6 +28,12 @@ export type QuantizedMatrix = {
 	blockSize: number;
 	/** The number of blocks along one row, which is `ceil(columnCount / blockSize)`. */
 	blocksPerRow: number;
+	/**
+	 * One packed zero point per block, or undefined when the matrix was quantized against a fixed zero point. Every
+	 * row starts on a whole byte, because that is how `MatMulNBits` reads the tensor, so a row holding an odd number
+	 * of blocks wastes the top half of its last byte.
+	 */
+	zeroPoints?: Uint8Array;
 };
 
 /**
@@ -122,15 +128,88 @@ export class QuantizedWeights {
 	}
 
 	/**
+	 * Quantizes a weight matrix by fitting each block's own range, and writes a zero point for every block.
+	 *
+	 * This is the scheme milestone 3 chose after measuring it against real Qwen3-30B-A3B weights and against a
+	 * published 4-bit quantization of the same model. Against a fixed zero point of 8, the whole representable range
+	 * is spent symmetrically whether or not the block is symmetric; fitting the range recovers about a sixth of the
+	 * loss for 4 more bits per block. It needs the fourth input to exist on the node, which is what the phase using
+	 * this method is there to prove.
+	 *
+	 * @param weights - The weight matrix, row-major, with `rowCount * columnCount` values.
+	 * @param rowCount - The number of rows, which `MatMulNBits` calls `N`.
+	 * @param columnCount - The number of columns, which `MatMulNBits` calls `K`.
+	 * @param blockSize - The number of weight values sharing one scale factor.
+	 * @returns The quantized matrix, carrying its zero points.
+	 */
+	static quantizeAsymmetric(
+		weights: Float32Array,
+		rowCount: number,
+		columnCount: number,
+		blockSize: number,
+	): QuantizedMatrix {
+		const blocksPerRow = Math.ceil(columnCount / blockSize);
+		const blobSize = (blockSize * 4) / 8;
+		const zeroPointBytesPerRow = Math.ceil(blocksPerRow / 2);
+		const quantized = new Uint8Array(rowCount * blocksPerRow * blobSize);
+		const scales = new Float32Array(rowCount * blocksPerRow);
+		const zeroPoints = new Uint8Array(rowCount * zeroPointBytesPerRow);
+
+		for (let row = 0; row < rowCount; row++) {
+			for (let block = 0; block < blocksPerRow; block++) {
+				const firstColumn = block * blockSize;
+				const lastColumn = Math.min(firstColumn + blockSize, columnCount);
+
+				let smallest = Number.POSITIVE_INFINITY;
+				let largest = Number.NEGATIVE_INFINITY;
+				for (let column = firstColumn; column < lastColumn; column++) {
+					const weight = weights[row * columnCount + column];
+					smallest = Math.min(smallest, weight);
+					largest = Math.max(largest, weight);
+				}
+
+				const scale = largest === smallest ? 0 : (largest - smallest) / 15;
+				const zeroPoint = scale === 0 ? 8 : Math.min(15, Math.max(0, Math.round(-smallest / scale)));
+				scales[row * blocksPerRow + block] = scale;
+				QuantizedWeights._packNibble(zeroPoints, row * zeroPointBytesPerRow * 2 + block, zeroPoint);
+
+				for (let column = firstColumn; column < lastColumn; column++) {
+					const weight = weights[row * columnCount + column];
+					const stored = scale === 0 ? zeroPoint : Math.min(15, Math.max(0, Math.round(weight / scale) + zeroPoint));
+					const positionInBlock = column - firstColumn;
+					const byteIndex = (row * blocksPerRow + block) * blobSize + Math.floor(positionInBlock / 2);
+					if (positionInBlock % 2 === 0) {
+						quantized[byteIndex] = (quantized[byteIndex] & 0xf0) | (stored & 0x0f);
+					} else {
+						quantized[byteIndex] = (quantized[byteIndex] & 0x0f) | ((stored & 0x0f) << 4);
+					}
+				}
+			}
+		}
+
+		return {
+			quantized: quantized,
+			scales: scales,
+			rowCount: rowCount,
+			columnCount: columnCount,
+			blockSize: blockSize,
+			blocksPerRow: blocksPerRow,
+			zeroPoints: zeroPoints,
+		};
+	}
+
+	/**
 	 * Recomputes the product `hiddenState` times the transpose of the quantized matrix, without ONNX Runtime Web.
 	 *
 	 * @param hiddenState - The activation vector entering the projection, with `columnCount` values.
 	 * @param matrix - The quantized weight matrix.
-	 * @param zeroPoint - The stored value that stands for zero, used when reading the packed values back out.
+	 * @param zeroPoint - The stored value that stands for zero, used for every block when the matrix carries no zero
+	 *   points of its own. It is ignored when the matrix does carry them.
 	 * @returns The expected output vector, with `rowCount` values.
 	 */
 	static referenceProduct(hiddenState: Float32Array, matrix: QuantizedMatrix, zeroPoint: number): Float32Array {
 		const blobSize = (matrix.blockSize * 4) / 8;
+		const zeroPointBytesPerRow = Math.ceil(matrix.blocksPerRow / 2);
 		const projected = new Float32Array(matrix.rowCount);
 
 		for (let row = 0; row < matrix.rowCount; row++) {
@@ -141,13 +220,45 @@ export class QuantizedWeights {
 				const byteIndex = (row * matrix.blocksPerRow + block) * blobSize + Math.floor(positionInBlock / 2);
 				const packed = matrix.quantized[byteIndex];
 				const stored = positionInBlock % 2 === 0 ? packed & 0x0f : (packed >> 4) & 0x0f;
-				const weight = (stored - zeroPoint) * matrix.scales[row * matrix.blocksPerRow + block];
+				const blockZeroPoint = matrix.zeroPoints === undefined
+					? zeroPoint
+					: QuantizedWeights._readNibble(matrix.zeroPoints, row * zeroPointBytesPerRow * 2 + block);
+				const weight = (stored - blockZeroPoint) * matrix.scales[row * matrix.blocksPerRow + block];
 				total += hiddenState[column] * weight;
 			}
 			projected[row] = total;
 		}
 
 		return projected;
+	}
+
+	/**
+	 * Writes one 4-bit value into a packed array, with the even value in the low half of its byte.
+	 *
+	 * @param packed - The array to write into.
+	 * @param index - The index of the value, counted in 4-bit values rather than bytes.
+	 * @param value - The value to write, from 0 to 15.
+	 * @returns Nothing.
+	 */
+	static _packNibble(packed: Uint8Array, index: number, value: number): void {
+		const byteIndex = index >> 1;
+		if ((index & 1) === 0) {
+			packed[byteIndex] = (packed[byteIndex] & 0xf0) | (value & 0x0f);
+		} else {
+			packed[byteIndex] = (packed[byteIndex] & 0x0f) | ((value & 0x0f) << 4);
+		}
+	}
+
+	/**
+	 * Reads one 4-bit value out of a packed array.
+	 *
+	 * @param packed - The array to read from.
+	 * @param index - The index of the value, counted in 4-bit values rather than bytes.
+	 * @returns The value, from 0 to 15.
+	 */
+	static _readNibble(packed: Uint8Array, index: number): number {
+		const stored = packed[index >> 1];
+		return (index & 1) === 0 ? stored & 0x0f : (stored >> 4) & 0x0f;
 	}
 
 	/**
