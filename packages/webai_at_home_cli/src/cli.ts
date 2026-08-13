@@ -40,7 +40,7 @@ const namedSubcommands = ['gateway', 'consumer_openai', 'worker_openai', 'donate
  * programs in this repository and run it, unchanged, on whatever follows, and `donate` and `serve`
  * name two of those same three again. Any other first word —
  * `submit`, `status`, `capacity`, `log_statistics`, or one of the account commands, but also a global
- * option such as `--url` written before any of those, the way `@webai/consumer-cli`'s own usage
+ * option such as `--gateway-url` written before any of those, the way `@webai/consumer-cli`'s own usage
  * documents it — is not a command of this program at all: it is handed whole to
  * `@webai/consumer-cli`, the participant program every other command name and every bare option
  * belongs to. See issue #170.
@@ -52,7 +52,7 @@ export class Cli {
 	 * Which of the four command line programs runs is decided by looking at the first word alone,
 	 * rather than by letting commander itself decide between a matching subcommand and a fall
 	 * through: commander's own handling of an option it does not recognise, such as
-	 * `@webai/consumer-cli`'s own `--url` written ahead of one of its subcommand names, turned out
+	 * `@webai/consumer-cli`'s own `--gateway-url` written ahead of one of its subcommand names, turned out
 	 * not to reach the intended subcommand at all, only its own help text, when tried live. Once
 	 * one of the three named subcommands is confirmed, commander parses everything that follows
 	 * it; `allowUnknownOption` and `passThroughOptions` keep it from rejecting or reinterpreting

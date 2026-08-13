@@ -6,7 +6,7 @@ The single command line program published to the npm registry as `webai-at-home`
 
 ## Key Exports & Entry Points
 
-- `src/cli.ts`: the command line program, `Cli`. `gateway`, `consumer_openai` and `worker_openai` each name one of the other three command line programs and run it, unchanged, on whatever follows, and `donate` and `serve` name `worker_openai` and `consumer_openai server` again by what a person is trying to do. Any other first word — a `consumer_cli` subcommand such as `submit`, or a global option such as `--url` written ahead of one — is handed whole to `@webai/consumer-cli`.
+- `src/cli.ts`: the command line program, `Cli`. `gateway`, `consumer_openai` and `worker_openai` each name one of the other three command line programs and run it, unchanged, on whatever follows, and `donate` and `serve` name `worker_openai` and `consumer_openai server` again by what a person is trying to do. Any other first word — a `consumer_cli` subcommand such as `submit`, or a global option such as `--gateway-url` written ahead of one — is handed whole to `@webai/consumer-cli`.
 - `scripts/vendor_wrapped_programs.ts`: run by `prepack`, right after `npm run build`. Copies the built `dist` (and, for `@webai/gateway`, `web/dist`) of every wrapped program, plus a copy of `@webai/protocol` and, where needed, `@webai/consumer-cli`, into this package's own `dist/vendor`, then rewrites the four package-name imports in the freshly compiled `dist/cli.js` into relative paths pointing at that vendored copy. See that file's own comment for why a plain copy replaced npm's own `bundledDependencies` mechanism.
 
 ## Local Rules & Boundaries

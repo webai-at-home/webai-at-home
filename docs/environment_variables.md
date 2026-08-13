@@ -27,7 +27,7 @@ These two variables say which central gateway to connect to and how to authentic
 
 | Variable | Read by | Command line option it stands behind | Default |
 | --- | --- | --- | --- |
-| `GATEWAY_WS_URL` | `packages/worker_openai`, `packages/consumer_cli`, `packages/consumer_openai` | `-u, --url`, and `-u, --gateway-url` in `packages/consumer_openai` | `wss://webai-gateway.dash-menu.com/` |
+| `GATEWAY_WS_URL` | `packages/worker_openai`, `packages/consumer_cli`, `packages/consumer_openai` | `-u, --gateway-url` | `wss://webai-gateway.dash-menu.com/` |
 | `GATEWAY_AUTH_TOKEN` | `packages/worker_openai`, `packages/consumer_cli`, `packages/consumer_openai`, `packages/gateway` | `-a, --auth-token` | `development-token` |
 
 `packages/gateway` reads `GATEWAY_AUTH_TOKEN` but deliberately not `GATEWAY_WS_URL`. `GATEWAY_WS_URL` names which gateway to connect to, and this program is the gateway, so it has none to connect to. It is the one program in the table that reads one of the pair and not the other, and that is on purpose rather than an omission.

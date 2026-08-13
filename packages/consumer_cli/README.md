@@ -24,7 +24,7 @@ Every subcommand accepts:
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-u, --url <url>` | `GATEWAY_WS_URL` environment variable, then `wss://webai-gateway.dash-menu.com/` | The central gateway's WebSocket URL. |
+| `-u, --gateway-url <url>` | `GATEWAY_WS_URL` environment variable, then `wss://webai-gateway.dash-menu.com/` | The central gateway's WebSocket URL. |
 | `-a, --auth-token <token>` | `GATEWAY_AUTH_TOKEN` environment variable, then `development-token` | Bearer token for the central gateway. |
 
 `GATEWAY_WS_URL` and `GATEWAY_AUTH_TOKEN` are the same two names `packages/worker_openai` and `packages/docker_server` use for the same two settings, so one pair of exported variables points every program on this machine at the same gateway. See [`docs/environment_variables.md`](../../docs/environment_variables.md) for every variable this project reads and which programs read none.
@@ -43,10 +43,10 @@ Set the registered consumer name with `--consumer_name`, for example:
 npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula --consumer_name dev-formula-consumer 5
 ```
 
-Use `--url` to connect to another WebSocket endpoint:
+Use `--gateway-url` to connect to another WebSocket endpoint:
 
 ```sh
-npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 5 --url ws://localhost:9000
+npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 5 --gateway-url ws://localhost:9000
 ```
 
 `submit`'s own options:
@@ -164,7 +164,7 @@ Two files live in that directory, both named exactly as written here:
 | `default.account_key.json` | The key pair that is this participant's account, written by `account_key` and read by every other command. **The private key in it is the whole account.** |
 | `default.identity.json` | This participant's profile, as `{ "displayName": string, "emailAddress": string }`. Read by `account_register` and edited by hand. An absent file, or a missing field, reads as empty. |
 
-All but `account_key` also accept `--timeout <ms>`, defaulting to `10000`, and the shared `--url` and `--auth-token` options.
+All but `account_key` also accept `--timeout <ms>`, defaulting to `10000`, and the shared `--gateway-url` and `--auth-token` options.
 
 ### `account_key`
 

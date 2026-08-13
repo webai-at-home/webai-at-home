@@ -38,7 +38,7 @@ npm run start --workspace @webai/worker-openai
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-u, --url <url>` | `wss://webai-gateway.dash-menu.com/` | The central gateway's WebSocket URL. Falls back to the `GATEWAY_WS_URL` environment variable. |
+| `-u, --gateway-url <url>` | `wss://webai-gateway.dash-menu.com/` | The central gateway's WebSocket URL. Falls back to the `GATEWAY_WS_URL` environment variable. |
 | `-a, --auth-token <token>` | `development-token` | The bearer token the gateway requires. Falls back to the `GATEWAY_AUTH_TOKEN` environment variable. |
 | `-n, --worker_name <name>` | `openai-worker` | The worker name shown in the gateway's device list. |
 | `-b, --openai-base-url <url>` | none, required | The base URL of the local server's OpenAI-compatible API, such as `http://localhost:1234/v1` for LM Studio. Falls back to the `OPENAI_BASE_URL` environment variable; one of the two has to be given, or this worker stops with an error rather than guess which server to reach. |

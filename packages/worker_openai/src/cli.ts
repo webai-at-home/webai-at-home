@@ -37,7 +37,7 @@ const defaultConfigDir = Path.join(Os.homedir(), '.webai-at-home', 'worker_opena
 
 /** The options this worker was started with. */
 type WorkerOptions = {
-	url?: string;
+	gatewayUrl?: string;
 	authToken?: string;
 	worker_name: string;
 	openaiBaseUrl?: string;
@@ -76,7 +76,10 @@ export class Cli {
 	static async run(args: string[] = process.argv.slice(2), programName = 'worker_openai'): Promise<void> {
 		const program = new Commander.Command(programName)
 			.description('A worker that runs its assigned stage by calling a local server speaking the OpenAI-compatible Chat Completions API, such as LM Studio')
-			.option('-u, --url <url>', `central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment variable, then to ${defaultGatewayUrl})`)
+			// `--gateway-url`, the name `consumer_openai` already gave this same setting. It was
+			// `--url` here and in `consumer_cli` until issue #171, so one idea had two names across
+			// the four programs.
+			.option('-u, --gateway-url <url>', `central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment variable, then to ${defaultGatewayUrl})`)
 			.option('-a, --auth-token <token>', 'bearer token for the central gateway (falls back to the GATEWAY_AUTH_TOKEN environment variable, then to a development default)')
 			.option('-n, --worker_name <name>', 'worker name, which the gateway shows in its device list', 'openai-worker')
 			.option('-b, --openai-base-url <url>', "base URL of the local server's OpenAI-compatible API (falls back to the OPENAI_BASE_URL environment variable; one of the two is required)")
@@ -112,7 +115,7 @@ export class Cli {
 			Cli.resolveOpenaiBaseUrl(options.openaiBaseUrl).replace(/\/+$/, ''),
 			Cli.resolveOpenaiApiKey(options.openaiApiKey),
 		);
-		const gatewayUrl = Cli.resolveGatewayUrl(options.url);
+		const gatewayUrl = Cli.resolveGatewayUrl(options.gatewayUrl);
 		/**
 		 * Ends this program, once there is a promise to resolve.
 		 *

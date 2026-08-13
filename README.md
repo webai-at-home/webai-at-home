@@ -79,7 +79,7 @@ npx webai-at-home donate --openai-base-url http://localhost:1234/v1 --model llam
 npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
-The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already serving a model on `http://localhost:1234/v1`. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
+The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already serving a model on `http://localhost:1234/v1`. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--gateway-url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
 
 ## Run the prototype
 

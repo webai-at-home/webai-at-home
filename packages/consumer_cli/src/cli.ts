@@ -51,8 +51,8 @@ const DEFAULT_CONFIG_DIR = Path.join(Os.homedir(), '.webai-at-home', 'consumer_c
 
 /** The shared options every subcommand accepts, before each subcommand's own options. */
 type GlobalOptions = {
-	/** The WebSocket URL of the central gateway every connecting subcommand talks to, when the `-u/--url` option was given. */
-	url?: string;
+	/** The WebSocket URL of the central gateway every connecting subcommand talks to, when the `-u/--gateway-url` option was given. */
+	gatewayUrl?: string;
 	/** The bearer token to authenticate with, when the `-a/--auth-token` option was given. */
 	authToken?: string;
 };
@@ -108,8 +108,13 @@ export class Cli {
 	static buildProgram(programName = 'consumer_cli'): Commander.Command {
 		const program = new Commander.Command(programName)
 			.configureHelp({ showGlobalOptions: true })
+			// `--gateway-url`, the name `consumer_openai` already gave this same setting. It was
+			// `--url` here and in `worker_openai` until issue #171, so one idea had two names
+			// across the four programs. No alias was kept for the old name, following the same
+			// decision made when `WEBAI_AUTH_TOKEN` became `GATEWAY_AUTH_TOKEN` and when
+			// `identity_register` became `account_register`.
 			.option(
-				'-u, --url <url>',
+				'-u, --gateway-url <url>',
 				'central gateway WebSocket URL (falls back to the GATEWAY_WS_URL environment'
 					+ ` variable, then to ${DEFAULT_GATEWAY_URL})`,
 			)
@@ -158,7 +163,7 @@ export class Cli {
 					throw new Error(`Type must be one of ${taskTypeNames.join(', ')}`);
 				}
 				await SubmitCommand.run({
-					url: Cli.resolveGatewayUrl(options.url),
+					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					type: options.task_type,
 					name: options.consumer_name,
@@ -196,7 +201,7 @@ export class Cli {
 					throw new Error(`Format must be one of ${statusFormats.join(', ')}`);
 				}
 				await StatusCommand.run({
-					url: Cli.resolveGatewayUrl(options.url),
+					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),
 					watch: options.watch === true,
@@ -224,7 +229,7 @@ export class Cli {
 					throw new Error(`Format must be one of ${capacityFormats.join(', ')}`);
 				}
 				await CapacityCommand.run({
-					url: Cli.resolveGatewayUrl(options.url),
+					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),
 					type: options.task_type,
@@ -325,7 +330,7 @@ export class Cli {
 					throw new Error(`Format must be one of ${accountOutputFormats.join(', ')}`);
 				}
 				await AccountRegisterCommand.run({
-					url: Cli.resolveGatewayUrl(options.url),
+					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),
 					keyFilePath: AccountKeyFile.pathInConfigDir(options.config_dir),
@@ -353,7 +358,7 @@ export class Cli {
 					throw new Error(`Format must be one of ${accountOutputFormats.join(', ')}`);
 				}
 				await AccountInformationCommand.run({
-					url: Cli.resolveGatewayUrl(options.url),
+					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),
 					keyFilePath: AccountKeyFile.pathInConfigDir(options.config_dir),
@@ -379,7 +384,7 @@ export class Cli {
 					throw new Error(`Format must be one of ${accountOutputFormats.join(', ')}`);
 				}
 				await AccountBalanceCommand.run({
-					url: Cli.resolveGatewayUrl(options.url),
+					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),
 					keyFilePath: AccountKeyFile.pathInConfigDir(options.config_dir),
@@ -427,7 +432,7 @@ export class Cli {
 					throw new Error('Limit must be a whole number of at least 1');
 				}
 				await AccountHistoryCommand.run({
-					url: Cli.resolveGatewayUrl(options.url),
+					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),
 					keyFilePath: AccountKeyFile.pathInConfigDir(options.config_dir),
@@ -463,14 +468,15 @@ export class Cli {
 	}
 
 	/**
-	 * Resolves the central gateway WebSocket URL to connect to, in priority order: the `-u/--url`
-	 * option, the `GATEWAY_WS_URL` environment variable, then `DEFAULT_GATEWAY_URL`.
+	 * Resolves the central gateway WebSocket URL to connect to, in priority order: the
+	 * `-u/--gateway-url` option, the `GATEWAY_WS_URL` environment variable, then
+	 * `DEFAULT_GATEWAY_URL`.
 	 *
 	 * `GATEWAY_WS_URL` is the same name `worker_openai` and `packages/docker_server` use for this
 	 * setting, so one exported variable points every program on a machine at the same gateway.
 	 * See issue #138.
 	 *
-	 * @param optionValue The `-u/--url` option, when given.
+	 * @param optionValue The `-u/--gateway-url` option, when given.
 	 * @returns The central gateway WebSocket URL to connect to.
 	 */
 	private static resolveGatewayUrl(optionValue: string | undefined): string {

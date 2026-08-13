@@ -11,7 +11,7 @@ npx webai-at-home worker_openai --openai-base-url http://localhost:1234/v1 --mod
 npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
-The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already serving a model on `http://localhost:1234/v1`. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
+The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already serving a model on `http://localhost:1234/v1`. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--gateway-url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
 
 ## Which program runs
 
@@ -36,7 +36,7 @@ npx webai-at-home --version
 
 `npx` fetches whichever version of this package the npm registry currently holds, and prints nothing about which one that was, so this is what a bug report should quote.
 
-"Anything else" covers every `consumer_cli` subcommand — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — and a global option such as `--url` written ahead of one of them, since `consumer_cli` is what reads it. See each program's own README, linked above, for its own options.
+"Anything else" covers every `consumer_cli` subcommand — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — and a global option such as `--gateway-url` written ahead of one of them, since `consumer_cli` is what reads it. See each program's own README, linked above, for its own options.
 
 ## Build
 

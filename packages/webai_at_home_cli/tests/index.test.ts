@@ -87,7 +87,7 @@ Test('routes anything else to consumer_cli, including a subcommand this program 
 });
 
 Test('routes a global option written ahead of a consumer_cli subcommand to consumer_cli as well, rather than failing to match any subcommand of its own', async () => {
-	const { code, stdout } = await runCli(['--url', 'ws://localhost:1', 'account_key', '--help']);
+	const { code, stdout } = await runCli(['--gateway-url', 'ws://localhost:1', 'account_key', '--help']);
 	Assert.equal(code, 0);
 	Assert.match(stdout, /Usage: webai-at-home account_key \[options\]/);
 });
