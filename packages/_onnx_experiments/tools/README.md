@@ -84,6 +84,21 @@ Asymmetric blocks of 32 are chosen: the two schemes below 8 per cent both cost m
 
 Run through the whole expert — `down_proj(silu(gate_proj(x)) * up_proj(x))` — the chosen scheme moves the output by 13.74 per cent on average, against 15.52 per cent for the published `mlx-community` conversion of the same expert. That ratio of 0.89 is what the gate passes on. At the same group size and the same scheme, the two implementations agree to 0.005 percentage points, which says the two are measuring the same thing.
 
+## OLMoE expert decomposition gate
+
+Answers the question milestone 5 of [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169) has to answer before anything is built. That milestone runs OLMoE-1B-7B twice, once with every expert resident and once through the residency layer, and requires the generated tokens to be identical. Both runs therefore have to share the same arithmetic and differ only in where the weights live, which is only possible if the expert block takes apart exactly.
+
+```sh
+packages/_onnx_experiments/tools/.venv/bin/python \
+  packages/_onnx_experiments/tools/gate_olmoe_expert_decomposition.py
+```
+
+The gate downloads no weights. It builds one `OlmoeSparseMoeBlock` with random weights and checks that computing it by hand — router, softmax, top-8, eight independent expert feed-forwards, weighted sum — reproduces what the reference implementation produces. Two computations of the same thing either agree or they do not, and that does not need the published 13.8 gigabytes.
+
+It matches to **6.069e-06** relative, inside a tolerance of 1e-5.
+
+The gate also demonstrates that it can fail. OLMoE sets `norm_topk_prob` to false, so the eight routing weights are raw softmax probabilities over all 64 experts and do not sum to one. Renormalising them, which many mixture-of-experts implementations do, would multiply every expert's contribution by about 2.64 while leaving the output looking entirely reasonable.
+
 ## Qwen3-30B-A3B conversion pipeline
 
 Writes the on-disk layout milestone 3 asks for: the always-resident part in one file, and the 6144 expert blocks in another, each block one contiguous 256-byte-aligned region holding one expert's quantized weights, scales, and zero points together.
