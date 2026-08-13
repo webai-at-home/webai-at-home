@@ -1,4 +1,8 @@
-# Qwen3 shard exporter
+# Tools
+
+Two unrelated tools live here. The Qwen3 shard exporter, below, supports the `onnxruntime_qwen3-0.6b-with-shards` experiment. The Qwen3-30B-A3B residency measurement, at the end, answers milestone 1 of [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169).
+
+## Qwen3 shard exporter
 
 The browser page expects three files in
 `packages/_onnx_experiments/public/onnxruntime_qwen3-0.6b-with-shards/shards/`. The files are generated artifacts and
@@ -44,3 +48,13 @@ shard pipeline result against the original graph:
 ```sh
 node packages/_onnx_experiments/tools/verify_qwen3_shards.mjs /tmp/qwen3-model_q4f16.onnx
 ```
+
+## Qwen3-30B-A3B residency measurement
+
+Answers milestone 1 of [issue #169](https://github.com/webai-at-home/webai-at-home/issues/169): does the always-resident part of Qwen3-30B-A3B fit in the graphics memory of the target machine? Streaming only helps for the part of a model that is inactive most of the time, so if the part that must stay resident does not fit on its own, the approach of [issue #168](https://github.com/webai-at-home/webai-at-home/issues/168) stops there.
+
+```sh
+node packages/_onnx_experiments/tools/measure_qwen3_moe_residency.mjs
+```
+
+The tool downloads no model. It reads the real shape of every one of the 18867 published tensors out of the safetensors headers over HTTP range requests, which is about 20 megabytes rather than the 57 gigabytes of weights, and classifies each tensor as an expert weight or as always resident. Nothing is trusted to arithmetic done from `config.json`.
