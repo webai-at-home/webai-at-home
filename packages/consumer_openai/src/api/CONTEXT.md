@@ -8,7 +8,7 @@ Everything specific to the shape of the OpenAI Chat Completions interface: the r
 
 - `openai_types.ts`: the request bodies this server accepts and the response bodies it returns.
 - `openai_error.ts`: `OpenaiError`, a failure, with the HTTP status and the response body it is answered with.
-- `model_catalog.ts`: `ModelCatalog`, the models this server offers, and the cluster task type behind each one.
+- `model_catalog.ts`: `ModelCatalog`, the models this server offers, and the cluster task type behind each one. Which of them the cluster can currently run is `../libs/model_availability.ts`'s question, not this folder's.
 - `history_builder.ts` and `prompt_flattener.ts`: turning a request's messages into the history a task carries, or into the single piece of text a task carries.
 - `generation_settings_builder.ts`: turning a chat completion request's controls into task generation settings.
 - `finish_reason_translator.ts`: turning a worker's own stop reason into an OpenAI value.

@@ -13,8 +13,10 @@ The two HTTP routes this server answers, and the recording of each request and a
 
 - `OpenaiRoutes` builds a request and reads a response only through `../api/`; it never reads an OpenAI request field or writes a response field by hand.
 - A generation control the chosen model cannot honour is refused here with HTTP 400 and the code `unhonourable_generation_control`, never dropped silently.
+- `/v1/models` lists the models the cluster can run right now, read through `../libs/model_availability.ts`, never the whole catalogue; a central gateway that cannot be asked is HTTP 503, never an empty list.
 - A value the OpenAI Chat Completions interface has no field for travels in an `X-Webai-*` response header, or not at all — never as an added member of a response body.
 
 ## Background
 
 - The header and refusal rules come from [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150) and milestone 4 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+- The `/v1/models` rule comes from [issue #177](https://github.com/webai-at-home/webai-at-home/issues/177).

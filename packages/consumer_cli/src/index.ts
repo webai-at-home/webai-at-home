@@ -17,6 +17,11 @@
  */
 export { ConsumerClient, type ConsumerClientCallbacks, type TaskSocket } from './gateway_connection/consumer_client.js';
 export {
+	ClusterCapacityReader,
+	type ClusterCapacityReaderOptions,
+	type TaskTypeCapacity,
+} from './cluster_capacity/cluster_capacity_reader.js';
+export {
 	TaskInputFactory,
 	taskTypeNames,
 	taskTypeNamesAcceptingHistory,

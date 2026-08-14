@@ -85,7 +85,18 @@ export class ServerCommand {
 			maximumTasksInFlight: settings.maximumTasksInFlight,
 			messageLogger,
 		});
-		const routes = new OpenaiRoutes(runner, settings.apiKey, Math.floor(Date.now() / 1000), transactionLogger, settings.commitSha);
+		const routes = new OpenaiRoutes(
+			runner,
+			settings.apiKey,
+			Math.floor(Date.now() / 1000),
+			transactionLogger,
+			settings.commitSha,
+			{
+				gatewayUrl: settings.gatewayUrl,
+				authToken: settings.authToken,
+				timeoutMs: settings.connectionWaitMs,
+			},
+		);
 
 		const app = Express();
 		app.disable('x-powered-by');
@@ -97,9 +108,15 @@ export class ServerCommand {
 				`Point an OpenAI client at http://localhost:${settings.port}/v1 and submit tasks to the central ` +
 					`gateway at ${settings.gatewayUrl}`,
 			);
+			
 			if (settings.apiKey === undefined) {
 				console.log('No key is required from a caller, because this server was started without --api-key');
 			}
+			console.log('')
+			console.log(`OPENAI_BASE_URL=http://localhost:${settings.port}/v1`)
+			console.log(`OPENAI_API_KEY="${settings.apiKey === undefined? "" : `settings.apiKey`}"`)
+			
+			console.log('')
 		});
 
 		ServerCommand.httpServer = httpServer;

@@ -8,7 +8,7 @@ One file per subcommand of `consumer_cli`: submitting a task, reporting cluster 
 
 - `submit_command.ts`: submits one task to the central gateway and prints what comes back.
 - `status_command.ts`: prints the worker cluster's current state.
-- `capacity_command.ts`: estimates how many concurrent runs of a task type the cluster supports, on top of `../cluster_capacity/`.
+- `capacity_command.ts`: estimates how many concurrent runs of a task type the cluster supports — of every task type when `-t/--task_type` is left out — on top of `../cluster_capacity/`.
 - `log_stats_command.ts`: prints everything measurable about one `.log_entry.jsonl` file, on top of `../message_log/`.
 - `account_key_command.ts`, `account_register_command.ts`, `account_information_command.ts`, `account_balance_command.ts`, `account_history_command.ts`: the five account subcommands, on top of `../account/`.
 

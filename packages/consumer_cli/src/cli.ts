@@ -220,15 +220,16 @@ export class Cli {
 			.command('capacity')
 			.description(
 				'estimate how many concurrent runs of one task type the cluster could support,'
-					+ ' from the workers connected right now',
+					+ ' from the workers connected right now, or of every task type when no task type is named',
 			)
 			// `-t`, the same letter `submit` gives the same option. Only the long name existed until
-			// issue #171, so the two commands named one idea two different ways.
-			.requiredOption('-t, --task_type <type>', `task type: ${taskTypeNames.join(', ')}`)
+			// issue #171, so the two commands named one idea two different ways. Left out, every task
+			// type is estimated from the one snapshot the connection already fetches — issue #177.
+			.option('-t, --task_type <type>', `task type: ${taskTypeNames.join(', ')}. Left out, every task type is estimated`)
 			.option('-f, --format <format>', `output format: ${capacityFormats.join(', ')}`, 'text')
 			.option('--timeout <ms>', 'how long to wait for the central gateway to answer', '10000')
 			.action(async (
-				localOptions: { task_type: string; format: string; timeout: string },
+				localOptions: { task_type?: string; format: string; timeout: string },
 				command: Commander.Command,
 			): Promise<void> => {
 				const options = command.optsWithGlobals<GlobalOptions & typeof localOptions>();
@@ -239,7 +240,7 @@ export class Cli {
 					url: Cli.resolveGatewayUrl(options.gatewayUrl),
 					authToken: Cli.resolveAuthToken(options.authToken),
 					timeoutMs: Number(options.timeout),
-					type: options.task_type,
+					...(options.task_type === undefined ? {} : { type: options.task_type }),
 					format: options.format,
 				});
 			});

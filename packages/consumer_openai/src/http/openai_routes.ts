@@ -9,6 +9,7 @@ import type { z } from 'zod';
 
 // local imports
 import type { ClusterTaskRunner } from '../libs/cluster_task_runner.js';
+import { ModelAvailability, type ModelAvailabilityOptions } from '../libs/model_availability.js';
 import type {
 	CurlStyleTransactionLogger,
 	TransactionAuthOutcome,
@@ -94,6 +95,8 @@ export class OpenaiRoutes {
 	 * start of 1970, which is the creation date it states for every model.
 	 * @param transactionLogger Where every chat completion request is recorded as one transaction.
 	 * @param commitSha The git commit this server was built from, published on the `/health` route.
+	 * @param modelAvailabilityOptions How `GET /v1/models` reaches the central gateway to ask which
+	 * models the connected workers can currently run.
 	 */
 	constructor(
 		private readonly runner: ClusterTaskRunner,
@@ -101,6 +104,7 @@ export class OpenaiRoutes {
 		private readonly startedAtSeconds: number,
 		private readonly transactionLogger: CurlStyleTransactionLogger,
 		private readonly commitSha: string,
+		private readonly modelAvailabilityOptions: ModelAvailabilityOptions,
 	) {}
 
 	/**
@@ -152,8 +156,12 @@ export class OpenaiRoutes {
 			}
 		});
 
+		// Only the models the cluster can currently run are listed, which needs one snapshot of the
+		// central gateway and so cannot be answered as the plain catalogue used to be. An
+		// asynchronous handler that fails does not reach the error handling of Express by itself,
+		// so this route catches its own failures, the same way the completion route below does.
 		router.get('/v1/models', (_request, response) => {
-			response.status(200).json(ModelCatalog.list(this.startedAtSeconds));
+			void this._handleModelList(response).catch((failure: unknown) => OpenaiRoutes._sendFailure(response, failure));
 		});
 
 		// An asynchronous handler that fails does not reach the error handling of Express by
@@ -178,6 +186,40 @@ export class OpenaiRoutes {
 		router.use(reportBodyFailure);
 
 		return router;
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	The Models On Offer
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Answers `GET /v1/models` with the models the cluster can currently run.
+	 *
+	 * A model this server knows the name of is not a model anybody can run: a task type with no
+	 * connected worker behind it is a model every request for would be given up on. So the list is
+	 * the models with a capacity above zero right now, read through `ModelAvailability`, rather
+	 * than the whole catalogue this server was built with. See
+	 * [issue #177](https://github.com/webai-at-home/webai-at-home/issues/177).
+	 *
+	 * @param response The response to answer with.
+	 * @throws OpenaiError when the central gateway cannot be reached, which is answered as 503
+	 * rather than as an empty list: an empty list says every worker went away, and being unable to
+	 * ask says nothing at all about the workers.
+	 */
+	private async _handleModelList(response: Express.Response): Promise<void> {
+		let availableModelIds: readonly string[];
+		try {
+			availableModelIds = await ModelAvailability.availableModelIds(this.modelAvailabilityOptions);
+		} catch (failure: unknown) {
+			throw OpenaiError.gatewayUnavailable(
+				`The models on offer could not be read, because the central gateway at ` +
+					`${this.modelAvailabilityOptions.gatewayUrl} could not be asked which models the connected workers ` +
+					`can run: ${failure instanceof Error ? failure.message : String(failure)}.`,
+			);
+		}
+		response.status(200).json(ModelCatalog.list(this.startedAtSeconds, availableModelIds));
 	}
 
 	///////////////////////////////////////////////////////////////////////////////

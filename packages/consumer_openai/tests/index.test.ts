@@ -222,6 +222,16 @@ Test('lists the models in the shape an OpenAI client reads', () => {
 	Assert.deepEqual(list.data[0], { id: 'dev_formula', object: 'model', created: 1_700_000_000, owned_by: 'webai-at-home' });
 });
 
+// `GET /v1/models` lists what the cluster can run right now, not the whole catalogue: a model
+// nobody is connected to run is a model every request for would be given up on. See issue #177.
+Test('lists only the models it is given, so a task type with no worker behind it is left out', () => {
+	const list = ModelCatalog.list(1_700_000_000, ['dev_formula', 'llm_llama3_2_1b_full']);
+	Assert.equal(list.data.length, 2);
+	Assert.deepEqual(list.data.map((model) => model.id), ['dev_formula', 'llm_llama3_2_1b_full']);
+	// Nobody connected at all is an empty list, which is a legal answer an OpenAI client reads.
+	Assert.deepEqual(ModelCatalog.list(1_700_000_000, []).data, []);
+});
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 //	Failures
@@ -594,7 +604,13 @@ const listeningServer = async (overrides: Partial<ClusterTaskRunnerOptions> = {}
 	const logDirectoryPath = Fs.mkdtempSync(Path.join(Os.tmpdir(), 'http-transaction-'));
 	const logFilePath = Path.join(logDirectoryPath, 'transactions.log_http.txt');
 	const transactionLogger = new CurlStyleTransactionLogger(logFilePath);
-	const routes = new OpenaiRoutes(cluster.runner, apiKey, Math.floor(Date.now() / 1000), transactionLogger, 'test-commit-sha');
+	// The models route asks the central gateway which models the connected workers can run, which
+	// this stand-in has no observer connection for; no test here sends a request to that route.
+	const routes = new OpenaiRoutes(cluster.runner, apiKey, Math.floor(Date.now() / 1000), transactionLogger, 'test-commit-sha', {
+		gatewayUrl: 'ws://127.0.0.1:1',
+		authToken: 'development-token',
+		timeoutMs: 1000,
+	});
 	const app = Express();
 	app.use(routes.router());
 	const httpServer = app.listen(0);

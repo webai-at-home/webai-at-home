@@ -42,10 +42,14 @@ export class ModelCatalog {
 	 * @param createdAtSeconds When to state each model was created, as a whole number of
 	 * seconds since the start of 1970. This server has no creation date for a model, so it
 	 * states the moment it started.
+	 * @param modelIds Which models to list. Defaults to every model this server offers; the
+	 * `/v1/models` route passes the ones the cluster can currently run, which is a shorter list
+	 * whenever no worker is connected for a task type — see
+	 * [issue #177](https://github.com/webai-at-home/webai-at-home/issues/177).
 	 * @returns The model list to answer with.
 	 */
-	static list(createdAtSeconds: number): ModelListResponse {
-		const data: ModelDescription[] = ModelCatalog.modelIds.map((modelId) => ({
+	static list(createdAtSeconds: number, modelIds: readonly string[] = ModelCatalog.modelIds): ModelListResponse {
+		const data: ModelDescription[] = modelIds.map((modelId) => ({
 			id: modelId,
 			object: 'model',
 			created: createdAtSeconds,
