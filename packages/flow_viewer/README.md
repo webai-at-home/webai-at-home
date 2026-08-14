@@ -9,7 +9,7 @@ between consumers, the gateway, and worker browsers.
 npm run flow_viewer --workspace @webai/flow-viewer
 ```
 
-The command scans `packages/gateway/logs` for files named
+The command scans the gateway's own log directory, `~/.webai-at-home/gateway/logs`, for files named
 `gateway-*.log_entry.jsonl`, serves the flow viewer page, and opens the page in
 a browser. Use `--no-open` to keep the browser closed, or pass one or more
 `.log_entry.jsonl` files explicitly.

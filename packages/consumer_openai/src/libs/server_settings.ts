@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import Os from 'node:os';
 import Path from 'node:path';
 import { AccountKeyFile } from '@webai/protocol/account_key_file';
+import { WebaiHomeDirectory } from '@webai/protocol/webai_home_directory';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -36,6 +37,7 @@ type RawOptions = {
 	apiKey?: string;
 	consumer_name: string;
 	config_dir: string;
+	logDir: string;
 	requestTimeoutMs: string;
 	connectionWaitMs: string;
 	maxTasksInFlight: string;
@@ -70,6 +72,8 @@ export class ServerSettings {
 	 * development account.
 	 */
 	readonly accountKeyFile: string;
+	/** The directory this server writes its message log and its transaction log into. */
+	readonly logsDirectory: string;
 	/** How long one task may run before it is cancelled and the request is given up on. */
 	readonly requestTimeoutMs: number;
 	/** How long a request waits for a registered gateway connection before it is refused. */
@@ -109,6 +113,11 @@ export class ServerSettings {
 			.option('--api-key <key>', 'Key a request must present to this server. Omit to require none')
 			.option('-n, --consumer_name <name>', 'Consumer name to register under with the central gateway', 'consumer_openai server')
 			.option('-c, --config_dir <path>', 'The directory holding this server\'s own account key pair, as default.account_key.json, so the stages its tasks run are recorded against that account. A directory with no key pair in it means no account', defaultConfigDir)
+			// Written under the home directory, never into the directory this server was started
+			// from, which is where they landed until issue #171 — `npx webai-at-home serve` left a
+			// `logs` folder wherever the person was standing. The gateway's `--log-dir` is the same
+			// option for the same reason.
+			.option('--log-dir <path>', 'Directory this server writes its logs into', WebaiHomeDirectory.logsForProgram('consumer_openai'))
 			.option('--request-timeout-ms <number>', 'How long one task may run before it is cancelled', '600000')
 			.option(
 				'--connection-wait-ms <number>',
@@ -134,6 +143,7 @@ export class ServerSettings {
 		this.apiKey = options.apiKey;
 		this.name = options.consumer_name;
 		this.accountKeyFile = AccountKeyFile.pathInConfigDir(options.config_dir);
+		this.logsDirectory = options.logDir;
 		this.requestTimeoutMs = Number(options.requestTimeoutMs);
 		this.connectionWaitMs = Number(options.connectionWaitMs);
 		this.maximumTasksInFlight = Number(options.maxTasksInFlight);

@@ -7,6 +7,7 @@ import * as Commander from 'commander';
 import Express from 'express';
 import { LogEntryParser } from '../web/src/log_entry_parser.js';
 import type { InitialUiState, LogSource, SessionPayload } from '../web/src/types.js';
+import { WebaiHomeDirectory } from '@webai/protocol/webai_home_directory';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -48,7 +49,7 @@ export class Cli {
 	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
 		const command = new Commander.Command()
 			.name('flow_viewer')
-			.argument('[files...]', 'log files to merge (defaults to every packages/gateway/logs/gateway-*.log_entry.jsonl file)')
+			.argument('[files...]', `log files to merge (defaults to every gateway-*.log_entry.jsonl file in ${WebaiHomeDirectory.logsForProgram('gateway')})`)
 			.option('--logs-dir <dir>', 'directory to scan for gateway-*.log_entry.jsonl files when no files are given')
 			.option('--from <datetime>', 'start of the time range to show (defaults to the earliest message loaded)')
 			.option('--to <datetime>', 'end of the time range to show (defaults to the latest message loaded)')
@@ -63,7 +64,7 @@ export class Cli {
 		const options = command.opts<CliOptions>();
 		const filePaths: string[] = Cli._resolveFilePaths(command.args, options.logsDir);
 		if (filePaths.length === 0) {
-			console.error('No log files found. Pass one or more .log_entry.jsonl files, or run the gateway first so packages/gateway/logs has some.');
+			console.error(`No log files found. Pass one or more .log_entry.jsonl files, or run the gateway first so ${WebaiHomeDirectory.logsForProgram('gateway')} has some.`);
 			process.exitCode = 1;
 			return;
 		}
@@ -107,7 +108,10 @@ export class Cli {
 		const logsDir: string =
 			logsDirOption !== undefined
 				? Path.resolve(process.cwd(), logsDirOption)
-				: Url.fileURLToPath(new URL('../../gateway/logs', import.meta.url));
+				// Where the gateway writes its logs, which stopped being `packages/gateway/logs` in
+				// issue #171. `WebaiHomeDirectory` is the one place that says so, rather than this
+				// path being spelled out again here where it would quietly go stale.
+				: WebaiHomeDirectory.logsForProgram('gateway');
 
 		if (Fs.existsSync(logsDir) === false) return [];
 		return Fs.readdirSync(logsDir)

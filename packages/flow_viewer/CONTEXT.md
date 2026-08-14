@@ -6,7 +6,7 @@ Loads recorded gateway message logs and displays the message flow between consum
 
 ## Key Exports & Entry Points
 
-- `src/cli.ts`: the `flow_viewer` command line program. It scans `packages/gateway/logs` for files named `gateway-*.log_entry.jsonl`, serves the page, and opens a browser. Command to run this folder: `npm run flow_viewer --workspace @webai/flow-viewer`.
+- `src/cli.ts`: the `flow_viewer` command line program. It scans the gateway's own log directory, `~/.webai-at-home/gateway/logs`, for files named `gateway-*.log_entry.jsonl`, serves the page, and opens a browser. Command to run this folder: `npm run flow_viewer --workspace @webai/flow-viewer`.
 - `web/index.html` and `web/src/flow_viewer_app.ts`: the page itself, built by Vite.
 - `web/src/log_entry_parser.ts`: reads a `.log_entry.jsonl` file into the page's own types.
 - `web/src/timeline_model.ts` and `web/src/timeline_view.ts`: the timeline, separated into the data and the drawing of it.

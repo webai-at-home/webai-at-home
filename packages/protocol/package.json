@@ -43,6 +43,10 @@
     "./account_identity_file": {
       "types": "./dist/accounting/account_identity_file.d.ts",
       "default": "./dist/accounting/account_identity_file.js"
+    },
+    "./webai_home_directory": {
+      "types": "./dist/webai_home_directory.d.ts",
+      "default": "./dist/webai_home_directory.js"
     }
   },
   "scripts": {

@@ -52,11 +52,11 @@ export class ServerCommand {
 		const settings = new ServerSettings(args, programName);
 
 		// This server's own message traffic with the central gateway, one file per run, the way
-		// the consumer command line program records it. Written to whichever directory this
-		// server was started from, rather than into this package's own folder — installed
-		// through `npx`, that folder is a cache directory nothing should write into. See
-		// issue #170.
-		const logsDirectory = 'logs';
+		// the consumer command line program records it. Written under `~/.webai-at-home/`
+		// unless `--log-dir` says otherwise — not into this package's own folder, which is a
+		// cache directory `npx` may clear (issue #170), and no longer into whichever directory
+		// this server was started from (issue #171).
+		const logsDirectory = settings.logsDirectory;
 		const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const messageLogger = new MessageLogger(
 			Path.join(logsDirectory, `consumer-openai-${runTimestamp}.log_entry.jsonl`),

@@ -56,6 +56,7 @@ npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 5 
 | `-t, --task_type <type>` | — | Required. One of `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
 | `-n, --consumer_name <name>` | `consumer` | Name registered with the gateway. |
 | `-s, --stream` | off | Ask a language-model task to return answer pieces while it runs. |
+| `--log-dir <path>` | `~/.webai-at-home/consumer_cli/logs` | Where this submission's message log is written. Never the directory the command was run from. |
 
 `-t/--task_type` is required and has no default: which task type to run is the decision of the person submitting, and this program cannot make it for them. A `submit` without it stops with `error: required option '-t, --task_type <type>' not specified` before it connects to anything. See [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171).
 
@@ -78,7 +79,7 @@ npm run dev --workspace @webai/consumer-cli -- submit "hello there" --task_type 
 ```
 
 `--stream` is not valid for `dev_formula`, which always returns one numeric
-result. `submit` writes gateway messages to `packages/consumer_cli/logs`.
+result. `submit` writes gateway messages to `~/.webai-at-home/consumer_cli/logs`, which `--log-dir` moves.
 
 `submit` spends from this participant's account, so the stages its task runs are recorded against that account rather than against nobody. It reads the key pair from `default.account_key.json` inside the configuration directory given by `-c, --config_dir`, which defaults to `~/.webai-at-home/consumer_cli_config`, and says which account it is submitting as:
 
@@ -133,10 +134,10 @@ An unknown task type is an error with a non-zero exit code. `--task_type` is req
 
 ## `log_statistics`
 
-Reads one message log file — a `.log_entry.jsonl` file written by `MessageLogger` (see `@webai/protocol/message_logger`), for example one of the gateway's own `packages/gateway/logs/gateway-*.log_entry.jsonl` files — and prints everything it measures: how much traffic it carried, who carried it, how long every reply and every task and every stage run took, and anything about the file worth a second look. It never connects to the central gateway, so it measures a capture from weeks ago exactly the same way as one from a moment ago.
+Reads one message log file — a `.log_entry.jsonl` file written by `MessageLogger` (see `@webai/protocol/message_logger`), for example one of the gateway's own `~/.webai-at-home/gateway/logs/gateway-*.log_entry.jsonl` files — and prints everything it measures: how much traffic it carried, who carried it, how long every reply and every task and every stage run took, and anything about the file worth a second look. It never connects to the central gateway, so it measures a capture from weeks ago exactly the same way as one from a moment ago.
 
 ```sh
-npm run dev --workspace @webai/consumer-cli -- log_statistics ../gateway/logs/gateway-2026-08-02T03-09-46-028Z.log_entry.jsonl
+npm run dev --workspace @webai/consumer-cli -- log_statistics ~/.webai-at-home/gateway/logs/gateway-2026-08-02T03-09-46-028Z.log_entry.jsonl
 ```
 
 | Option | Default | Meaning |

@@ -18,6 +18,7 @@ import { AccountBalanceCommand } from './commands/account_balance_command.js';
 import { AccountHistoryCommand, accountHistoryDirections } from './commands/account_history_command.js';
 import { AccountKeyFile } from '@webai/protocol/account_key_file';
 import { AccountIdentityFile } from '@webai/protocol/account_identity_file';
+import { WebaiHomeDirectory } from '@webai/protocol/webai_home_directory';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -148,6 +149,10 @@ export class Cli {
 					+ ' that account. A machine with no key pair there submits with no account',
 				DEFAULT_CONFIG_DIR,
 			)
+			// Written under the home directory, never into the directory this command was run
+			// from, which is where they landed until issue #171 — `npx webai-at-home submit` left
+			// a `logs` folder wherever the person was standing.
+			.option('--log-dir <path>', 'the directory to write this submission\'s message log into', WebaiHomeDirectory.logsForProgram('consumer_cli'))
 			.action(async (
 				input: string,
 				localOptions: {
@@ -155,6 +160,7 @@ export class Cli {
 					consumer_name: string;
 					stream?: boolean;
 					config_dir: string;
+					logDir: string;
 				},
 				command: Commander.Command,
 			): Promise<void> => {
@@ -169,6 +175,7 @@ export class Cli {
 					name: options.consumer_name,
 					stream: options.stream === true,
 					keyFilePath: AccountKeyFile.pathInConfigDir(options.config_dir),
+					logsDirectory: options.logDir,
 					input,
 				});
 			});

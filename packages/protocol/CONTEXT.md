@@ -6,7 +6,7 @@ The shared message, task, pipeline, account, and device definitions of `webai-at
 
 ## Key Exports & Entry Points
 
-- `src/index.ts`: the entry point imported as `@webai/protocol`. It re-exports and holds no definitions of its own, and five further subpaths exist: `/envelope`, `/message_logger`, `/task_projection`, `/session_renewal`, `/reconnect_backoff`.
+- `src/index.ts`: the entry point imported as `@webai/protocol`. It re-exports and holds no definitions of its own, and further subpaths exist: `/envelope`, `/message_logger`, `/task_projection`, `/session_renewal`, `/reconnect_backoff`, `/account_key_file`, `/account_identity_file`, `/webai_home_directory`.
 - `src/task/`, `src/message/`, `src/accounting/`, `src/stage/`: one folder per subject.
 - Command to build this folder: `npm run build --workspace @webai/protocol`.
 
@@ -19,8 +19,9 @@ The shared message, task, pipeline, account, and device definitions of `webai-at
 - `TaskType` and the stage names it accepts follow [`docs/naming_scheme.md`](../../docs/naming_scheme.md); adding a task type here means adding its row there too.
 - `stopReason` on `LlmStagePayload` is the worker's own word, not an OpenAI value: translating it belongs to whichever consumer speaks the OpenAI Chat Completions interface.
 - `session_renewal.ts` and `reconnect_backoff.ts` hold the two timing rules every long-lived client shares, so no two programs disagree about how hard they lean on one gateway.
+- `webai_home_directory.ts` is the one place saying where a program keeps what it writes: under `~/.webai-at-home/<program>/`, never in the package's own folder and never in the directory the program was started from. Four packages read it, so the rule is not copied four times.
 - `generation_control_support.ts` is the one place recording which task type honours which generation control; a consumer reads it rather than keeping its own list.
 
 ## Background
 
-- Token counts and stop reasons come from [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150), the timing rules from [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158), `GenerationSettings` from [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+- Token counts and stop reasons come from [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150), the timing rules from [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158), `GenerationSettings` from [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151), and `webai_home_directory.ts` from [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170) and [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171).

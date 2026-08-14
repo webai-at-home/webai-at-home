@@ -26,6 +26,8 @@ export type SubmitCommandOptions = {
 	 * runs are recorded against the shared development account.
 	 */
 	keyFilePath: string;
+	/** The directory this command writes its message log into. */
+	logsDirectory: string;
 };
 
 /**
@@ -47,10 +49,10 @@ export class SubmitCommand {
 		// with that as the reason, rather than half-way through the history with the gateway.
 		const accountKeyPair = await AccountKeyFile.readIfPresent(options.keyFilePath);
 
-		// Written to whichever directory this command was run from, rather than into this
-		// package's own folder — installed through `npx`, that folder is a cache directory
-		// nothing should write into. See issue #170.
-		const logsDirectory = 'logs';
+		// Written under `~/.webai-at-home/` unless `--log-dir` says otherwise — not into this
+		// package's own folder, which is a cache directory `npx` may clear (issue #170), and no
+		// longer into whichever directory this command was run from (issue #171).
+		const logsDirectory = options.logsDirectory;
 		const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const messageLogger = new MessageLogger(Path.join(logsDirectory, `consumer-cli-${runTimestamp}.log_entry.jsonl`));
 

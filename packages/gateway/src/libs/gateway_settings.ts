@@ -1,6 +1,6 @@
 import { Command } from 'commander';
-import Os from 'node:os';
 import Path from 'node:path';
+import { WebaiHomeDirectory } from '@webai/protocol/webai_home_directory';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -22,7 +22,7 @@ import Path from 'node:path';
  * `packages/docker_server` passes `--state-file`, `--account-file` and `--ledger-file` explicitly,
  * so a container is unaffected by what these default to.
  */
-export const defaultDataDirectory = Path.join(Os.homedir(), '.webai-at-home', 'gateway');
+export const defaultDataDirectory = WebaiHomeDirectory.forProgram('gateway');
 
 /** The command line options exactly as they arrive, before they are converted. */
 type RawOptions = {
@@ -105,7 +105,7 @@ export class GatewaySettings {
 			.option('--account-file <path>', 'Account profile file', Path.join(defaultDataDirectory, 'gateway-accounts.json'))
 			.option('--account-challenge-ms <number>', 'How long a challenge handed out for an account to sign stays usable', '60000')
 			.option('--ledger-file <path>', 'Append-only accounting ledger file', Path.join(defaultDataDirectory, 'gateway-ledger.jsonl'))
-			.option('--log-dir <path>', 'Directory this gateway writes its message logs into', Path.join(defaultDataDirectory, 'logs'))
+			.option('--log-dir <path>', 'Directory this gateway writes its message logs into', WebaiHomeDirectory.logsForProgram('gateway'))
 			.option(
 				'-a, --auth-token <token>',
 				'bearer token every connection to this gateway must present (falls back to the'
