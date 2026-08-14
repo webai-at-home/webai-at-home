@@ -1,4 +1,4 @@
-import { Modal, Toast } from 'bootstrap';
+import { Modal } from 'bootstrap';
 import { PageElements } from './page_elements.js';
 import { PageMarkup } from './page_markup.js';
 import { StageCatalog } from '../stages/stage_catalog.js';
@@ -17,15 +17,18 @@ const enabledStageNamesStorageKey = 'webai-enabled-stages';
  * webpage's stages get offered to the central gateway.
  *
  * Every stage `StageCatalog` names is shown with a checkbox and a short description, and is
- * enabled by default. The choice is kept in local storage, so it survives a page reload, and it
- * takes effect the next time this browser connects and registers, the same way the page URL's
- * `enabledStages` query parameter already does. It is a panel that opens over the worker webpage
- * rather than a page of its own, following the pattern set by `AboutPanel`.
+ * enabled by default. The choice is kept in local storage on every change, so it survives a page
+ * reload, but only takes effect the next time this browser connects and registers, the same way
+ * the page URL's `enabledStages` query parameter already does — so the panel's **Save and reload**
+ * button reloads this page at once, rather than leaving the volunteer to notice the choice has not
+ * taken effect yet. It is a panel that opens over the worker webpage rather than a page of its own,
+ * following the pattern set by `AboutPanel`.
  */
 export class StagesConfigPanel {
 	/**
 	 * Fills the panel in with one checkbox per catalog stage, and wires the navigation bar button
-	 * that opens it, the Enable all and Clear all buttons, and each checkbox to local storage.
+	 * that opens it, the Enable all and Clear all buttons, each checkbox, and the Save and reload
+	 * button, to local storage.
 	 *
 	 * @throws If the markup no longer has the panel, the button that opens it, or the elements the
 	 * panel is filled into.
@@ -65,14 +68,14 @@ export class StagesConfigPanel {
 			saveFromCheckboxes();
 		});
 
-		const reloadToast = new Toast(PageElements.getElement('#stages-config-reload-toast'));
 		const panelEl: HTMLElement = PageElements.getElement('#stages-config-panel');
 		const panel = new Modal(panelEl);
-		panelEl.addEventListener('hidden.bs.modal', (): void => {
-			reloadToast.show();
-		});
 		PageElements.getButton('#stages-config-open').addEventListener('click', (): void => {
 			panel.show();
+		});
+		PageElements.getButton('#stages-config-save-reload').addEventListener('click', (): void => {
+			saveFromCheckboxes();
+			location.reload();
 		});
 	}
 
