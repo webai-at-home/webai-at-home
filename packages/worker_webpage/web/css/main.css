@@ -1,3 +1,25 @@
+/* The vertical scrollbar is always shown, whether the page is long enough to need one or not, so
+   that a page which grows past the height of the window does not shift sideways the moment the
+   scrollbar appears. */
+html {
+    overflow-y: scroll;
+}
+
+/* The scrollbar above is on `html` and never goes away, so Bootstrap's own compensation for a
+   scrollbar it believes it has just hidden — `overflow: hidden` on `body`, plus the width that
+   scrollbar took as padding on the right — moves the whole page sideways every time the About panel
+   opens. The `overflow: hidden` changes nothing here; the padding is what shifts the page, so that
+   is what is refused. Bootstrap writes the padding as an inline style as the panel opens, which is
+   why refusing it needs `!important`. */
+body.modal-open {
+    padding-right: 0 !important;
+}
+
+.navbar-brand {
+    display: inline-block;
+    min-width: 15rem;
+}
+
 body {
     background: #f5f7fb;
 }
