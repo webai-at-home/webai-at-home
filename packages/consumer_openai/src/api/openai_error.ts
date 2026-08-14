@@ -301,6 +301,36 @@ export class OpenaiError extends Error {
 	}
 
 	/**
+	 * No worker offering the stages this model needs is connected at all, so the central gateway
+	 * refused the task at once rather than queueing it until the submission deadline.
+	 *
+	 * This is the sibling of {@link OpenaiError.noVolunteerAvailable}: that one is a task nobody
+	 * picked up in time, this one is a task nobody could ever have picked up. Both are stated as
+	 * HTTP 503 rather than 502, because the central gateway answered correctly and the cluster is
+	 * merely short of a worker, which is a condition that a later request may find gone.
+	 *
+	 * @param modelId The model the request asked for.
+	 * @param missingStageNames The stages of that model's pipeline that no connected worker runs.
+	 * @returns The failure to answer with, as HTTP 503.
+	 */
+	static modelHasNoConnectedWorker(modelId: string, missingStageNames: readonly string[]): OpenaiError {
+		const stageWord = missingStageNames.length === 1 ? 'stage' : 'stages';
+		const stages = missingStageNames.length === 0
+			? 'one or more of the stages it needs'
+			: `${stageWord} ${missingStageNames.join(', ')}`;
+		return new OpenaiError(
+			503,
+			'api_error',
+			`The model ${modelId} cannot be run right now: no connected worker runs ${stages}. ` +
+				`Open a worker browser tab that offers ${missingStageNames.length === 1 ? 'that stage' : 'those stages'}, ` +
+				`or ask GET /v1/models for the models the cluster can run at this moment, which leaves out ${modelId} ` +
+				`for as long as this holds.`,
+			null,
+			'model_has_no_connected_worker',
+		);
+	}
+
+	/**
 	 * The cluster ran the task and the task failed.
 	 *
 	 * @param message The reason the gateway recorded on the task.

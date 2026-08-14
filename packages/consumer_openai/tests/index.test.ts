@@ -240,6 +240,7 @@ Test('answers each kind of failure with the status an OpenAI client expects', ()
 	Assert.equal(OpenaiError.unexpected().status, 500);
 	Assert.equal(OpenaiError.gatewayUnavailable('not connected').status, 503);
 	Assert.equal(OpenaiError.noVolunteerAvailable('dev_formula').status, 503);
+	Assert.equal(OpenaiError.modelHasNoConnectedWorker('dev_formula', ['stage_dev_formula_add']).status, 503);
 	Assert.equal(OpenaiError.requestTimedOut(600_000).status, 504);
 });
 
@@ -454,6 +455,42 @@ Test('passes on the gateway refusing a submission it has no room for', async () 
 	const failure = await answer.then(() => undefined, (error: unknown) => error);
 	Assert.ok(failure instanceof OpenaiError);
 	Assert.equal(failure.status, 429);
+	cluster.runner.close();
+});
+
+Test('names the model and the stages nobody runs when the gateway refuses the task for want of a worker', async () => {
+	const cluster = await registeredStandInCluster();
+	const answer = cluster.runner.run({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: { prompt: 'What is the capital of France?' } }, 'llm_qwen3_5_0_8b_full');
+	await settlePromises();
+	const taskRequestId = cluster.lastSentBody()['taskRequestId'];
+	cluster.receive({
+		type: 'error', code: 'CAPACITY_EXHAUSTED', message: 'One or more stages this task requires have no connected worker',
+		taskRequestId, retryable: true, details: { missingStageNames: ['stage_llm_qwen3_5_0_8b_full'] },
+	});
+	const failure = await answer.then(() => undefined, (error: unknown) => error);
+	Assert.ok(failure instanceof OpenaiError);
+	Assert.equal(failure.status, 503);
+	Assert.equal(failure.code, 'model_has_no_connected_worker');
+	// The model asked for and the stage nobody runs are both named, which is what the gateway's
+	// own "one or more stages this task requires" sentence leaves out.
+	Assert.match(failure.message, /llm_qwen3_5_0_8b_full/);
+	Assert.match(failure.message, /stage_llm_qwen3_5_0_8b_full/);
+	cluster.runner.close();
+});
+
+Test('still names the model when the gateway sends no list of stages nobody runs', async () => {
+	const cluster = await registeredStandInCluster();
+	const answer = cluster.runner.run({ taskType: 'task_type_dev_formula', input: 5 }, 'dev_formula');
+	await settlePromises();
+	const taskRequestId = cluster.lastSentBody()['taskRequestId'];
+	// An older gateway sends the code and no details at all, which must not cost the caller the
+	// model name as well.
+	cluster.receive({ type: 'error', code: 'CAPACITY_EXHAUSTED', message: 'One or more stages this task requires have no connected worker', taskRequestId, retryable: true });
+	const failure = await answer.then(() => undefined, (error: unknown) => error);
+	Assert.ok(failure instanceof OpenaiError);
+	Assert.equal(failure.status, 503);
+	Assert.match(failure.message, /dev_formula/);
+	Assert.match(failure.message, /one or more of the stages it needs/);
 	cluster.runner.close();
 });
 

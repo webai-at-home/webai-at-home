@@ -181,12 +181,14 @@ Every failure is answered with the OpenAI error shape, `{ "error": { "message", 
 | The cluster ran the task and the task failed | 502 | `task_failed` |
 | The task completed but its result carried no text | 502 | `answer_unreadable` |
 | No volunteer browser offered the work before the gateway's submission deadline | 503 | `no_volunteer_available` |
+| No connected worker runs the stages the chosen model needs, so the gateway refused the task at once | 503 | `model_has_no_connected_worker` |
 | This server is not connected to the central gateway, or the connection was lost while the request was waiting | 503 | `gateway_unavailable` |
 | The task did not finish within `--request-timeout-ms`, and was cancelled | 504 | `request_timed_out` |
 | This server failed in a way it does not account for | 500 | `internal_error` |
 
-Two of these are worth spelling out:
+Three of these are worth spelling out:
 
+- `model_has_no_connected_worker` and `no_volunteer_available` are two different shortages. The first is a model no connected worker runs at all, which the gateway refuses at once; the message names the model and each stage nobody runs. The second is a model workers do run, where none of them accepted the task before the gateway's submission deadline. `GET /v1/models` lists only the models the cluster can run at that moment, so a caller that reads it first meets the first of the two far less often.
 - A task already under way is **not** picked up again after the gateway connection returns. The gateway gives the new connection a new device identifier, and a task belongs to the device that submitted it, so a request waiting when the connection drops is given up on rather than being left to wait for an answer that can no longer reach it.
 - When a caller hangs up, or `--request-timeout-ms` is reached, this server cancels the task, so the cluster stops running stages for an answer nobody will read.
 

@@ -533,7 +533,34 @@ export class ClusterTaskRunner {
 			this._settleWithFailure(pending, OpenaiError.gatewayRateLimited(error.message));
 			return;
 		}
+		// The gateway names the stages nobody runs in the error's details. Passing its own sentence
+		// on instead would say "one or more stages this task requires", which names neither the
+		// model the caller asked for nor the stages that are missing.
+		if (error.code === 'CAPACITY_EXHAUSTED') {
+			const missingStageNames = ClusterTaskRunner._missingStageNamesOf(error);
+			this._settleWithFailure(pending, OpenaiError.modelHasNoConnectedWorker(pending.modelId, missingStageNames));
+			return;
+		}
 		this._settleWithFailure(pending, OpenaiError.taskFailed(`${error.code}: ${error.message}`));
+	}
+
+	/**
+	 * Reads the stages nobody runs out of a `CAPACITY_EXHAUSTED` error's details.
+	 *
+	 * The details are typed as an open record of unknown values, so the field is checked rather
+	 * than trusted: an older gateway that sends no details, or sends something other than a list
+	 * of names, leaves the caller with an empty list to word its message around instead of a
+	 * broken one.
+	 *
+	 * @param error The error the central gateway sent.
+	 * @returns The stage names, or an empty list when the error carries none.
+	 */
+	private static _missingStageNamesOf(error: ProtocolError): string[] {
+		const missingStageNames = error.details?.['missingStageNames'];
+		if (Array.isArray(missingStageNames) === false) {
+			return [];
+		}
+		return missingStageNames.filter((stageName): stageName is string => typeof stageName === 'string');
 	}
 
 	/**
