@@ -199,7 +199,7 @@ Test('estimates a sharded pipeline from its bottleneck shard, not from workers a
 	];
 	const result = CapacityCalculator.calculate(pipeline, devices);
 	Assert.equal(result.capacity, 1);
-	Assert.equal(result.reason, 'stage_llm_qwen3_0_6b_shard3of3 (1 available slot vs 3 on stage_llm_qwen3_0_6b_shard2of3)');
+	Assert.equal(result.reason, 'stage_llm_qwen3_0_6b_shard3of3 is the narrowest stage of the pipeline, with 1 free slot across 1 worker');
 });
 
 Test('estimates a sharded pipeline running entirely on one worker as that worker\'s free capacity', () => {
@@ -243,7 +243,59 @@ Test('estimates independent-stage capacity as the bottleneck stage\'s free capac
 	];
 	const result = CapacityCalculator.calculate(pipeline, devices);
 	Assert.equal(result.capacity, 3);
-	Assert.equal(result.reason, 'stage_dev_formula_add (3 available slots vs 7 on stage_dev_formula_multiply)');
+	Assert.equal(result.reason, 'stage_dev_formula_add is the narrowest stage of the pipeline, with 3 free slots across 3 workers');
+});
+
+Test('tells a stage nobody runs apart from a stage whose every worker is too busy to take it', () => {
+	const pipeline: PipelineSpecification = {
+		pipelineId: 'dev_formula', version: 1, taskType: 'task_type_dev_formula',
+		stages: [
+			{ name: 'stage_dev_formula_multiply', computation: 'dev_formula_multiply', inputSchemaId: 'number@1', outputSchemaId: 'number@1', encoding: 'inline-json' },
+			{ name: 'stage_dev_formula_add', computation: 'dev_formula_add', inputSchemaId: 'number@1', outputSchemaId: 'number@1', encoding: 'inline-json' },
+		],
+	};
+	/** A worker device advertising one stage, with as many free slots as asked for. */
+	const worker = (deviceId: string, stageName: string, activeAssignments: number): Device => ({
+		deviceId, name: deviceId, deviceRole: 'worker', stageNames: [stageName],
+		connectedAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z',
+		maxConcurrentAssignments: 1, activeAssignments,
+	});
+
+	// Nobody at all runs the add stage, whatever the multiply stage has behind it.
+	const noWorkerAtAll = CapacityCalculator.calculate(pipeline, [worker('multiply-0', 'stage_dev_formula_multiply', 0)]);
+	Assert.equal(noWorkerAtAll.capacity, 0);
+	Assert.equal(noWorkerAtAll.reason, 'no connected worker runs stage stage_dev_formula_add');
+
+	// Both stages are unrun, so both are named rather than only the first.
+	const noWorkersAtAll = CapacityCalculator.calculate(pipeline, []);
+	Assert.equal(noWorkersAtAll.reason, 'no connected worker runs stages stage_dev_formula_multiply, stage_dev_formula_add');
+
+	// Two workers do run the add stage, and both are already at their concurrency limit, which
+	// is a different problem from nobody running it and is stated as one.
+	const allBusy = CapacityCalculator.calculate(pipeline, [
+		worker('multiply-0', 'stage_dev_formula_multiply', 0),
+		worker('add-0', 'stage_dev_formula_add', 1), worker('add-1', 'stage_dev_formula_add', 1),
+	]);
+	Assert.equal(allBusy.capacity, 0);
+	Assert.equal(allBusy.reason, 'every one of the 2 workers running stage_dev_formula_add is busy, draining, or not ready');
+});
+
+Test('says so plainly when every stage of the pipeline is equally free', () => {
+	const shardStages = ['stage_llm_qwen3_0_6b_shard1of3', 'stage_llm_qwen3_0_6b_shard2of3', 'stage_llm_qwen3_0_6b_shard3of3'];
+	const pipeline: PipelineSpecification = {
+		pipelineId: 'llm_qwen3_0_6b_sharded', version: 1, taskType: 'task_type_llm_qwen3_0_6b_sharded', repeatsUntilDone: true,
+		stages: shardStages.map((name) => ({ name, computation: 'llm_qwen3_0_6b_shard', inputSchemaId: 'llm@1', outputSchemaId: 'llm@1', encoding: 'inline-json', prefersSameWorkerOnRetry: true })),
+	};
+	// One worker per shard, one free slot each: no shard is narrower than the others, so naming
+	// one of them as the bottleneck would be an arbitrary choice presented as a finding.
+	const devices: Device[] = shardStages.map((stageName, index) => ({
+		deviceId: `worker-${index}`, name: `worker-${index}`, deviceRole: 'worker', stageNames: [stageName],
+		connectedAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z',
+		maxConcurrentAssignments: 1, activeAssignments: 0,
+	}));
+	const result = CapacityCalculator.calculate(pipeline, devices);
+	Assert.equal(result.capacity, 1);
+	Assert.equal(result.reason, 'every one of the 3 stages of the pipeline has 1 free slot behind it');
 });
 
 ///////////////////////////////////////////////////////////////////////////////
