@@ -35,4 +35,20 @@ export class WorkerPageOrigin {
 			? 'https://webai-worker.dash-menu.com'
 			: `${location.protocol}//${location.hostname}:${workerPort}`;
 	}
+
+	/**
+	 * Points every given link at the worker webpage, connected back to the gateway the calling page
+	 * was itself opened from.
+	 *
+	 * @param selectors The CSS selector for each anchor element to point at the worker webpage.
+	 * @throws If the markup does not have an anchor element for every one of the given selectors.
+	 */
+	static wireLinks(selectors: string[]): void {
+		const workerPageUrl = `${WorkerPageOrigin.compute(defaultWorkerPort)}/?${new URLSearchParams({ gatewayUrl: location.origin }).toString()}`;
+		for (const selector of selectors) {
+			const element = document.querySelector(selector);
+			if ((element instanceof HTMLAnchorElement) === false) throw new Error(`Element ${selector} was not found`);
+			element.href = workerPageUrl;
+		}
+	}
 }

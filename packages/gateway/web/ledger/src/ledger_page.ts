@@ -2,6 +2,7 @@ import type { AccountSummaryRow } from '@webai/protocol';
 import { Envelope } from '@webai/protocol/envelope';
 import { SessionRenewal } from '@webai/protocol/session_renewal';
 import { ThemeToggle } from '../../_shared/theme_toggle.js';
+import { WorkerPageOrigin } from '../../_shared/worker_page_origin.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -69,6 +70,7 @@ export class LedgerPage {
 	/** Builds the page and connects it to the central gateway. */
 	static start(): void {
 		ThemeToggle.setup();
+		WorkerPageOrigin.wireLinks(['#worker-link-nav']);
 		const statusEl = LedgerPage.element('#status');
 		const statusBadgeEl = LedgerPage.element('#status-badge');
 		const accountsEl = LedgerPage.element('#accounts');

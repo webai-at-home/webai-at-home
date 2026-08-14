@@ -237,6 +237,7 @@ export class WorkerPage {
 		ThemeToggle.setup();
 		HelpTooltips.setup();
 		AboutPanel.setup(GatewayConfig.assetUrl('/health'));
+		PageElements.getAnchor('#gateway-link-nav').href = GatewayConfig.assetUrl('/home');
 		StagesConfigPanel.setup();
 
 		// Use the URL-provided name for embedded worker pages, and generate a random

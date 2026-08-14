@@ -2,6 +2,7 @@ import type { Device, DeviceActivity, DeviceRole, TaskInput, TaskSnapshot, TaskU
 import { Envelope } from '@webai/protocol/envelope';
 import { SessionRenewal } from '@webai/protocol/session_renewal';
 import { ThemeToggle } from '../../_shared/theme_toggle.js';
+import { WorkerPageOrigin } from '../../_shared/worker_page_origin.js';
 import { Dashboard } from '../../../src/dashboard.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -109,6 +110,7 @@ export class MonitorPage {
 	/** Opens the connection and starts drawing the page. */
 	static start(): void {
 		ThemeToggle.setup();
+		WorkerPageOrigin.wireLinks(['#worker-link-nav']);
 		MonitorPage.configureFoldablePanels();
 		const statusEl: HTMLElement = MonitorPage.getElement('#status');
 		const statusBadgeEl: HTMLElement = MonitorPage.getElement('#status-badge');
