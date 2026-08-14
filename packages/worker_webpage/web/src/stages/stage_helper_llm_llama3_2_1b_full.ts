@@ -1,5 +1,6 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, type TextGenerationPipeline } from '@huggingface/transformers';
 import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
+import type { ModelDownloadProgress } from './model_download_progress.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -248,11 +249,11 @@ export class StageHelperLlmLlama3_2_1bFull {
 	 *
 	 * Safe to call more than once: the loaded pipeline is memoized and reused.
 	 *
-	 * @param onStatus Called with human-readable progress while the model downloads and loads.
+	 * @param onProgress Called with progress steps while the model downloads and loads.
 	 * @returns A promise that resolves once the model is ready to generate.
 	 */
-	static preload(onStatus?: (message: string) => void): Promise<void> {
-		return StageHelperLlmLlama3_2_1bFull.loadedGenerator(onStatus).then(() => undefined);
+	static preload(onProgress?: (progress: ModelDownloadProgress) => void): Promise<void> {
+		return StageHelperLlmLlama3_2_1bFull.loadedGenerator(onProgress).then(() => undefined);
 	}
 
 	/**
@@ -350,26 +351,28 @@ export class StageHelperLlmLlama3_2_1bFull {
 	/**
 	 * Loads the tokenizer and creates the text-generation pipeline once per page.
 	 *
-	 * @param onStatus Called with human-readable progress while the model downloads and loads.
+	 * @param onProgress Called with progress steps while the model downloads and loads.
 	 * @returns The loaded pipeline.
 	 */
-	private static loadedGenerator(onStatus?: (message: string) => void): Promise<TextGenerationPipeline> {
+	private static loadedGenerator(onProgress?: (progress: ModelDownloadProgress) => void): Promise<TextGenerationPipeline> {
 		if (StageHelperLlmLlama3_2_1bFull.generatorPromise !== undefined) {
 			return StageHelperLlmLlama3_2_1bFull.generatorPromise;
 		}
-		onStatus?.(`Downloading ${MODEL_ID}. This can take a while on the first run…`);
+		onProgress?.({ kind: 'message', message: `Downloading ${MODEL_ID}. This can take a while on the first run…` });
 		const loadPromise = pipeline('text-generation', MODEL_ID, {
 			revision: MODEL_REVISION,
 			device: 'webgpu',
 			dtype: MODEL_DTYPE,
 			progress_callback: (progress: { status: string; file?: string; progress?: number }) => {
 				if (progress.status === 'progress' && progress.file !== undefined) {
-					const percent = Number.isFinite(progress.progress) ? ` ${Math.round(progress.progress ?? 0)}%` : '';
-					onStatus?.(`Downloading ${progress.file}${percent}…`);
+					const percent = Number.isFinite(progress.progress) ? Math.round(progress.progress ?? 0) : 0;
+					onProgress?.({ kind: 'file_progress', file: progress.file, percent });
+				} else if (progress.status === 'done' && progress.file !== undefined) {
+					onProgress?.({ kind: 'file_done', file: progress.file });
 				}
 			},
 		}).then((generator) => {
-			onStatus?.('Llama 3.2 1B Instruct ready.');
+			onProgress?.({ kind: 'message', message: 'Llama 3.2 1B Instruct ready.' });
 			return generator;
 		}).catch((error: unknown) => {
 			StageHelperLlmLlama3_2_1bFull.generatorPromise = undefined;

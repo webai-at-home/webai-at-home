@@ -1,6 +1,7 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, type Message, type TextGenerationPipeline } from '@huggingface/transformers';
 import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
 import { ToolCallReader } from './tool_call_reader.js';
+import type { ModelDownloadProgress } from './model_download_progress.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -253,11 +254,11 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	 *
 	 * Safe to call more than once: the loaded pipeline is memoized and reused.
 	 *
-	 * @param onStatus Called with human-readable progress while the model downloads and loads.
+	 * @param onProgress Called with progress steps while the model downloads and loads.
 	 * @returns A promise that resolves once the model is ready to generate.
 	 */
-	static preload(onStatus?: (message: string) => void): Promise<void> {
-		return StageHelperLlmQwen3_5_0_8bFull.loadedGenerator(onStatus).then(() => undefined);
+	static preload(onProgress?: (progress: ModelDownloadProgress) => void): Promise<void> {
+		return StageHelperLlmQwen3_5_0_8bFull.loadedGenerator(onProgress).then(() => undefined);
 	}
 
 	/**
@@ -370,26 +371,28 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	/**
 	 * Loads the tokenizer and creates the text-generation pipeline once per page.
 	 *
-	 * @param onStatus Called with human-readable progress while the model downloads and loads.
+	 * @param onProgress Called with progress steps while the model downloads and loads.
 	 * @returns The loaded pipeline.
 	 */
-	private static loadedGenerator(onStatus?: (message: string) => void): Promise<TextGenerationPipeline> {
+	private static loadedGenerator(onProgress?: (progress: ModelDownloadProgress) => void): Promise<TextGenerationPipeline> {
 		if (StageHelperLlmQwen3_5_0_8bFull.generatorPromise !== undefined) {
 			return StageHelperLlmQwen3_5_0_8bFull.generatorPromise;
 		}
-		onStatus?.(`Downloading ${MODEL_ID}. This can take a while on the first run…`);
+		onProgress?.({ kind: 'message', message: `Downloading ${MODEL_ID}. This can take a while on the first run…` });
 		const loadPromise = pipeline('text-generation', MODEL_ID, {
 			revision: MODEL_REVISION,
 			device: 'webgpu',
 			dtype: MODEL_DTYPE,
 			progress_callback: (progress: { status: string; file?: string; progress?: number }) => {
 				if (progress.status === 'progress' && progress.file !== undefined) {
-					const percent = Number.isFinite(progress.progress) ? ` ${Math.round(progress.progress ?? 0)}%` : '';
-					onStatus?.(`Downloading ${progress.file}${percent}…`);
+					const percent = Number.isFinite(progress.progress) ? Math.round(progress.progress ?? 0) : 0;
+					onProgress?.({ kind: 'file_progress', file: progress.file, percent });
+				} else if (progress.status === 'done' && progress.file !== undefined) {
+					onProgress?.({ kind: 'file_done', file: progress.file });
 				}
 			},
 		}).then((generator) => {
-			onStatus?.('Qwen3.5-0.8B ready.');
+			onProgress?.({ kind: 'message', message: 'Qwen3.5-0.8B ready.' });
 			return generator;
 		}).catch((error: unknown) => {
 			StageHelperLlmQwen3_5_0_8bFull.generatorPromise = undefined;

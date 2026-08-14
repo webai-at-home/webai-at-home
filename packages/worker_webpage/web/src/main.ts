@@ -6,6 +6,7 @@ import { StageHelperLlmQwen3_0_6bSharded } from './stages/stage_helper_llm_qwen3
 import { StageHelperLlmGemmaNanoChromeFull } from './stages/stage_helper_llm_gemma_nano_chrome_full';
 import { StageHelperLlmQwen3_5_0_8bFull } from './stages/stage_helper_llm_qwen3_5_0_8b_full';
 import { StageHelperLlmLlama3_2_1bFull } from './stages/stage_helper_llm_llama3_2_1b_full';
+import type { ModelDownloadProgress } from './stages/model_download_progress.js';
 import { GatewayConfig } from './connection/gateway_config';
 import { GatewayLink } from './connection/gateway_link';
 import { GatewayReconnection } from './connection/gateway_reconnection';
@@ -124,6 +125,8 @@ export class WorkerPage {
 	private readonly builtInModelMessageEl: HTMLElement;
 	/** The button that asks the browser to download its own language model. */
 	private readonly builtInModelDownloadButtonEl: HTMLButtonElement;
+	/** Holds one row per file currently downloading, each showing that file's name and how much of it has arrived. */
+	private readonly modelDownloadProgressEl: HTMLElement;
 	/** The button that starts the quiet tone, keeping this browser's full generation speed while its tab is hidden. */
 	private readonly quietToneButtonEl: HTMLButtonElement;
 	/** Shows the quiet tone's current state. */
@@ -184,6 +187,8 @@ export class WorkerPage {
 	 * connection does for itself: a session belongs to one connection and so does the account on it.
 	 */
 	private workerAccount: WorkerAccount | undefined;
+	/** Every file currently downloading, keyed by its full path, mapped to how much of it has arrived. */
+	private readonly downloadingFiles = new Map<string, number>();
 
 	/** Finds every element the page is built around. */
 	constructor() {
@@ -199,6 +204,7 @@ export class WorkerPage {
 		this.builtInModelNoticeEl = PageElements.getElement('#built-in-model-notice');
 		this.builtInModelMessageEl = PageElements.getElement('#built-in-model-message');
 		this.builtInModelDownloadButtonEl = PageElements.getButton('#built-in-model-download');
+		this.modelDownloadProgressEl = PageElements.getElement('#model-download-progress');
 		this.quietToneButtonEl = PageElements.getButton('#quiet-tone');
 		this.quietToneStateEl = PageElements.getElement('#quiet-tone-state');
 		this.powerStatusEl = PageElements.getElement('#power-status');
@@ -437,6 +443,7 @@ export class WorkerPage {
 		this.statusEl.textContent = 'Connecting';
 		this.statusEl.className = 'badge text-bg-warning';
 		this.connectButtonEl.disabled = true;
+		this.hideModelDownloadProgress();
 
 		/** Authenticates the worker browser after connection. */
 		this.socket.addEventListener('open', (): void => {
@@ -768,6 +775,7 @@ export class WorkerPage {
 				}
 				this.statusEl.textContent = 'Connected';
 				this.statusEl.className = 'badge text-bg-success';
+				this.hideModelDownloadProgress();
 				const register: ClientMessage = {
 					type: 'deviceRegister',
 					role: 'worker',
@@ -964,9 +972,15 @@ export class WorkerPage {
 			this.statusEl.textContent = 'Downloading model files';
 			this.statusEl.className = 'badge text-bg-warning';
 		}
-		await StageHelperLlmQwen3_0_6bSharded.preload(offered.llmShardIndexes, (phase) => {
-			this.statusEl.textContent = phase === 'downloading' ? 'Downloading model files' : 'Loading model in GPU';
-		});
+		await StageHelperLlmQwen3_0_6bSharded.preload(
+			offered.llmShardIndexes,
+			(phase) => {
+				this.statusEl.textContent = phase === 'downloading' ? 'Downloading model files' : 'Loading model in GPU';
+			},
+			(progress) => {
+				this.applyModelDownloadProgress(progress);
+			},
+		);
 		if (offered.qwen3_5_0_8bFullModelStageNames.length > 0) {
 			this.statusEl.textContent = 'Checking Qwen3.5-0.8B requirements';
 			this.statusEl.className = 'badge text-bg-warning';
@@ -980,8 +994,9 @@ export class WorkerPage {
 					message: readiness.message,
 				});
 			} else {
-				await StageHelperLlmQwen3_5_0_8bFull.preload((message) => {
-					this.statusEl.textContent = message;
+				this.statusEl.textContent = 'Downloading model files';
+				await StageHelperLlmQwen3_5_0_8bFull.preload((progress) => {
+					this.applyModelDownloadProgress(progress);
 				});
 			}
 		}
@@ -998,8 +1013,9 @@ export class WorkerPage {
 					message: readiness.message,
 				});
 			} else {
-				await StageHelperLlmLlama3_2_1bFull.preload((message) => {
-					this.statusEl.textContent = message;
+				this.statusEl.textContent = 'Downloading model files';
+				await StageHelperLlmLlama3_2_1bFull.preload((progress) => {
+					this.applyModelDownloadProgress(progress);
 				});
 			}
 		}
@@ -1204,6 +1220,75 @@ export class WorkerPage {
 	private hideBuiltInModelNotice(): void {
 		this.builtInModelNoticeEl.classList.add('d-none');
 		this.builtInModelDownloadButtonEl.classList.add('d-none');
+	}
+
+	/**
+	 * Reflects one step of model-download progress at the bottom of the connect card.
+	 *
+	 * A `message` step is not shown here: the status badge already carries the overall stage, so
+	 * only the two steps naming a file change what this element shows.
+	 *
+	 * @param progress The progress step reported by the model helper currently downloading.
+	 */
+	private applyModelDownloadProgress(progress: ModelDownloadProgress): void {
+		if (progress.kind === 'file_progress') {
+			this.showModelDownloadProgress(progress.file, progress.percent);
+		} else if (progress.kind === 'file_done') {
+			this.hideModelDownloadProgress(progress.file);
+		}
+	}
+
+	/**
+	 * Shows how much of one model file has downloaded so far, its own line at the bottom of the
+	 * connect card, so a file already there keeps its own line instead of sharing one with
+	 * whichever file last reported progress.
+	 *
+	 * @param file The file's full path within the model repository, such as `onnx/model_q4f16.onnx_data`.
+	 * @param percent How much of that file has arrived, from 0 to 100.
+	 */
+	private showModelDownloadProgress(file: string, percent: number): void {
+		this.downloadingFiles.set(file, percent);
+		this.renderModelDownloadProgress();
+	}
+
+	/**
+	 * Removes one file's line from the model-download progress, once that file has finished
+	 * downloading, or removes every line at once when a new connection attempt starts.
+	 *
+	 * @param file The file that finished. Left out to remove every line regardless of which files
+	 * are still in view, such as when a new connection attempt starts.
+	 */
+	private hideModelDownloadProgress(file?: string): void {
+		if (file !== undefined) {
+			this.downloadingFiles.delete(file);
+		} else {
+			this.downloadingFiles.clear();
+		}
+		this.renderModelDownloadProgress();
+	}
+
+	/** Redraws the model-download progress from `downloadingFiles`, one line per file. */
+	private renderModelDownloadProgress(): void {
+		if (this.downloadingFiles.size === 0) {
+			this.modelDownloadProgressEl.classList.add('d-none');
+			this.modelDownloadProgressEl.innerHTML = '';
+			return;
+		}
+		this.modelDownloadProgressEl.classList.remove('d-none');
+		this.modelDownloadProgressEl.innerHTML = [...this.downloadingFiles.entries()].map(([file, percent]) => {
+			const baseName = file.split('/').pop() ?? file;
+			return `<div class="mb-2">
+				<div class="d-flex justify-content-between small text-secondary mb-1">
+					<span class="text-truncate" title="${PageMarkup.escapeHtml(file)}">${PageMarkup.escapeHtml(baseName)}</span>
+					<span>${String(percent)}%</span>
+				</div>
+				<div class="progress" style="height: 6px;">
+					<div class="progress-bar" role="progressbar" aria-label="Model file download progress"
+						aria-valuenow="${String(percent)}" aria-valuemin="0" aria-valuemax="100"
+						style="width: ${String(percent)}%;"></div>
+				</div>
+			</div>`;
+		}).join('');
 	}
 }
 

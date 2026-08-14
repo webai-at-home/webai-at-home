@@ -3,6 +3,7 @@
 import * as OnnxRuntimeWeb from 'onnxruntime-web';
 import { Tokenizer } from '@huggingface/tokenizers';
 import { GeneratedText, StagePayloadFactory, type EncodedTensor, type LlmStagePayload } from '@webai/protocol';
+import type { ModelDownloadProgress } from './model_download_progress.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -275,12 +276,18 @@ export class StageHelperLlmQwen3_0_6bSharded {
 	 *
 	 * @param shardIndexes Which shards this worker will be asked to run, taken from the
 	 * positions of the enabled language-model stages in their pipeline.
+	 * @param onLoadingPhase Called with which broad phase loading has reached.
+	 * @param onProgress Called with progress steps while the tokenizer and shard files download.
 	 */
-	static preload(shardIndexes: readonly number[], onLoadingPhase?: (phase: ModelLoadingPhase) => void): Promise<void> {
+	static preload(
+		shardIndexes: readonly number[],
+		onLoadingPhase?: (phase: ModelLoadingPhase) => void,
+		onProgress?: (progress: ModelDownloadProgress) => void,
+	): Promise<void> {
 		const runnable = shardIndexes.filter(
 			(shardIndex) => shardIndex >= 0 && shardIndex < StageHelperLlmQwen3_0_6bSharded.shardCount,
 		);
-		return runnable.length === 0 ? Promise.resolve() : StageHelperLlmQwen3_0_6bSharded.loadModel(runnable, onLoadingPhase);
+		return runnable.length === 0 ? Promise.resolve() : StageHelperLlmQwen3_0_6bSharded.loadModel(runnable, onLoadingPhase, onProgress);
 	}
 
 	/** Creates and stores fresh generation state for a task's first round. */
@@ -301,6 +308,7 @@ export class StageHelperLlmQwen3_0_6bSharded {
 	private static async loadModel(
 		requestedShardIndexes: readonly number[],
 		onLoadingPhase?: (phase: ModelLoadingPhase) => void,
+		onProgress?: (progress: ModelDownloadProgress) => void,
 	): Promise<void> {
 		const shardIndexes = [...new Set(requestedShardIndexes)];
 		const isEveryShardLoaded = shardIndexes.every((shardIndex) => StageHelperLlmQwen3_0_6bSharded.shardSessions[shardIndex]);
@@ -314,9 +322,9 @@ export class StageHelperLlmQwen3_0_6bSharded {
 		const hasWebGPU = 'gpu' in navigator;
 		onLoadingPhase?.('downloading');
 		StageHelperLlmQwen3_0_6bSharded.loadPromise = Promise.all([
-			StageHelperLlmQwen3_0_6bSharded.fetchTokenizerJson(TOKENIZER_URL, 'Tokenizer download'),
-			StageHelperLlmQwen3_0_6bSharded.fetchTokenizerJson(TOKENIZER_CONFIG_URL, 'Tokenizer configuration download'),
-			...shardIndexes.map((shardIndex) => StageHelperLlmQwen3_0_6bSharded.fetchModelBytes(SHARD_URLS[shardIndex])),
+			StageHelperLlmQwen3_0_6bSharded.fetchTokenizerJson(TOKENIZER_URL, 'Tokenizer download', onProgress),
+			StageHelperLlmQwen3_0_6bSharded.fetchTokenizerJson(TOKENIZER_CONFIG_URL, 'Tokenizer configuration download', onProgress),
+			...shardIndexes.map((shardIndex) => StageHelperLlmQwen3_0_6bSharded.fetchModelBytes(SHARD_URLS[shardIndex], onProgress)),
 		]).then(async ([tokenizerJson, tokenizerConfig, ...shardBytes]) => {
 			onLoadingPhase?.('graphics-memory');
 			StageHelperLlmQwen3_0_6bSharded.tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
@@ -337,7 +345,11 @@ export class StageHelperLlmQwen3_0_6bSharded {
 	}
 
 	/** Reads a tokenizer JSON file from Cache Storage or downloads and stores it there. */
-	private static async fetchTokenizerJson(url: string, description: string): Promise<Record<string, unknown>> {
+	private static async fetchTokenizerJson(
+		url: string,
+		description: string,
+		onProgress?: (progress: ModelDownloadProgress) => void,
+	): Promise<Record<string, unknown>> {
 		let cache: Cache | undefined;
 		try {
 			cache = await caches.open(TOKENIZER_CACHE_NAME);
@@ -360,7 +372,54 @@ export class StageHelperLlmQwen3_0_6bSharded {
 				// Cache Storage is a speed optimization only; inference can use the response directly.
 			}
 		}
-		return response.json();
+		const bytes = await StageHelperLlmQwen3_0_6bSharded.readResponseBytes(response, url, onProgress);
+		return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+	}
+
+	/**
+	 * Reads a response body to completion, reporting the base name of `url` and how much of it
+	 * has arrived so far, the same progress steps `stage_helper_llm_qwen3_5_0_8b_full.ts` reports
+	 * while its own model downloads.
+	 *
+	 * Falls back to reading the whole body at once, with no progress steps, when the response
+	 * carries no `content-length` header or no readable stream — both needed to compute a
+	 * percentage as bytes arrive.
+	 *
+	 * @param response The response whose body to read.
+	 * @param url The URL the response was fetched from; only its base name is reported.
+	 * @param onProgress Called with progress steps while the body downloads.
+	 * @returns The response body, read to completion.
+	 */
+	private static async readResponseBytes(
+		response: Response,
+		url: string,
+		onProgress?: (progress: ModelDownloadProgress) => void,
+	): Promise<ArrayBuffer> {
+		const file = url.split('/').pop() ?? url;
+		const total = Number(response.headers.get('content-length') ?? 0);
+		if (onProgress === undefined || response.body === null || total === 0) {
+			return response.arrayBuffer();
+		}
+		const reader = response.body.getReader();
+		const chunks: Uint8Array[] = [];
+		let loaded = 0;
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) {
+				break;
+			}
+			chunks.push(value);
+			loaded += value.length;
+			onProgress({ kind: 'file_progress', file, percent: Math.round((loaded / total) * 100) });
+		}
+		onProgress({ kind: 'file_done', file });
+		const merged = new Uint8Array(loaded);
+		let offset = 0;
+		for (const chunk of chunks) {
+			merged.set(chunk, offset);
+			offset += chunk.length;
+		}
+		return merged.buffer;
 	}
 
 	/** Opens the IndexedDB database used to store the downloaded ONNX model. */
@@ -407,7 +466,7 @@ export class StageHelperLlmQwen3_0_6bSharded {
 	}
 
 	/** Returns shard bytes from IndexedDB or downloads and caches a fresh copy. */
-	private static async fetchModelBytes(url: string): Promise<ArrayBuffer> {
+	private static async fetchModelBytes(url: string, onProgress?: (progress: ModelDownloadProgress) => void): Promise<ArrayBuffer> {
 		const cached = await StageHelperLlmQwen3_0_6bSharded.readCachedModel(url);
 		if (cached) {
 			return cached;
@@ -416,7 +475,7 @@ export class StageHelperLlmQwen3_0_6bSharded {
 		if (response.ok === false) {
 			throw new Error(`Shard download failed (${response.status}).`);
 		}
-		const bytes = await response.arrayBuffer();
+		const bytes = await StageHelperLlmQwen3_0_6bSharded.readResponseBytes(response, url, onProgress);
 		await StageHelperLlmQwen3_0_6bSharded.cacheModel(bytes, url);
 		return bytes;
 	}

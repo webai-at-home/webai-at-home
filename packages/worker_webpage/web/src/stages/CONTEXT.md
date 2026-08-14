@@ -11,6 +11,7 @@ One stage helper per stage this browser page can run, the fixed list of every st
 - `stage_helper_llm_qwen3_0_6b_sharded.ts`: runs one Qwen3-0.6B shard stage.
 - `stage_helper_llm_qwen3_5_0_8b_full.ts`, `stage_helper_llm_llama3_2_1b_full.ts`, `stage_helper_llm_gemma_nano_chrome_full.ts`: run a complete model, one browser engine each.
 - `tool_call_reader.ts`: `ToolCallReader`, which reads the tool calls Qwen3.5 writes out of its generated text.
+- `model_download_progress.ts`: `ModelDownloadProgress`, the progress steps `stage_helper_llm_qwen3_0_6b_sharded.ts`, `stage_helper_llm_qwen3_5_0_8b_full.ts`, and `stage_helper_llm_llama3_2_1b_full.ts` report while their model downloads and loads.
 
 ## Rules
 
