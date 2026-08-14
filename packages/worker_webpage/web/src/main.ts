@@ -215,8 +215,9 @@ export class WorkerPage {
 		this.urlRequestedStageNames = WorkerStageOffer.requestedStageNamesFromUrl(location.search);
 		this.gatewayReconnection = new GatewayReconnection({
 			onWaiting: (secondsRemaining: number, attemptNumber: number): void => {
-				this.statusEl.textContent = `Connection lost. Trying again in ${String(secondsRemaining)} second(s) (attempt ${String(attemptNumber)})`;
-				this.statusEl.className = 'badge text-bg-warning';
+				const secondsWord = secondsRemaining === 1 ? 'second' : 'seconds';
+				this.statusEl.textContent = `Reconnecting in ${String(secondsRemaining)} ${secondsWord} (attempt ${String(attemptNumber)})`;
+				this.statusEl.className = 'badge rounded-pill text-bg-warning';
 			},
 			onAttempt: (attemptNumber: number): void => {
 				// A connection lost while this browser was still downloading and loading its model
@@ -441,14 +442,14 @@ export class WorkerPage {
 		this.isRegistered = false;
 
 		this.statusEl.textContent = 'Connecting';
-		this.statusEl.className = 'badge text-bg-warning';
+		this.statusEl.className = 'badge rounded-pill text-bg-warning';
 		this.connectButtonEl.disabled = true;
 		this.hideModelDownloadProgress();
 
 		/** Authenticates the worker browser after connection. */
 		this.socket.addEventListener('open', (): void => {
 			this.statusEl.textContent = 'Connected';
-			this.statusEl.className = 'badge text-bg-success';
+			this.statusEl.className = 'badge rounded-pill text-bg-success';
 			this.connectButtonEl.classList.add('d-none');
 			this.disconnectButtonEl.classList.remove('d-none');
 			this.nameInputEl.disabled = true;
@@ -759,7 +760,7 @@ export class WorkerPage {
 				this.renderStages();
 				if (stageNames.length === 0) {
 					this.statusEl.textContent = 'No stage to run';
-					this.statusEl.className = 'badge text-bg-danger';
+					this.statusEl.className = 'badge rounded-pill text-bg-danger';
 					this.eventLog.add({
 						direction: 'local',
 						type: 'worker.error',
@@ -774,7 +775,7 @@ export class WorkerPage {
 					return;
 				}
 				this.statusEl.textContent = 'Connected';
-				this.statusEl.className = 'badge text-bg-success';
+				this.statusEl.className = 'badge rounded-pill text-bg-success';
 				this.hideModelDownloadProgress();
 				const register: ClientMessage = {
 					type: 'deviceRegister',
@@ -792,7 +793,7 @@ export class WorkerPage {
 			.catch((error: unknown) => {
 				this.isPreparing = false;
 				this.statusEl.textContent = 'Shard loading failed';
-				this.statusEl.className = 'badge text-bg-danger';
+				this.statusEl.className = 'badge rounded-pill text-bg-danger';
 				this.eventLog.add({
 					direction: 'local',
 					type: 'worker.error',
@@ -953,7 +954,7 @@ export class WorkerPage {
 		let stageNames = offered.stageNames;
 		if (offered.builtInModelStageNames.length > 0) {
 			this.statusEl.textContent = 'Checking the built-in language model';
-			this.statusEl.className = 'badge text-bg-warning';
+			this.statusEl.className = 'badge rounded-pill text-bg-warning';
 			const readiness = await StageHelperLlmGemmaNanoChromeFull.readiness();
 			if (readiness.status === 'ready') {
 				this.hideBuiltInModelNotice();
@@ -970,7 +971,7 @@ export class WorkerPage {
 		}
 		if (offered.llmShardIndexes.length > 0) {
 			this.statusEl.textContent = 'Downloading model files';
-			this.statusEl.className = 'badge text-bg-warning';
+			this.statusEl.className = 'badge rounded-pill text-bg-warning';
 		}
 		await StageHelperLlmQwen3_0_6bSharded.preload(
 			offered.llmShardIndexes,
@@ -983,7 +984,7 @@ export class WorkerPage {
 		);
 		if (offered.qwen3_5_0_8bFullModelStageNames.length > 0) {
 			this.statusEl.textContent = 'Checking Qwen3.5-0.8B requirements';
-			this.statusEl.className = 'badge text-bg-warning';
+			this.statusEl.className = 'badge rounded-pill text-bg-warning';
 			const readiness = await StageHelperLlmQwen3_5_0_8bFull.readiness();
 			if (readiness.status !== 'ready') {
 				stageNames = stageNames.filter((stageName) => offered.qwen3_5_0_8bFullModelStageNames.includes(stageName) === false);
@@ -1002,7 +1003,7 @@ export class WorkerPage {
 		}
 		if (offered.llama3_2_1bFullModelStageNames.length > 0) {
 			this.statusEl.textContent = 'Checking Llama 3.2 1B Instruct requirements';
-			this.statusEl.className = 'badge text-bg-warning';
+			this.statusEl.className = 'badge rounded-pill text-bg-warning';
 			const readiness = await StageHelperLlmLlama3_2_1bFull.readiness();
 			if (readiness.status !== 'ready') {
 				stageNames = stageNames.filter((stageName) => offered.llama3_2_1bFullModelStageNames.includes(stageName) === false);
@@ -1076,7 +1077,7 @@ export class WorkerPage {
 	 */
 	private showDisconnectedControls(): void {
 		this.statusEl.textContent = 'Disconnected';
-		this.statusEl.className = 'badge text-bg-danger';
+		this.statusEl.className = 'badge rounded-pill text-bg-danger';
 		this.connectButtonEl.classList.remove('d-none');
 		this.connectButtonEl.disabled = false;
 		this.disconnectButtonEl.classList.add('d-none');
