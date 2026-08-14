@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Resident key/value cache over a real decode — milestone four of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 60rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Resident key/value cache over a real decode</h1>
+		<p>
+			The de-risking gate of milestone four of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. Milestone one showed
+			that a tensor can stay on the graphics processor between <code>model.run()</code> calls, but it showed
+			it with a graph holding one matrix multiplication and an addition. Milestone two ran a real Qwen3-0.6B
+			decoder shard, but only for a single step, at one position, with an all-zero cache.
+		</p>
+		<p>
+			This page asks the question those two leave open: <strong>does a real decoder shard's key/value cache
+			survive being kept on the graphics processor across a whole sequence of decode steps?</strong> Each
+			step feeds the cache tensor that came out of <code>model.run()</code> straight back in as the next
+			step's cache input, so the cache is never read into JavaScript at all.
+		</p>
+		<p>
+			One shard is enough to answer it, and one shard is all this page loads. Decoder shard
+			<code>decoder_00-03</code> takes the embedding row of the token at each position, so its inputs for a
+			whole sequence are known in advance and no other shard has to run. Every step's output hidden state is
+			compared against PyTorch running the same shard over the same tokens.
+		</p>
+		<p>
+			The same loop then runs a second time with the cache read back into JavaScript and uploaded again on
+			every step. That variant is the control: it says both whether keeping the cache resident changes the
+			answer, and what keeping it resident saves.
+		</p>
+		<p>
+			Reads its shard and its reference from <code>/qwen3-litert-shards/models</code>, which
+			<code>tools/qwen3_litert_shard_export/</code> and <code>tools/qwen3_decode_reference/</code> write.
+		</p>
+		<button id="run">Run the gate</button>
+		<pre id="output">Not run yet.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

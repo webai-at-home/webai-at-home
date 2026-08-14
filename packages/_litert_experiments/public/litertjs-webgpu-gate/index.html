@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>LiteRT.js WebGPU gate — milestone zero of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 60rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>LiteRT.js WebGPU gate</h1>
+		<p>
+			Milestone zero of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. This page asks one
+			question: does <code>@litertjs/core</code> load a <code>.tflite</code> graph and compile it for WebGPU in
+			this browser? It runs one trivial graph, a single linear layer whose input and output both have the shape
+			of a shard boundary, and compares the result against the output PyTorch produced for the same input.
+		</p>
+		<p>
+			The graphs are generated artifacts and are not committed. Write them first with
+			<code>tools/trivial_shard_export/export_trivial_graph.py</code>.
+		</p>
+		<button id="run">Run the gate</button>
+		<pre id="output">Not run yet.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

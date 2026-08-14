@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Both runtimes in one page, alternating — milestone six of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 70rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Both runtimes in one page, alternating</h1>
+		<p>
+			Milestone six of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>, done a second
+			time and properly. The separate pages could not be compared with each other: the same page,
+			with the same settings, gave anything from 7 to 25 tokens per second on different loads, so a
+			number taken from one page and a number taken from another say nothing about the two runtimes.
+		</p>
+		<p>
+			This page loads <strong>both</strong> runtimes and runs them in alternating blocks. Whatever makes
+			the machine fast or slow at a given moment — how warm it is, what the browser has cached, what else
+			is running — now moves both columns together instead of one of them, and the ratio between them
+			survives it.
+		</p>
+		<p>
+			What is compared is <strong>one decoder layer, decoding one token</strong>. LiteRT.js runs
+			<code>decoder_00-03</code>, four decoder layers, with its key/value cache staying on the graphics
+			processor. ONNX Runtime Web runs all three of its shards, and the figure is taken from shard 2,
+			the only one that is nothing but decoder layers — shard 1 also carries the token embedding and
+			shard 3 the final normalization and the language-model head.
+		</p>
+		<p>
+			Both are checked against the same PyTorch reference while they run. Remember what they hold:
+			ONNX Runtime Web has four-bit weights and a fused attention operation, LiteRT.js has 32-bit
+			floating point and attention built out of separate operations. See
+			<a href="../onnxruntime-comparison/">the first comparison page</a> for the whole of that
+			difference.
+		</p>
+		<button id="run">Run the comparison</button>
+		<pre id="output">Not run yet.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

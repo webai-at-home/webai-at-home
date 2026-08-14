@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Prefill at fixed prompt lengths — milestone five of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 70rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Prefill at fixed prompt lengths</h1>
+		<p>
+			Milestone five of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. Static shapes mean
+			one exported signature per prompt length, so a prompt of 32 tokens and a prompt of 128 tokens are two
+			different graphs of the same weights. This page runs each of them and measures what reading a whole
+			prompt in one call is worth against reading it one token at a time.
+		</p>
+		<p>
+			Prefill turns out to be simpler than decode rather than harder, because it starts at position 0:
+			there is no cache to read and no position to write at, so a prefill graph takes only the hidden
+			states, the rotary tables, and a causal mask, and returns its own keys and values followed by zeros.
+			The cache it writes has exactly the shape a decode graph reads.
+		</p>
+		<p>
+			The last part answers the other question milestone five asks: whether sending one long activation
+			beats sending several short ones, measured over the same WebSocket relay milestone four used.
+		</p>
+		<p>
+			Reads its graphs from <code>/qwen3-litert-shards/models</code>, written by
+			<code>tools/qwen3_prefill_export/</code>.
+		</p>
+		<button id="run">Run the gate</button>
+		<pre id="output">Not run yet.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

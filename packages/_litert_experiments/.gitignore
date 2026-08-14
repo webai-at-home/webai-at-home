@@ -1,0 +1,11 @@
+tools/.venv/
+
+# The trivial graphs of the milestone zero gate, together with the reference input and output PyTorch produced for
+# each of them. Up to 64 mebibytes each, and reproducible from tools/trivial_shard_export/export_trivial_graph.py.
+public/litertjs-webgpu-gate/models/
+public/litertjs-cache-residency-gate/models/
+public/litertjs-multiple-output-diagnosis/models/
+public/qwen3-litert-shards/models/
+
+# Python bytecode caches, written whenever one tool imports another.
+tools/**/__pycache__/

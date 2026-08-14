@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>LiteRT.js experiments</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 60rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>LiteRT.js experiments</h1>
+		<p>
+			Browser experiments for running one shard of a language model with LiteRT.js on WebGPU, for
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>, which is the
+			implementation plan of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/178">issue #178</a>.
+		</p>
+		<ul>
+			<li>
+				<a href="./litertjs-webgpu-gate/">LiteRT.js WebGPU gate</a> — milestone zero. Does
+				<code>@litertjs/core</code> load a <code>.tflite</code> graph and compile it for WebGPU at all?
+			</li>
+			<li>
+				<a href="./litertjs-cache-residency-gate/">LiteRT.js key/value cache residency gate</a> — milestone
+				one. Can a shard's own key/value cache stay resident on the graphics processor between repeated
+				<code>model.run()</code> calls?
+			</li>
+			<li>
+				<a href="./litertjs-multiple-output-diagnosis/">LiteRT.js multiple output diagnosis</a> — part of
+				milestone one. Names which graph shape WebGPU computes wrongly, one property at a time.
+			</li>
+			<li>
+				<a href="./qwen3-litert-shards/">Qwen3-0.6B LiteRT.js shards</a> — milestone two. Every real
+				<code>.tflite</code> graph of Qwen3-0.6B, and the whole model chained, checked element by element
+				against PyTorch.
+			</li>
+			<li>
+				<a href="./qwen3-litert-resident-decode/">Resident key/value cache over a real decode</a> — the
+				de-risking gate of milestone four. Does a real decoder shard's key/value cache survive staying on
+				the graphics processor across a whole sequence of decode steps?
+			</li>
+			<li>
+				<a href="./qwen3-litert-prefill/">Prefill at fixed prompt lengths</a> — milestone five. One
+				exported signature per prompt length, and what reading a whole prompt in one call is worth
+				against reading it one token at a time.
+			</li>
+			<li>
+				<a href="./runtime-comparison-interleaved/">Both runtimes in one page, alternating</a> — milestone
+				six, done properly. The same page gave anything from 7 to 25 tokens per second on different
+				loads, so the two runtimes are run alternately inside one load instead, where the ratio between
+				them survives whatever the machine is doing.
+			</li>
+			<li>
+				<a href="./onnxruntime-comparison/">The comparison against ONNX Runtime Web</a> — milestone six.
+				The same model and the same prompt through the other runtime, so that the two can be put in one
+				table. The two sides do not hold the same weights, and this page reads that difference off the
+				running sessions before it measures anything.
+			</li>
+			<li>
+				<a href="./qwen3-litert-workers/">Qwen3-0.6B across browser workers</a> — milestone four.
+				Generating tokens with the shards spread across separate browser pages, each keeping its own
+				key/value caches, with only the hidden state crossing between them.
+			</li>
+		</ul>
+	</body>
+</html>

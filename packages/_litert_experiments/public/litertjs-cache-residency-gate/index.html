@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>LiteRT.js key/value cache residency gate — milestone one of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 60rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>LiteRT.js key/value cache residency gate</h1>
+		<p>
+			Milestone one of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>, and the milestone the
+			whole investigation turns on. It asks whether a shard's own key/value cache can stay resident on the
+			graphics processor between repeated <code>model.run()</code> calls, instead of being copied out to
+			JavaScript and back on every generated token.
+		</p>
+		<p>
+			The graph is not a transformer. It has the shape of one decoding step of one shard: a hidden state and a
+			key/value cache in, a new hidden state and an updated cache out. The hidden state is the tensor that has to
+			leave the graphics processor, because the next shard is on another device. The cache is the tensor that
+			must never leave it.
+		</p>
+		<p>Three loops run, differing only in what leaves the graphics processor on each step:</p>
+		<ul>
+			<li>
+				<strong>resident-with-hidden-readback</strong> — the cache stays put and only the hidden state is read
+				back. This is the distributed decode this project wants.
+			</li>
+			<li>
+				<strong>resident-without-readback</strong> — nothing is read back. The upper bound of what residency
+				can buy.
+			</li>
+			<li>
+				<strong>cache-round-trip</strong> — the whole cache is read out and uploaded again every step. The
+				naive design issue #178 warns against.
+			</li>
+		</ul>
+		<p>
+			The graph is a generated artifact and is not committed. Write it first with
+			<code>tools/cache_residency_export/export_shard_like_step.py</code>.
+		</p>
+		<button id="run">Run the gate</button>
+		<pre id="output">Not run yet.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

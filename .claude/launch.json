@@ -42,6 +42,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "@webai/account-key-experiments", "--", "--port", "5185", "--strictPort"],
       "port": 5185
+    },
+    {
+      "name": "litert-experiments",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@webai/litert-experiments", "--", "--port", "5186", "--strictPort"],
+      "port": 5186
     }
   ]
 }

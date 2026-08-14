@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Worker — milestone four of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 60rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+		</style>
+	</head>
+	<body>
+		<h1><span id="name">worker</span></h1>
+		<p>
+			One worker of milestone four of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. This page loads
+			the graphs it owns, connects to the relay, and then answers hidden states until it is closed. Its
+			key/value caches stay on the graphics processor and never leave this page.
+		</p>
+		<p>Leave this page open and go back to the <a href="./">conductor</a>.</p>
+		<pre id="output">Loading...</pre>
+		<script type="module" src="./src/worker.ts"></script>
+	</body>
+</html>

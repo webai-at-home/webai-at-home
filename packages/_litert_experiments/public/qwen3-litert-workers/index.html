@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Qwen3-0.6B across browser workers — milestone four of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 70rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+			ol {
+				line-height: 1.7;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Qwen3-0.6B across browser workers</h1>
+		<p>
+			Milestone four of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. Qwen3-0.6B
+			generating tokens with its shards spread across separate browser pages. Each page holds its own
+			graphs and its own key/value caches, and <strong>only the hidden state crosses between them</strong> —
+			4096 bytes per hop, over a WebSocket relay in the development server.
+		</p>
+		<p>
+			The caches never leave the page that owns them, and never leave the graphics processor. That is the
+			property this milestone exists to demonstrate, and the reason the architecture is worth having.
+		</p>
+		<p>
+			Generation is real: the conductor knows the prompt and nothing else, and every token after the prompt
+			is the token the pipeline itself produced. The resulting sequence is compared against PyTorch.
+		</p>
+
+		<h2>Open one page per worker</h2>
+		<ol>
+			<li><a href="./worker.html?worker=decoder_worker_00-11" target="_blank">decoder_worker_00-11</a> — decoder layers 0 to 11</li>
+			<li><a href="./worker.html?worker=decoder_worker_12-19" target="_blank">decoder_worker_12-19</a> — decoder layers 12 to 19</li>
+			<li><a href="./worker.html?worker=decoder_worker_20-27" target="_blank">decoder_worker_20-27</a> — decoder layers 20 to 27</li>
+			<li><a href="./worker.html?worker=head_worker" target="_blank">head_worker</a> — the three language-model head chunks, and the token choice</li>
+		</ol>
+		<p>
+			Each page loads its own graphs as soon as it opens, then reports here. The button turns on once all
+			four have.
+		</p>
+
+		<button id="run" disabled>Generate</button>
+		<pre id="output">Connecting to the relay...</pre>
+		<script type="module" src="./src/conductor.ts"></script>
+	</body>
+</html>

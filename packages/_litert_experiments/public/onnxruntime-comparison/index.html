@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>The comparison against ONNX Runtime Web — milestone six of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 70rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+			table {
+				border-collapse: collapse;
+				margin: 1rem 0;
+			}
+			th,
+			td {
+				border: 1px solid #ccc;
+				padding: 0.3rem 0.6rem;
+				text-align: left;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>The comparison against ONNX Runtime Web</h1>
+		<p>
+			Milestone six of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. This page runs the
+			three ONNX shards of Qwen3-0.6B that
+			<code>packages/_onnx_experiments</code> already uses, on the same prompt and against the same PyTorch
+			reference as milestones four and five, so that the two runtimes can be put in one table.
+		</p>
+		<p>
+			<strong>The two sides do not hold the same weights.</strong> Issue #179 says the comparison changes
+			only the runtime. It does not. The ONNX shards are cut from
+			<code>model_q4f16.onnx</code>: four-bit weights, sixteen-bit floating point everywhere else, and one
+			fused <code>GroupQueryAttention</code> operation for each decoder layer. The LiteRT.js graphs are
+			thirty-two-bit floating point throughout, with attention built out of separate operations. The first
+			section of the output below reads that difference off the running sessions rather than asserting it,
+			because everything else on this page has to be read in the light of it.
+		</p>
+		<table>
+			<tr>
+				<th>Setting</th>
+				<th>What it selects</th>
+			</tr>
+			<tr>
+				<td><code>?cacheLocation=cpu</code></td>
+				<td>
+					The default. Every key/value cache is copied out to JavaScript on every call and passed back
+					in, which is what <code>packages/_onnx_experiments</code> and the cluster do today.
+				</td>
+			</tr>
+			<tr>
+				<td><code>?cacheLocation=gpu-buffer</code></td>
+				<td>
+					Every key/value cache stays on the graphics processor between calls, which is what milestone
+					four does with LiteRT.js. Only the hidden state is read back.
+				</td>
+			</tr>
+			<tr>
+				<td><code>?executionProvider=webgpu</code></td>
+				<td>The default. <code>wasm</code> runs the same graphs on the central processor instead.</td>
+			</tr>
+		</table>
+		<p>
+			Reads its three shards from <code>/onnxruntime-comparison/shards</code>, which the development server
+			serves out of
+			<code>packages/_onnx_experiments/public/onnxruntime_qwen3-0.6b-with-shards/shards</code>, and its
+			references from <code>/qwen3-litert-shards/models</code>.
+		</p>
+		<button id="run">Run the comparison</button>
+		<pre id="output">Not run yet.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "@webai/litert-experiments",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck"
+  },
+  "dependencies": {
+    "@litertjs/core": "^2.5.3",
+    "onnxruntime-web": "^1.27.0",
+    "vite": "^6.4.3"
+  },
+  "devDependencies": {
+    "@litertjs/model-tester": "^2.5.3",
+    "@types/ws": "^8.18.1",
+    "@webgpu/types": "^0.1.71",
+    "ws": "^8.21.1"
+  }
+}

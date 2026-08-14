@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Qwen3-0.6B LiteRT.js shards — milestone two of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 60rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Qwen3-0.6B LiteRT.js shards</h1>
+		<p>
+			Milestone two of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. Qwen3-0.6B split
+			into ten independently loadable <code>.tflite</code> graphs: seven decoder shards of four layers each,
+			and three language-model head chunks, one vocabulary slice each. The token embedding table is not a
+			graph at all — it is a raw binary, and the one row a token needs is read out of it with an HTTP range
+			request.
+		</p>
+		<p>
+			Every graph is loaded on its own, run once, compared element by element against the output PyTorch
+			produced for the exact same input, and freed again. Then the whole model is chained: the embedding row,
+			the seven decoder shards in sequence passing only the hidden state, and the three head chunks whose
+			logits concatenate. The chained logits are compared against PyTorch running this same decomposition
+			under the same conditions.
+		</p>
+		<p>
+			Each graph is loaded and freed one at a time, because the WebAssembly heap is shared by every loaded
+			graph, and because one worker owns one shard in the real architecture anyway.
+		</p>
+		<p>
+			The graphs and the embedding binary are generated artifacts totalling about 2.4 gigabytes, and are not
+			committed. Write them first with
+			<code>tools/qwen3_litert_shard_export/export_qwen3_shards.py</code>.
+		</p>
+		<button id="run">Run the gate</button>
+		<pre id="output">Not run yet. This downloads about 2.4 gigabytes and compiles ten graphs — it takes a while.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

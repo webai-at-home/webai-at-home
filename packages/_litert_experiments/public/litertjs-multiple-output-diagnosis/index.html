@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>LiteRT.js multiple output diagnosis — milestone one of issue #179</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 2rem;
+				max-width: 60rem;
+			}
+			pre {
+				background: #f4f4f4;
+				padding: 1rem;
+				overflow-x: auto;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+			button {
+				font-size: 1rem;
+				padding: 0.5rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>LiteRT.js multiple output diagnosis</h1>
+		<p>
+			Part of milestone one of
+			<a href="https://github.com/webai-at-home/webai-at-home/issues/179">issue #179</a>. The key/value cache
+			residency gate found that a shard-shaped graph produces wrong numbers on WebGPU and correct numbers on
+			WebAssembly, identically for cache ranks 3, 4, and 5 and for cache sizes from half a megabyte to 42
+			megabytes. Neither the rank nor the size is the trigger.
+		</p>
+		<p>
+			These four graphs differ by one property at a time, so that the trigger can be named rather than guessed:
+		</p>
+		<ul>
+			<li><strong>one_output_hidden_only</strong> — one output. The control, already correct on WebGPU.</li>
+			<li>
+				<strong>one_output_cache_only</strong> — one output, updated by a value derived from the hidden state
+				but never returned.
+			</li>
+			<li>
+				<strong>two_outputs_independent</strong> — two outputs, with nothing both returned and consumed.
+			</li>
+			<li>
+				<strong>two_outputs_shared</strong> — two outputs, and the hidden state is both returned and consumed.
+				The reproduction case.
+			</li>
+		</ul>
+		<p>
+			The graphs are generated artifacts and are not committed. Write them first with
+			<code>tools/cache_residency_export/export_multiple_output_diagnosis.py</code>.
+		</p>
+		<button id="run">Run the diagnosis</button>
+		<pre id="output">Not run yet.</pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>
