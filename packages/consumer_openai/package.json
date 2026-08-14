@@ -10,7 +10,7 @@
 	},
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
-		"build:dependencies": "npm run build --workspace @webai/protocol",
+		"build:dependencies": "npm run build --workspace @webai/protocol && npm run build --workspace @webai/consumer-cli",
 		"typecheck": "tsc -p tsconfig.json",
 		"predev": "npm run build:dependencies",
 		"dev": "tsx src/cli.ts server --gateway-url ws://localhost:8787",
