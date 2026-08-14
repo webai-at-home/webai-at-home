@@ -4,29 +4,34 @@ import type { OpenaiApiClient } from '../libs/openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	StageHelperLlmLlama3_2_1bFull — runs Llama 3.2 1B Instruct through a local OpenAI-compatible server
+//	StageHelperLlmQwen3_5_0_8bFull — runs Qwen3.5-0.8B through a local OpenAI-compatible server
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * Runs the complete Llama 3.2 1B Instruct model by forwarding the stage's prompt to a locally
- * running server that speaks the OpenAI-compatible Chat Completions API, such as LM Studio.
+ * Runs the complete Qwen3.5-0.8B model by forwarding the stage's prompt to a locally running
+ * server that speaks the OpenAI-compatible Chat Completions API, such as LM Studio.
  *
- * Everything about reading an answer back from that server is the same for every model the server
- * can hold, so it lives in {@link LocalServerGeneration} and this helper holds one of those. What
- * belongs to this helper alone is the computation it implements, and the answers it is producing
- * right now, which no other stage helper may release.
+ * This is the second kind of worker `stage_llm_qwen3_5_0_8b_full` can be assigned to, alongside
+ * the worker browser tab that downloads and runs the model itself — the same arrangement
+ * `stage_llm_llama3_2_1b_full` already had. The gateway assigns the stage to whichever kind of
+ * worker offers it and does not know which one a given assignment reaches.
+ *
+ * Everything about reading an answer back from the local server is the same for every model that
+ * server can hold, so it lives in {@link LocalServerGeneration} and this helper holds one of
+ * those. What belongs to this helper alone is the computation it implements, and the answers it is
+ * producing right now, which no other stage helper may release.
  *
  * The worker process is told which model to ask the local server for, with `--openai-model`, and
  * which stage to offer, with `--stage-names`. Naming the model here as well would be a second
  * version of the same fact.
  */
-export class StageHelperLlmLlama3_2_1bFull {
+export class StageHelperLlmQwen3_5_0_8bFull {
 	/**
 	 * The computation this stage helper implements, named the way a pipeline stage names its
 	 * computation.
 	 */
-	static readonly computation = 'llm_llama3_2_1b_full';
+	static readonly computation = 'llm_qwen3_5_0_8b_full';
 
 	/** The answers this stage helper is producing right now. */
 	private static readonly generation = new LocalServerGeneration();
@@ -38,14 +43,14 @@ export class StageHelperLlmLlama3_2_1bFull {
 	 * @returns `true` when this stage helper can run it.
 	 */
 	static implementsComputation(computation: string): boolean {
-		return computation === StageHelperLlmLlama3_2_1bFull.computation;
+		return computation === StageHelperLlmQwen3_5_0_8bFull.computation;
 	}
 
 	/**
 	 * Reports whether this worker can run the stage, before it advertises it.
 	 *
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
-	 * @param modelId The model this worker was told to serve, such as `llama-3.2-1b-instruct`.
+	 * @param modelId The model this worker was told to serve, such as `qwen_qwen3.5-0.8b`.
 	 * @returns Whether the stage can be run, and why not when it cannot.
 	 */
 	static async readiness(openaiApiClient: OpenaiApiClient, modelId: string): Promise<LocalModelReadiness> {
@@ -77,7 +82,7 @@ export class StageHelperLlmLlama3_2_1bFull {
 		openaiApiClient: OpenaiApiClient,
 		modelId: string,
 	): Promise<LlmStagePayload> {
-		return await StageHelperLlmLlama3_2_1bFull.generation.compute(
+		return await StageHelperLlmQwen3_5_0_8bFull.generation.compute(
 			taskId,
 			stageAssignmentId,
 			payload,
@@ -89,7 +94,7 @@ export class StageHelperLlmLlama3_2_1bFull {
 
 	/** Releases every answer this stage helper is holding. */
 	static clearEveryGeneration(): void {
-		StageHelperLlmLlama3_2_1bFull.generation.clearEveryGeneration();
+		StageHelperLlmQwen3_5_0_8bFull.generation.clearEveryGeneration();
 	}
 
 	/**
@@ -100,6 +105,6 @@ export class StageHelperLlmLlama3_2_1bFull {
 	 * @param stageAssignmentId The assignment asking to release it.
 	 */
 	static clearGeneration(taskId: string, stageAssignmentId: string): void {
-		StageHelperLlmLlama3_2_1bFull.generation.clearGeneration(taskId, stageAssignmentId);
+		StageHelperLlmQwen3_5_0_8bFull.generation.clearGeneration(taskId, stageAssignmentId);
 	}
 }

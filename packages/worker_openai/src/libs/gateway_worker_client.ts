@@ -3,7 +3,8 @@ import { Envelope } from '@webai/protocol/envelope';
 import { SessionRenewal } from '@webai/protocol/session_renewal';
 import { LeaseHeartbeat } from './lease_heartbeat.js';
 import { WorkerStageOffer } from './worker_stage_offer.js';
-import { StageHelperLlmLlama3_2_1bFull } from '../stages/stage_helper_llm_llama3_2_1b_full.js';
+import { StageCatalog } from '../stages/stage_catalog.js';
+import { LocalServerGeneration } from '../stages/local_server_generation.js';
 import type { OpenaiApiClient } from './openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -152,7 +153,7 @@ export class GatewayWorkerClient {
 			// assigned over this connection can carry it on. With the connection gone, no run
 			// can arrive, so every open request to the local server is stopped now rather than
 			// left running for as long as this process stays alive.
-			StageHelperLlmLlama3_2_1bFull.clearEveryGeneration();
+			StageCatalog.clearEveryGeneration();
 			LeaseHeartbeat.stop();
 			this.clearSessionRenewal();
 			this.callbacks.onConnectionChange?.(false);
@@ -272,7 +273,7 @@ export class GatewayWorkerClient {
 			// and the gateway assigns the stage again to the same worker; only the assignment named
 			// here is being cancelled, which is what stops this from ending an answer the
 			// replacement run is still reading.
-			StageHelperLlmLlama3_2_1bFull.clearGeneration(message.taskId, message.stageAssignmentId);
+			StageCatalog.clearGeneration(message.taskId, message.stageAssignmentId);
 			// Only a run that is actually under way needs remembering: it is about to end by
 			// throwing, and it must not report that as a stage failure. A cancellation that
 			// arrives between two runs has nothing to suppress, so nothing is recorded and the
@@ -324,7 +325,7 @@ export class GatewayWorkerClient {
 		const offered = WorkerStageOffer.offeredStages(pipelines, this.options.requestedStageNames);
 		let stageNames = offered.stageNames;
 		if (offered.localModelStageNames.length > 0) {
-			const readiness = await StageHelperLlmLlama3_2_1bFull.readiness(this.options.openaiApiClient, this.options.modelId);
+			const readiness = await LocalServerGeneration.readiness(this.options.openaiApiClient, this.options.modelId);
 			if (readiness.status === 'ready') {
 				this.callbacks.onNotice?.(`The local server offers ${this.options.modelId}`);
 			} else {
@@ -390,7 +391,7 @@ export class GatewayWorkerClient {
 			LeaseHeartbeat.stop(stageAssignmentId);
 			// A failed stage abandons the task, so drop whatever this worker was keeping for it:
 			// an answer the local server is still producing. Left alone when no such answer exists.
-			StageHelperLlmLlama3_2_1bFull.clearGeneration(taskId, stageAssignmentId);
+			StageCatalog.clearGeneration(taskId, stageAssignmentId);
 			if (this.reportsNothingFor(stageAssignmentId)) {
 				return;
 			}
@@ -435,17 +436,18 @@ export class GatewayWorkerClient {
 	 * @throws If no helper here implements the computation, or if the computation fails.
 	 */
 	private async runComputation(message: Extract<GatewayMessage, { type: 'stage.assign' }>): Promise<StagePayload> {
-		if (StageHelperLlmLlama3_2_1bFull.implementsComputation(message.computation)) {
-			return await StageHelperLlmLlama3_2_1bFull.compute(
-				message.taskId,
-				message.stageAssignmentId,
-				message.value as LlmStagePayload,
-				message.generationSettings,
-				this.options.openaiApiClient,
-				this.options.modelId,
-			);
+		const stageHelper = StageCatalog.stageHelperFor(message.computation);
+		if (stageHelper === undefined) {
+			throw new Error(`This worker implements no computation named ${message.computation}`);
 		}
-		throw new Error(`This worker implements no computation named ${message.computation}`);
+		return await stageHelper.compute(
+			message.taskId,
+			message.stageAssignmentId,
+			message.value as LlmStagePayload,
+			message.generationSettings,
+			this.options.openaiApiClient,
+			this.options.modelId,
+		);
 	}
 
 	///////////////////////////////////////////////////////////////////////////////

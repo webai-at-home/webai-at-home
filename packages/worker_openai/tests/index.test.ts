@@ -6,6 +6,7 @@ import { GatewayWorkerClient, type WorkerSocket } from '../src/libs/gateway_work
 import { GatewayConnectionSupervisor } from '../src/libs/gateway_connection_supervisor.js';
 import { WorkerStageOffer } from '../src/libs/worker_stage_offer.js';
 import { StageHelperLlmLlama3_2_1bFull } from '../src/stages/stage_helper_llm_llama3_2_1b_full.js';
+import { StageHelperLlmQwen3_5_0_8bFull } from '../src/stages/stage_helper_llm_qwen3_5_0_8b_full.js';
 import { OpenaiApiClient, type ChatCompletionStreamUsage } from '../src/libs/openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -150,6 +151,11 @@ const loadedPipelines = [
 			{ name: 'stage_llm_llama3_2_1b_full', computation: 'llm_llama3_2_1b_full' },
 		],
 	},
+	{
+		stages: [
+			{ name: 'stage_llm_qwen3_5_0_8b_full', computation: 'llm_qwen3_5_0_8b_full' },
+		],
+	},
 ];
 
 /** A connection that records what was sent on it, standing in for one to the gateway. */
@@ -198,8 +204,9 @@ const receive = (socket: WorkerSocket, message: GatewayMessage): void => {
 
 Test('offers a stage by the computation it names, and never by its stage name', () => {
 	const offered = WorkerStageOffer.offeredStages(loadedPipelines, []);
-	Assert.deepEqual(offered.stageNames, ['stage_llm_llama3_2_1b_full']);
-	Assert.deepEqual(offered.localModelStageNames, ['stage_llm_llama3_2_1b_full']);
+	Assert.deepEqual(offered.stageNames, ['stage_llm_llama3_2_1b_full', 'stage_llm_qwen3_5_0_8b_full']);
+	// Every stage this worker carries a helper for is one the local server must hold the model for.
+	Assert.deepEqual(offered.localModelStageNames, ['stage_llm_llama3_2_1b_full', 'stage_llm_qwen3_5_0_8b_full']);
 	// A stage name this worker has never heard of is offered all the same, as long as it names a
 	// computation this worker implements, which is what lets a pipeline be added without
 	// releasing the worker.
@@ -209,6 +216,7 @@ Test('offers a stage by the computation it names, and never by its stage name', 
 
 Test('restricts the offer to the stages the command line named', () => {
 	Assert.deepEqual(WorkerStageOffer.offeredStages(loadedPipelines, ['stage_llm_llama3_2_1b_full']).stageNames, ['stage_llm_llama3_2_1b_full']);
+	Assert.deepEqual(WorkerStageOffer.offeredStages(loadedPipelines, ['stage_llm_qwen3_5_0_8b_full']).stageNames, ['stage_llm_qwen3_5_0_8b_full']);
 	Assert.deepEqual(WorkerStageOffer.offeredStages(loadedPipelines, ['stage_dev_formula_add']).stageNames, []);
 });
 
@@ -340,6 +348,30 @@ Test('aborts the request to the local server when an open answer is released', a
 	Assert.equal(state.abortedCount, 1);
 });
 
+Test('reads an answer for the Qwen3.5-0.8B stage as well, and holds it apart from the Llama 3.2 1B Instruct stage\'s own', async () => {
+	const { client: qwenClient } = fakeChatClient(['Paris', ' it is.']);
+	const qwenResult = await StageHelperLlmQwen3_5_0_8bFull.compute(
+		'task-two-stages', 'assignment-qwen', { text: 'What is the capital of France?' }, { isStreaming: true }, qwenClient, 'qwen_qwen3.5-0.8b',
+	);
+	Assert.deepEqual(qwenResult, { newText: 'Paris', isContinuation: true, done: false });
+
+	// The two stage helpers keep their own answers, so one task identifier can be held open by both
+	// at once and neither run can carry on or release the other's answer.
+	const { client: llamaClient } = fakeChatClient(['Rome', ' it is.']);
+	const llamaResult = await StageHelperLlmLlama3_2_1bFull.compute(
+		'task-two-stages', 'assignment-llama', { text: 'What is the capital of Italy?' }, { isStreaming: true }, llamaClient, 'llama-3.2-1b-instruct',
+	);
+	Assert.deepEqual(llamaResult, { newText: 'Rome', isContinuation: true, done: false });
+
+	const qwenSecond = await StageHelperLlmQwen3_5_0_8bFull.compute(
+		'task-two-stages', 'assignment-qwen', { isContinuation: true }, { isStreaming: true }, qwenClient, 'qwen_qwen3.5-0.8b',
+	);
+	Assert.deepEqual(qwenSecond, { newText: ' it is.', isContinuation: true, done: false });
+
+	StageHelperLlmQwen3_5_0_8bFull.clearGeneration('task-two-stages', 'assignment-qwen');
+	StageHelperLlmLlama3_2_1bFull.clearGeneration('task-two-stages', 'assignment-llama');
+});
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 //	The History With The Gateway
@@ -364,7 +396,7 @@ Test('authenticates, asks for the pipelines, and registers with the stages it ca
 	await new Promise((resolve) => setImmediate(resolve));
 	const register = socket.sent.at(-1);
 	Assert.equal(register?.type, 'deviceRegister');
-	Assert.deepEqual(register?.type === 'deviceRegister' ? register.stageNames : [], ['stage_llm_llama3_2_1b_full']);
+	Assert.deepEqual(register?.type === 'deviceRegister' ? register.stageNames : [], ['stage_llm_llama3_2_1b_full', 'stage_llm_qwen3_5_0_8b_full']);
 });
 
 Test('registers with no stage, and closes, when the local server does not hold the model', async () => {

@@ -77,7 +77,7 @@ Test('routes "worker_openai" to that program\'s own command line program, which 
 	const { code, stdout } = await runCli(['worker_openai', '--help']);
 	Assert.equal(code, 0);
 	Assert.match(stdout, /--openai-base-url/);
-	Assert.match(stdout, /--model/);
+	Assert.match(stdout, /--openai-model/);
 });
 
 Test('routes anything else to consumer_cli, including a subcommand this program has never heard of', async () => {

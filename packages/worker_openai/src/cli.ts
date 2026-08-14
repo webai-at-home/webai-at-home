@@ -29,7 +29,7 @@ const defaultGatewayUrl = 'wss://webai-gateway.dash-menu.com/';
  * worth guessing: it is the one every example in this repository already uses, and a worker started
  * against nothing there fails with a connection error naming this address, which says what to fix.
  *
- * `--model` is deliberately *not* given a default alongside it. See {@link Cli.run}.
+ * `--openai-model` is deliberately *not* given a default alongside it. See {@link Cli.run}.
  */
 const defaultOpenaiBaseUrl = 'http://localhost:1234/v1';
 
@@ -55,8 +55,8 @@ type WorkerOptions = {
 	worker_name: string;
 	openaiBaseUrl?: string;
 	openaiApiKey?: string;
-	model: string;
-	stageNames?: string[];
+	openaiModel: string;
+	stageNames: string[];
 	/** The directory holding this worker's own account key pair, as `default.account_key.json`. */
 	config_dir: string;
 	/**
@@ -108,8 +108,11 @@ export class Cli {
 			//   - LM Studio loads a named model just in time: a chat completion naming a model that
 			//     was not loaded answered in 2.7 seconds. So naming the model is the whole
 			//     mechanism, and there is nothing to discover.
-			.requiredOption('-m, --model <model>', 'the model the local server is asked for, exactly as that server names it')
-			.option('-s, --stage-names <name...>', 'restrict this worker to these stages, instead of every stage it can run')
+			.requiredOption('-m, --openai-model <model>', 'the model the local server is asked for, exactly as that server names it')
+			// Required, because every stage helper in `src/stages/` reaches the same local server for
+			// the one model `--openai-model` names: a worker that offered every stage it can run would
+			// answer each of them with that one model, whichever model the stage is named after.
+			.requiredOption('-s, --stage-names <name...>', 'the stages this worker offers to run, such as stage_llm_llama3_2_1b_full. The model named by --openai-model is what answers every one of them')
 			.option('-c, --config_dir <path>', 'the directory holding this worker\'s own account key pair, as default.account_key.json, so the stages it completes earn credits for that account. A directory with no key pair in it means no account', defaultConfigDir)
 			.option('--no-automatic-reconnection', 'stop as soon as the connection to the central gateway closes, instead of opening a connection again after a wait that grows up to one minute');
 
@@ -155,9 +158,9 @@ export class Cli {
 			{
 				name: options.worker_name,
 				authenticationToken: Cli.resolveAuthToken(options.authToken),
-				requestedStageNames: options.stageNames ?? [],
+				requestedStageNames: options.stageNames,
 				openaiApiClient,
-				modelId: options.model,
+				modelId: options.openaiModel,
 				accountKeyPair,
 			},
 			{

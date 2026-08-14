@@ -75,7 +75,7 @@ The central research questions are still open, especially result verification, b
 
 ```sh
 npx webai-at-home gateway
-npx webai-at-home worker_openai --model llama-3.2-1b-instruct
+npx webai-at-home worker_openai --openai-model llama-3.2-1b-instruct --stage-names stage_llm_llama3_2_1b_full
 npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 

@@ -1,4 +1,4 @@
-import { StageHelperLlmLlama3_2_1bFull } from '../stages/stage_helper_llm_llama3_2_1b_full.js';
+import { StageCatalog } from '../stages/stage_catalog.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -52,7 +52,7 @@ export class WorkerStageOffer {
 		const localModelStageNames: string[] = [];
 		for (const pipeline of pipelines) {
 			for (const stage of pipeline.stages) {
-				if (WorkerStageOffer.implementsComputation(stage.computation) === false) {
+				if (StageCatalog.implementsComputation(stage.computation) === false) {
 					continue;
 				}
 				if (requestedStageNames.length > 0 && requestedStageNames.includes(stage.name) === false) {
@@ -61,26 +61,13 @@ export class WorkerStageOffer {
 				if (stageNames.includes(stage.name) === false) {
 					stageNames.push(stage.name);
 				}
-				if (
-					StageHelperLlmLlama3_2_1bFull.implementsComputation(stage.computation)
-					&& localModelStageNames.includes(stage.name) === false
-				) {
+				// Every stage helper this worker carries reaches the local server for its model, so
+				// every stage offered here is one that server must hold the model for.
+				if (localModelStageNames.includes(stage.name) === false) {
 					localModelStageNames.push(stage.name);
 				}
 			}
 		}
 		return { stageNames, localModelStageNames };
-	}
-
-	/**
-	 * Reports whether this worker implements the computation a pipeline stage names.
-	 *
-	 * This is the only place the worker decides what it can run.
-	 *
-	 * @param computation The computation named by a pipeline stage.
-	 * @returns `true` when one of this worker's helpers implements it.
-	 */
-	private static implementsComputation(computation: string): boolean {
-		return StageHelperLlmLlama3_2_1bFull.implementsComputation(computation);
 	}
 }

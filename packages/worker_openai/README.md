@@ -11,20 +11,25 @@ plan in [issue #103](https://github.com/webai-at-home/webai-at-home/issues/103).
 
 ## Running it
 
-There is a ready-made script that passes the base URL and the model name LM Studio uses, so
-nothing else has to be given on the command line.
+There is one ready-made script per model, each passing the base URL LM Studio uses, the name LM
+Studio gives that model, and the one stage that model answers, so nothing else has to be given on
+the command line.
 
 Start LM Studio's local server from the LM Studio application or with `lms server start`, then
 start the worker:
 
 ```sh
-npm run sample:lmstudio --workspace @webai/worker-openai
+npm run sample:lmstudio:llama-3.2-1b-instruct --workspace @webai/worker-openai
+```
+
+```sh
+npm run sample:lmstudio:qwen_qwen3.5-0.8b --workspace @webai/worker-openai
 ```
 
 To point the worker somewhere else, use `npm run dev` and give the options yourself:
 
 ```sh
-npm run dev --workspace @webai/worker-openai -- --model llama-3.2-1b-instruct
+npm run dev --workspace @webai/worker-openai -- --openai-model llama-3.2-1b-instruct --stage-names stage_llm_llama3_2_1b_full
 ```
 
 Or, against a built package:
@@ -43,12 +48,12 @@ npm run start --workspace @webai/worker-openai
 | `-n, --worker_name <name>` | `openai-worker` | The worker name shown in the gateway's device list. |
 | `-b, --openai-base-url <url>` | `http://localhost:1234/v1` | The base URL of the local server's OpenAI-compatible API. That default is LM Studio's own address, so a worker on a machine already running LM Studio needs no `--openai-base-url` at all. Falls back to the `OPENAI_BASE_URL` environment variable. |
 | `-k, --openai-api-key <key>` | none, so no `Authorization` header is sent at all | The bearer token to present to the local server's OpenAI-compatible API. A local server such as LM Studio requires none; a hosted server behind `--openai-base-url` does. Falls back to the `OPENAI_API_KEY` environment variable. |
-| `-m, --model <model>` | none, required | The model the local server is asked for, exactly as that server names it. Two servers name the same model differently, so this has to change with the base URL, and this worker refuses to start without it rather than guess. |
-| `-s, --stage-names <name...>` | every stage this worker can run | Restrict this worker to particular stages. |
+| `-m, --openai-model <model>` | none, required | The model the local server is asked for, exactly as that server names it. Two servers name the same model differently, so this has to change with the base URL, and this worker refuses to start without it rather than guess. |
+| `-s, --stage-names <name...>` | none, required | The stages this worker offers to run, such as `stage_llm_llama3_2_1b_full`. The model named by `--openai-model` is what answers every one of them, which is why this has to be given rather than defaulting to every stage this worker can run: one worker process reaches one local server for one model, and a stage named after a different model would be answered by that model all the same. |
 | `-c, --config_dir <path>` | `~/.webai-at-home/worker_openai_config` | The directory holding this worker's own account key pair, as `default.account_key.json`, so the stages it completes earn credits for that account. A directory with no key pair in it means no account, and the stages it completes earn credits for nobody. See [`docs/accounting_system.md`](../../docs/accounting_system.md). |
 | `--no-automatic-reconnection` | off, so this worker does connect again | Stop as soon as the connection to the central gateway closes, instead of opening a connection again after a wait. See [Connecting again after the connection is lost](#connecting-again-after-the-connection-is-lost). |
 
-`-m, --model` is required and is deliberately not read from the local server, even though `GET /v1/models` exists on every OpenAI-compatible API. Measured against a real LM Studio for [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171), that endpoint lists every downloaded model rather than the loaded one — twelve of them on the machine it was measured on, one a text embedding model that cannot serve a chat completion at all — and its entries carry only `id`, `object` and `owned_by`, so nothing in the response says which model is loaded. Zero were loaded when it returned those twelve. LM Studio loads a named model just in time instead: a chat completion naming a model that was not loaded answered in 2.7 seconds. Naming the model is therefore the whole mechanism, and there is nothing to discover.
+`-m, --openai-model` is required and is deliberately not read from the local server, even though `GET /v1/models` exists on every OpenAI-compatible API. Measured against a real LM Studio for [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171), that endpoint lists every downloaded model rather than the loaded one — twelve of them on the machine it was measured on, one a text embedding model that cannot serve a chat completion at all — and its entries carry only `id`, `object` and `owned_by`, so nothing in the response says which model is loaded. Zero were loaded when it returned those twelve. LM Studio loads a named model just in time instead: a chat completion naming a model that was not loaded answered in 2.7 seconds. Naming the model is therefore the whole mechanism, and there is nothing to discover.
 
 `GATEWAY_WS_URL` and `GATEWAY_AUTH_TOKEN` are the same two names `packages/docker_server` uses for the same two settings, so one pair of exported variables points every program on this machine at the same gateway. See [`docs/environment_variables.md`](../../docs/environment_variables.md) for every variable this project reads and which programs read none.
 
@@ -81,16 +86,21 @@ generation setting the consumer submitted, exactly as the browser-based full-mod
 
 ## What this worker checks before it registers
 
-Before it advertises `stage_llm_llama3_2_1b_full`, this worker asks the configured base URL for
-`GET /v1/models` and checks that the model named by `--model` is in the answer. A worker whose
-local server cannot be reached, or does not currently hold that model, registers with no stage
+Before it advertises the stages `--stage-names` asked for, this worker asks the configured base URL
+for `GET /v1/models` and checks that the model named by `--openai-model` is in the answer. A worker
+whose local server cannot be reached, or does not currently hold that model, registers with no stage
 at all rather than accepting work it would fail, and says why in its own output.
 
-`stage_llm_llama3_2_1b_full` is the same stage `@webai/worker-webpage`'s browser tab offers by
-downloading and running the model itself (see
-[`packages/worker_webpage/README.md`](../worker_webpage/README.md)). Either worker type can
-fulfil it: this worker forwards the prompt to a local server that already holds the model, and
-does not download anything itself.
+This worker carries one stage helper per stage it can run, in `src/stages/`:
+
+- `stage_llm_llama3_2_1b_full`
+- `stage_llm_qwen3_5_0_8b_full`
+
+Both are stages `@webai/worker-webpage`'s browser tab also offers, by downloading and running the
+model itself (see [`packages/worker_webpage/README.md`](../worker_webpage/README.md)). Either worker
+type can fulfil either stage: this worker forwards the prompt to a local server that already holds
+the model, and does not download anything itself. The gateway assigns the stage to whichever kind of
+worker offers it, and does not know which one a given assignment reaches.
 
 ## What a model behind LM Studio can do on its own
 
