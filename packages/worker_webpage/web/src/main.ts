@@ -245,7 +245,7 @@ export class WorkerPage {
 		const workerNameFromUrl: string | null = new URLSearchParams(location.search).get('workerName');
 		const trimmedWorkerName = workerNameFromUrl?.trim() ?? '';
 		this.nameInputEl.value = trimmedWorkerName === ''
-			? `browser-worker-${RandomUuid.generate().slice(0, 8)}`
+			? `worker-webpage-${RandomUuid.generate().slice(0, 8)}`
 			: (workerNameFromUrl ?? '');
 		this.workerNameEl.textContent = this.nameInputEl.value;
 		this.renderStages();
