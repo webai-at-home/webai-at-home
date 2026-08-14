@@ -120,16 +120,6 @@ Test('prints the version this package was published with, which is the version n
 	Assert.equal(stdout.trim(), Cli.readVersion());
 });
 
-Test('runs worker_openai for "donate", and consumer_openai\'s server subcommand for "serve"', async () => {
-	const donate = await runCli(['donate', '--help']);
-	Assert.match(donate.stdout, /Usage: webai-at-home donate \[options\]/);
-	Assert.match(donate.stdout, /--openai-base-url/);
-
-	const serve = await runCli(['serve', '--help']);
-	Assert.match(serve.stdout, /Usage: webai-at-home serve \[options\]/);
-	Assert.match(serve.stdout, /--gateway-url/);
-});
-
 Test('builds its list of consumer_cli commands from consumer_cli itself, rather than from a hand-written copy', async () => {
 	const { stdout } = await runCli([]);
 	// Every command consumer_cli declares has to appear, `log_statistics` included: it was renamed

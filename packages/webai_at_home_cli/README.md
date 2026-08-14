@@ -6,12 +6,11 @@ The single command line program published to the npm registry as `webai-at-home`
 
 ```sh
 npx webai-at-home gateway
-npx webai-at-home donate --model llama-3.2-1b-instruct
 npx webai-at-home worker_openai --model llama-3.2-1b-instruct
 npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
-The two workers above expect an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already running on `http://localhost:1234/v1`, which is that address's default and so needs no `--openai-base-url`. LM Studio loads the named model on demand, so it does not have to be loaded first. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--gateway-url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
+The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already running on `http://localhost:1234/v1`, which is that address's default and so needs no `--openai-base-url`. LM Studio loads the named model on demand, so it does not have to be loaded first. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--gateway-url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
 
 ## Which program runs
 
@@ -22,11 +21,7 @@ The first word of the command line decides:
 | `gateway` | [`@webai/gateway`](../gateway/README.md), the central gateway |
 | `consumer_openai` | [`@webai/consumer-openai`](../consumer_openai/README.md), the OpenAI-compatible server |
 | `worker_openai` | [`@webai/worker-openai`](../worker_openai/README.md), the native worker |
-| `donate` | [`@webai/worker-openai`](../worker_openai/README.md) again, under a name that says what a person is trying to do |
-| `serve` | [`@webai/consumer-openai`](../consumer_openai/README.md)'s own `server` subcommand, under the same kind of name |
 | anything else | [`@webai/consumer-cli`](../consumer_cli/README.md), on the whole command line unchanged |
-
-`donate` and `serve` run exactly what `worker_openai` and `consumer_openai server` run, and take exactly the same options. They exist because nobody arrives at this program wanting to run a "consumer" or a "worker": those two words name the parts of this cluster's architecture, not what the person in front of the keyboard is trying to do. See [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171).
 
 ## `--version`
 

@@ -24,21 +24,14 @@ const __dirname = import.meta.dirname;
 /** The name this program is published under, printed in every usage line and every error message. */
 const programName = 'webai-at-home';
 
-/**
- * The first word of the command line that names one of the other three command line programs.
- *
- * `donate` and `serve` are the same two programs under a name that says what a person is trying to
- * do rather than what part of the architecture answers them: `donate` runs `worker_openai`, and
- * `serve` runs `consumer_openai server`. See issue #171.
- */
-const namedSubcommands = ['gateway', 'consumer_openai', 'worker_openai', 'donate', 'serve'] as const;
+/** The first word of the command line that names one of the other three command line programs. */
+const namedSubcommands = ['gateway', 'consumer_openai', 'worker_openai'] as const;
 
 /**
  * The command line program of `webai-at-home`.
  *
  * `gateway`, `consumer_openai` and `worker_openai` each name one of the other three command line
- * programs in this repository and run it, unchanged, on whatever follows, and `donate` and `serve`
- * name two of those same three again. Any other first word —
+ * programs in this repository and run it, unchanged, on whatever follows. Any other first word —
  * `submit`, `status`, `capacity`, `log_statistics`, or one of the account commands, but also a global
  * option such as `--gateway-url` written before any of those, the way `@webai/consumer-cli`'s own usage
  * documents it — is not a command of this program at all: it is handed whole to
@@ -188,37 +181,6 @@ export class Cli {
 			.argument('[workerOpenaiArgs...]', "the worker's own options")
 			.action(async (workerOpenaiArgs: string[]): Promise<void> => {
 				await WorkerOpenaiCli.run(workerOpenaiArgs, `${programName} worker_openai`);
-			});
-
-		// `donate` and `serve` name the same two programs by what a person is trying to do, rather
-		// than by which part of the architecture answers them: nobody arrives wanting to run a
-		// "consumer" or a "worker". `serve` also supplies `consumer_openai`'s own `server`
-		// subcommand, so that the whole command is `webai-at-home serve` and not
-		// `webai-at-home serve server`. See issue #171.
-		program
-			.command('donate')
-			.description('give this machine\'s spare computing time to the cluster (the same as worker_openai)')
-			.allowUnknownOption()
-			.passThroughOptions()
-			.helpOption(false)
-			.argument('[workerOpenaiArgs...]', "the worker's own options")
-			.action(async (workerOpenaiArgs: string[]): Promise<void> => {
-				await WorkerOpenaiCli.run(workerOpenaiArgs, `${programName} donate`);
-			});
-
-		program
-			.command('serve')
-			.description('serve the OpenAI-compatible completion interface (the same as consumer_openai server)')
-			.allowUnknownOption()
-			.passThroughOptions()
-			.helpOption(false)
-			.argument('[consumerOpenaiServerArgs...]', "the server's own options")
-			.action(async (consumerOpenaiServerArgs: string[]): Promise<void> => {
-				await ConsumerOpenaiCli.run(
-					['server', ...consumerOpenaiServerArgs],
-					programName,
-					`${programName} serve`,
-				);
 			});
 
 		return program;

@@ -6,7 +6,7 @@ The single command line program published to the npm registry as `webai-at-home`
 
 ## Key Exports & Entry Points
 
-- `src/cli.ts`: the program, `Cli`. `gateway`, `consumer_openai` and `worker_openai` each run one wrapped program unchanged; `donate` and `serve` name `worker_openai` and `consumer_openai server` again by what a person is trying to do; any other first word is handed whole to `@webai/consumer-cli`.
+- `src/cli.ts`: the program, `Cli`. `gateway`, `consumer_openai` and `worker_openai` each run one wrapped program unchanged; any other first word is handed whole to `@webai/consumer-cli`.
 - `scripts/vendor_wrapped_programs.ts`: run by `prepack`. Copies the built files of every wrapped program into `dist/vendor` and rewrites the four package-name imports in `dist/cli.js` into relative paths pointing there.
 
 ## Rules
