@@ -59,7 +59,7 @@ export class ServerCommand {
 		const logsDirectory = settings.logsDirectory;
 		const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const messageLogger = new MessageLogger(
-			Path.join(logsDirectory, `consumer-openai-${runTimestamp}.log_entry.jsonl`),
+			Path.join(logsDirectory, `consumer_openai-${runTimestamp}.log_entry.jsonl`),
 		);
 
 		// Every `POST /v1/chat/completions` transaction this server answers, kept in its own file

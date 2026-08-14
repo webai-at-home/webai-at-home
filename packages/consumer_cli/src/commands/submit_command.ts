@@ -54,7 +54,7 @@ export class SubmitCommand {
 		// longer into whichever directory this command was run from (issue #171).
 		const logsDirectory = options.logsDirectory;
 		const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
-		const messageLogger = new MessageLogger(Path.join(logsDirectory, `consumer-cli-${runTimestamp}.log_entry.jsonl`));
+		const messageLogger = new MessageLogger(Path.join(logsDirectory, `consumer_cli-${runTimestamp}.log_entry.jsonl`));
 
 		return new Promise<void>((resolve) => {
 			// The connection of the `ws` package names its event handlers with its own event
