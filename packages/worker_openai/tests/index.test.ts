@@ -550,8 +550,8 @@ Test('goes back to the first wait once a connection has registered, and stops fo
 
 	// The third connection registers, which is the first moment it is known to be usable.
 	openedSockets[2].onopen?.();
-	receive(openedSockets[2], { type: 'deviceAuthenticated', expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
-	receive(openedSockets[2], { type: 'pipelines', pipelines: loadedPipelines });
+	receive(openedSockets[2], { type: 'deviceAuthenticated', authIdentity: 'authIdentity-test', expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
+	receive(openedSockets[2], { type: 'pipelines', pipelines: loadedPipelines as never });
 	return new Promise<void>((resolve) => {
 		setImmediate(() => {
 			receive(openedSockets[2], { type: 'deviceRegistered', deviceId: 'device-test' });
