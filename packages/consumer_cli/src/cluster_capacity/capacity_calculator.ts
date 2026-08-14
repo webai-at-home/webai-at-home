@@ -37,13 +37,11 @@ type StageCapacity = {
  * Estimates how many concurrent runs of a pipeline the currently connected workers can
  * support, from the pipeline's own specification and the live device list.
  *
- * The formula depends on how the pipeline was built. A pipeline whose every stage sets
- * `prefersSameWorkerOnRetry` keeps state in one worker's memory across its whole run — a
- * language-model shard's key-value cache, for instance — so only a worker advertising every
- * one of its stages can host a run at all, and the cluster's capacity is the total free
- * capacity of those workers. A pipeline with no such stage can spread one run's stages across
- * different workers, so its capacity is set by whichever stage has the least free capacity
- * behind it.
+ * One run's stages may be spread across different workers, whatever the pipeline is, so the
+ * capacity is set by whichever stage has the least free capacity behind it. `prefersSameWorkerOnRetry`
+ * does not change that: it pins one stage to the worker that already ran that same stage, not
+ * the whole pipeline to one worker, so a pipeline of three language-model shards runs on three
+ * workers advertising one shard each, each shard going back to its own worker every round.
  */
 export class CapacityCalculator {
 	/**
@@ -53,46 +51,24 @@ export class CapacityCalculator {
 	 */
 	static calculate(pipeline: PipelineSpecification, devices: Device[]): CapacityResult {
 		const workers = devices.filter((device) => device.deviceRole === 'worker');
-		const isWorkerPinned = pipeline.stages.every((stage) => stage.prefersSameWorkerOnRetry === true);
-		return isWorkerPinned
-			? CapacityCalculator._workerPinnedCapacity(pipeline, workers)
-			: CapacityCalculator._independentStageCapacity(pipeline, workers);
+		return CapacityCalculator._bottleneckStageCapacity(pipeline, workers);
 	}
 
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
-	//	Formulas
+	//	Formula
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
-	 * The worker-pinned formula: only a worker advertising every stage of the pipeline can
-	 * host a run, so capacity is the total free capacity of those workers.
-	 *
-	 * @param pipeline The pipeline to estimate capacity for.
-	 * @param workers The currently connected worker devices.
-	 * @returns The estimated concurrent-run capacity, with a one-line reason.
-	 */
-	private static _workerPinnedCapacity(pipeline: PipelineSpecification, workers: Device[]): CapacityResult {
-		const stageNames = pipeline.stages.map((stage) => stage.name);
-		const coveringWorkers = workers.filter((worker) => stageNames.every((stageName) => worker.stageNames.includes(stageName)));
-		const capacity = coveringWorkers.reduce((sum, worker) => sum + DeviceAvailability.availableCapacity(worker), 0);
-		const stageWord = stageNames.length === 1 ? 'stage' : 'stages';
-		return {
-			capacity,
-			reason: `worker coverage (${coveringWorkers.length} of ${workers.length} workers advertise all ${stageNames.length} ${stageWord})`,
-		};
-	}
-
-	/**
-	 * The independent-stage formula: each stage can run on a different worker, so capacity is
+	 * The bottleneck-stage formula: each stage can run on a different worker, so capacity is
 	 * set by whichever stage has the least free capacity behind it.
 	 *
 	 * @param pipeline The pipeline to estimate capacity for.
 	 * @param workers The currently connected worker devices.
 	 * @returns The estimated concurrent-run capacity, with a one-line reason.
 	 */
-	private static _independentStageCapacity(pipeline: PipelineSpecification, workers: Device[]): CapacityResult {
+	private static _bottleneckStageCapacity(pipeline: PipelineSpecification, workers: Device[]): CapacityResult {
 		const stageCapacities: StageCapacity[] = pipeline.stages.map((stage) => ({
 			stageName: stage.name,
 			capacity: workers

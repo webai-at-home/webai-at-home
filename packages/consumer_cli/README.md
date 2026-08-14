@@ -118,11 +118,11 @@ npm run dev --workspace @webai/consumer-cli -- capacity --task_type llm_qwen3_0_
 ```
 
 ```
-llm_qwen3_0_6b_sharded: 5 concurrent runs supported
-  limited by: worker coverage (5 of 8 workers advertise all 3 stages)
+llm_qwen3_0_6b_sharded: 1 concurrent run supported
+  limited by: stage_llm_qwen3_0_6b_shard3of3 (1 available slot vs 3 on stage_llm_qwen3_0_6b_shard2of3)
 ```
 
-A pipeline whose every stage keeps state on one worker between rounds — such as a language-model shard's key-value cache — needs a worker that advertises every one of its stages, so capacity is the total free capacity of those workers. A pipeline with no such stage can spread its stages across different workers, so its capacity is set by whichever stage has the least free capacity behind it.
+A run's stages can be spread across different workers, so capacity is set by whichever stage has the least free capacity behind it. A stage that keeps state on one worker between rounds — such as a language-model shard's key-value cache — is sent back to the worker that ran that same stage, but that pins one stage to one worker, not the whole pipeline to one worker: three workers advertising one shard each can run the sharded pipeline.
 
 | Option | Default | Meaning |
 | --- | --- | --- |

@@ -7,6 +7,7 @@ import { ConsumerClient, type TaskSocket } from '../src/gateway_connection/consu
 import { TaskInputFactory, taskTypeNames, taskTypeNamesAcceptingHistory } from '../src/libs/task_input_factory.js';
 import { DeviceAvailability } from '../src/cluster_capacity/device_availability.js';
 import { CapacityCalculator } from '../src/cluster_capacity/capacity_calculator.js';
+import { ClusterCapacityReader } from '../src/cluster_capacity/cluster_capacity_reader.js';
 import { ObserverClient } from '../src/gateway_connection/observer_client.js';
 import { AccountIdentity, protocolVersion, type ClientMessage, type Device, type GatewayMessage, type LedgerEntry, type PipelineSpecification, type ProtocolError } from '@webai/protocol';
 import { AccountClient } from '../src/account/account_client.js';
@@ -175,7 +176,7 @@ Test('reads whether a worker device may take on another assignment', () => {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-Test('estimates worker-pinned capacity as the total free capacity of workers advertising every shard', () => {
+Test('estimates a sharded pipeline from its bottleneck shard, not from workers advertising every shard', () => {
 	const shardStages = ['stage_llm_qwen3_0_6b_shard1of3', 'stage_llm_qwen3_0_6b_shard2of3', 'stage_llm_qwen3_0_6b_shard3of3'];
 	const pipeline: PipelineSpecification = {
 		pipelineId: 'llm_qwen3_0_6b_sharded', version: 1, taskType: 'task_type_llm_qwen3_0_6b_sharded', repeatsUntilDone: true,
@@ -187,17 +188,37 @@ Test('estimates worker-pinned capacity as the total free capacity of workers adv
 		connectedAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z',
 		maxConcurrentAssignments: 1, activeAssignments: 0,
 	});
-	// 5 workers advertise all 3 shards, with one free slot each; 3 more advertise only the first
-	// shard, so they cannot host a run of this pipeline at all — matching the example from
-	// https://github.com/webai-at-home/webai-at-home/issues/90.
+	// Each worker advertises one shard and nothing else, which is how the three shards are
+	// actually deployed: prefersSameWorkerOnRetry sends each shard back to the worker that ran
+	// that same shard, so the three shards never have to share one worker. 2 workers advertise
+	// the first shard, 3 the second, 1 the third, so the third shard is the bottleneck.
 	const devices: Device[] = [
-		worker('worker-1', shardStages), worker('worker-2', shardStages), worker('worker-3', shardStages),
-		worker('worker-4', shardStages), worker('worker-5', shardStages),
-		worker('worker-6', [shardStages[0] as string]), worker('worker-7', [shardStages[0] as string]), worker('worker-8', [shardStages[0] as string]),
+		worker('worker-1', [shardStages[0] as string]), worker('worker-2', [shardStages[0] as string]),
+		worker('worker-3', [shardStages[1] as string]), worker('worker-4', [shardStages[1] as string]), worker('worker-5', [shardStages[1] as string]),
+		worker('worker-6', [shardStages[2] as string]),
 	];
 	const result = CapacityCalculator.calculate(pipeline, devices);
-	Assert.equal(result.capacity, 5);
-	Assert.equal(result.reason, 'worker coverage (5 of 8 workers advertise all 3 stages)');
+	Assert.equal(result.capacity, 1);
+	Assert.equal(result.reason, 'stage_llm_qwen3_0_6b_shard3of3 (1 available slot vs 3 on stage_llm_qwen3_0_6b_shard2of3)');
+});
+
+Test('estimates a sharded pipeline running entirely on one worker as that worker\'s free capacity', () => {
+	const shardStages = ['stage_llm_qwen3_0_6b_shard1of3', 'stage_llm_qwen3_0_6b_shard2of3', 'stage_llm_qwen3_0_6b_shard3of3'];
+	const pipeline: PipelineSpecification = {
+		pipelineId: 'llm_qwen3_0_6b_sharded', version: 1, taskType: 'task_type_llm_qwen3_0_6b_sharded', repeatsUntilDone: true,
+		stages: shardStages.map((name) => ({ name, computation: 'llm_qwen3_0_6b_shard', inputSchemaId: 'llm@1', outputSchemaId: 'llm@1', encoding: 'inline-json', prefersSameWorkerOnRetry: true })),
+	};
+	// One worker advertising all three shards with two free slots can host two concurrent runs,
+	// because every shard of a run may be placed back on it.
+	const devices: Device[] = [
+		{
+			deviceId: 'worker-1', name: 'worker-1', deviceRole: 'worker', stageNames: shardStages,
+			connectedAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z',
+			maxConcurrentAssignments: 2, activeAssignments: 0,
+		},
+	];
+	const result = CapacityCalculator.calculate(pipeline, devices);
+	Assert.equal(result.capacity, 2);
 });
 
 Test('estimates independent-stage capacity as the bottleneck stage\'s free capacity', () => {
@@ -223,6 +244,49 @@ Test('estimates independent-stage capacity as the bottleneck stage\'s free capac
 	const result = CapacityCalculator.calculate(pipeline, devices);
 	Assert.equal(result.capacity, 3);
 	Assert.equal(result.reason, 'stage_dev_formula_add (3 available slots vs 7 on stage_dev_formula_multiply)');
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	ClusterCapacityReader
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+// `capacity` with no `-t/--task_type` estimates every task type from the one snapshot the
+// connection already fetches, and `consumer_openai` reads the same estimates to decide which
+// models it may offer. See https://github.com/webai-at-home/webai-at-home/issues/177.
+Test('estimates every task type from one snapshot, and reports an unserved task type as zero', () => {
+	const pipeline: PipelineSpecification = {
+		pipelineId: 'dev_formula', version: 1, taskType: 'task_type_dev_formula',
+		stages: [
+			{ name: 'stage_dev_formula_multiply', computation: 'dev_formula_multiply', inputSchemaId: 'number@1', outputSchemaId: 'number@1', encoding: 'inline-json' },
+		],
+	};
+	const devices: Device[] = [{
+		deviceId: 'worker-1', name: 'worker-1', deviceRole: 'worker', stageNames: ['stage_dev_formula_multiply'],
+		connectedAt: '2026-01-01T00:00:00.000Z', lastSeenAt: '2026-01-01T00:00:00.000Z',
+		maxConcurrentAssignments: 2, activeAssignments: 0,
+	}];
+
+	const results = ClusterCapacityReader.estimate([pipeline], devices);
+	Assert.equal(results.length, taskTypeNames.length);
+	Assert.deepEqual(results.map((result) => result.type), [...taskTypeNames]);
+
+	const devFormula = results.find((result) => result.type === 'dev_formula');
+	Assert.equal(devFormula?.capacity, 2);
+	Assert.equal(devFormula?.pipelineId, 'dev_formula');
+
+	// Every other task type has no pipeline registered in this snapshot, which is a capacity of
+	// zero rather than a failure: one unserved task type must not stop the whole list.
+	for (const result of results.filter((candidate) => candidate.type !== 'dev_formula')) {
+		Assert.equal(result.capacity, 0);
+		Assert.equal(result.pipelineId, undefined);
+		Assert.equal(result.reason, 'no pipeline is registered for this task type');
+	}
+
+	// A retired pipeline serves nobody, and the highest version wins among those that remain.
+	const retired: PipelineSpecification = { ...pipeline, version: 2, retired: true };
+	Assert.equal(ClusterCapacityReader.estimate([pipeline, retired], devices, ['dev_formula'])[0]?.pipelineVersion, 1);
 });
 
 ///////////////////////////////////////////////////////////////////////////////
