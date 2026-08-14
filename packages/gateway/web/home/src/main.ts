@@ -1,5 +1,6 @@
 import { Modal } from 'bootstrap';
 import { ThemeToggle } from '../../_shared/theme_toggle.js';
+import { defaultWorkerPort, WorkerPageOrigin } from '../../_shared/worker_page_origin.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -32,6 +33,8 @@ export class HomePage {
 		HomePage.element('#about-open').addEventListener('click', (): void => {
 			panel.show();
 		});
+
+		HomePage.wireWorkerLinks();
 	}
 
 	///////////////////////////////////////////////////////////////////////////////
@@ -51,6 +54,25 @@ export class HomePage {
 		const element = document.querySelector(selector);
 		if ((element instanceof HTMLElement) === false) throw new Error(`Element ${selector} was not found`);
 		return element;
+	}
+
+	/**
+	 * Points the navigation bar's and the card's Worker links at the worker webpage, connected back
+	 * to this gateway.
+	 *
+	 * The address cannot be written into the markup, because the worker webpage is only reachable
+	 * at `localhost` when the whole cluster runs on the reader's own machine; see
+	 * [`WorkerPageOrigin`](../../_shared/worker_page_origin.js) for the deployed exception.
+	 *
+	 * @throws If the markup no longer has either Worker link.
+	 */
+	private static wireWorkerLinks(): void {
+		const workerPageOrigin = WorkerPageOrigin.compute(defaultWorkerPort);
+		const workerPageUrl = `${workerPageOrigin}/?${new URLSearchParams({ gatewayUrl: location.origin }).toString()}`;
+
+		for (const linkId of ['#worker-link-nav', '#worker-link-card']) {
+			(HomePage.element(linkId) as HTMLAnchorElement).href = workerPageUrl;
+		}
 	}
 }
 

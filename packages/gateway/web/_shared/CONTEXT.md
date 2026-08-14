@@ -8,6 +8,7 @@ What every browser page the gateway serves — `home`, `monitor`, `ledger`, `deb
 
 - `theme_toggle.ts`: `ThemeToggle`, the six-hour light or dark theme preference control shown in a page's navigation bar.
 - `debug_iframe_worker_frames.ts`: `DebugIframeWorkerFrames`, which points every worker inline frame at the address the debug page itself was opened from.
+- `worker_page_origin.ts`: `WorkerPageOrigin` and `defaultWorkerPort`, which work out the address the worker webpage is reachable at, from wherever the calling page was opened.
 - `global.d.ts`: the declarations for the values [`vite.config.ts`](../../vite.config.ts) bakes into a page with the `define` option.
 
 ## Rules
