@@ -27,14 +27,21 @@ export class WebsocketHeartbeat {
 	/**
 	 * @param websocketServer The server whose open connections are pinged.
 	 * @param intervalMs How often every open connection is pinged.
+	 * @param onPong Called with the connection that answered a ping, so that answering a ping
+	 * counts as a sign of life for the device on the other end of that connection. Leave it out
+	 * when nothing outside this class needs to know.
 	 */
 	constructor(
 		private readonly websocketServer: WebSocketServer,
 		intervalMs: number,
+		private readonly onPong?: (socket: WebSocket) => void,
 	) {
 		websocketServer.on('connection', (socket: WebSocket) => {
 			this.isAliveBySocket.set(socket, true);
-			socket.on('pong', () => this.isAliveBySocket.set(socket, true));
+			socket.on('pong', () => {
+				this.isAliveBySocket.set(socket, true);
+				this.onPong?.(socket);
+			});
 		});
 		this.timer = setInterval(() => this.pingEveryConnection(), intervalMs);
 	}

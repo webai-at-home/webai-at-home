@@ -170,7 +170,13 @@ export class Cli {
 		});
 		const websocketServer = new WebSocketServer({ server: httpServer });
 		websocketServer.on('connection', (socket) => websocketRouter.acceptConnection(socket));
-		const websocketHeartbeat = new WebsocketHeartbeat(websocketServer, settings.heartbeatIntervalMs);
+		// Answering a ping is the only sign of life an idle device gives, so it refreshes that
+		// device's `lastSeenAt` in the same way a protocol message does.
+		const websocketHeartbeat = new WebsocketHeartbeat(websocketServer, settings.heartbeatIntervalMs, (socket) => {
+			const deviceId = hub.deviceIdForSocket(socket);
+			if (deviceId === undefined) return;
+			announcer.noteDeviceAnsweredPing(deviceId);
+		});
 
 		// A stage may declare a lease shorter than the gateway's --lease-ms default, so the sweep
 		// that notices an expired lease runs at least as often as the shortest lease any registered

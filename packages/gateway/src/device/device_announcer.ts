@@ -64,9 +64,7 @@ export class DeviceAnnouncer {
 		const deviceChange = change as DeviceRegistryChange;
 		if (deviceChange.kind === 'unchanged') return;
 		if (deviceChange.kind === 'activity_changed') {
-			if (this.hub.deviceSubscriberIds.size === 0) return;
-			this.pendingActivityDeviceIds.add(deviceChange.device.deviceId);
-			if (this.activityTimer === undefined) this.activityTimer = setTimeout((): void => this.flushDeviceActivity(), this.coalesceMs);
+			this.queueDeviceActivity(deviceChange.device.deviceId);
 			return;
 		}
 		this.hub.sendToDeviceSubscribers({ type: deviceChange.kind === 'joined' ? 'device.joined' : 'device.updated', device: deviceChange.device, deviceListRevision: deviceChange.deviceListRevision });
@@ -94,6 +92,25 @@ export class DeviceAnnouncer {
 		this.publishDevice(this.deviceRegistry.add({ ...device, activeAssignments: (device.activeAssignments ?? 0) + 1, lastSeenAt: new Date().toISOString() }));
 	}
 
+	/**
+	 * Notes that a device answered a WebSocket ping, and announces the refreshed liveness time.
+	 *
+	 * A device that is connected but has no work to do sends no protocol message at all, so
+	 * without this its `lastSeenAt` would stay frozen at the moment it connected and a dashboard
+	 * would show it as unheard from for as long as it stayed idle. Answering a ping is the one
+	 * sign of life such a device gives, so it is announced on its own. `DeviceRegistry.add`
+	 * reports a change that moved nothing but `lastSeenAt` as `unchanged`, so the announcement is
+	 * queued here rather than left to `publishDevice`.
+	 *
+	 * @param deviceId The device whose connection answered a ping.
+	 */
+	noteDeviceAnsweredPing(deviceId: string): void {
+		const device = this.deviceRegistry.get(deviceId);
+		if (device === undefined) return;
+		this.deviceRegistry.add({ ...device, lastSeenAt: new Date().toISOString() });
+		this.queueDeviceActivity(deviceId);
+	}
+
 	/** Cancels any pending activity message, so the process can exit promptly. */
 	stop(): void {
 		if (this.activityTimer !== undefined) clearTimeout(this.activityTimer);
@@ -105,6 +122,18 @@ export class DeviceAnnouncer {
 	//	Activity Batching
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Adds a device to the batch whose activity is announced when the batching window closes,
+	 * and starts that window when it is not already open.
+	 *
+	 * @param deviceId The device whose activity changed.
+	 */
+	private queueDeviceActivity(deviceId: string): void {
+		if (this.hub.deviceSubscriberIds.size === 0) return;
+		this.pendingActivityDeviceIds.add(deviceId);
+		if (this.activityTimer === undefined) this.activityTimer = setTimeout((): void => this.flushDeviceActivity(), this.coalesceMs);
+	}
 
 	/**
 	 * Sends one combined `device.activity` message for every device whose activity changed

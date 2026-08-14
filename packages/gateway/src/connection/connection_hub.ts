@@ -62,6 +62,20 @@ export class ConnectionHub {
 	) { }
 
 	/**
+	 * Finds which device a connection belongs to.
+	 *
+	 * @param socket The connection to look up.
+	 * @returns The device identifier registered for that connection, or `undefined` when the
+	 * connection has not registered a device identifier yet.
+	 */
+	deviceIdForSocket(socket: WebSocket): string | undefined {
+		for (const [deviceId, registeredSocket] of this.socketMap) {
+			if (registeredSocket === socket) return deviceId;
+		}
+		return undefined;
+	}
+
+	/**
 	 * Sends a gateway message when a WebSocket is still open, and logs it as sent.
 	 *
 	 * @param socket The WebSocket that should receive the message.

@@ -2137,3 +2137,56 @@ Test('the websocket heartbeat pings a connection that keeps answering, and termi
 		heartbeat.stop();
 	}
 });
+
+Test('the websocket heartbeat reports every connection that answered a ping', async () => {
+	const intervalMs = 50;
+	const server = newFakeHeartbeatServer();
+	const answeredSockets: FakeHeartbeatSocket[] = [];
+	const heartbeat = new WebsocketHeartbeat(
+		server as unknown as WebSocketServer,
+		intervalMs,
+		(socket) => answeredSockets.push(socket as unknown as FakeHeartbeatSocket),
+	);
+	try {
+		const responsive = newFakeHeartbeatSocket();
+		const silent = newFakeHeartbeatSocket();
+		server.announceConnection(responsive);
+		server.announceConnection(silent);
+
+		await delay(intervalMs * 1.5);
+		responsive.answerWithPong();
+
+		Assert.deepEqual(answeredSockets, [responsive]);
+	} finally {
+		heartbeat.stop();
+	}
+});
+
+Test('a device that answers a ping has its last seen time refreshed and announced', async () => {
+	const logsDirectory = Fs.mkdtempSync(Path.join(Os.tmpdir(), 'gateway-heartbeat-activity-'));
+	const deviceRegistry = new DeviceRegistry();
+	const messageLogger = new MessageLogger(Path.join(logsDirectory, 'gateway.log_entry.jsonl'));
+	const hub = new ConnectionHub(deviceRegistry, messageLogger, logsDirectory);
+	const announcer = new DeviceAnnouncer(deviceRegistry, hub, 0);
+
+	deviceRegistry.add(worker('one'));
+	const observerSocket = newFakeSocket();
+	hub.socketMap.set('device-observer', observerSocket as unknown as Parameters<typeof hub.send>[0]);
+	hub.deviceSubscriberIds.add('device-observer');
+
+	announcer.noteDeviceAnsweredPing('one');
+
+	// The stored liveness time moved off the one the device connected with, even though the
+	// device itself sent no protocol message.
+	Assert.notEqual(deviceRegistry.get('one')?.lastSeenAt, '2026-01-01T00:00:00.000Z');
+
+	// Activity is batched, so the announcement is read after the batching window closes.
+	await delay(10);
+	const activityMessages = observerSocket.sent
+		.map((frame) => frame.body)
+		.filter((message) => message.type === 'device.activity');
+	Assert.equal(activityMessages.length, 1);
+	Assert.equal((activityMessages[0] as { devices: { deviceId: string; lastSeenAt: string }[] }).devices[0]?.lastSeenAt, deviceRegistry.get('one')?.lastSeenAt);
+
+	announcer.stop();
+});
