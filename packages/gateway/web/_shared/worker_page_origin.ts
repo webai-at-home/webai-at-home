@@ -40,15 +40,37 @@ export class WorkerPageOrigin {
 	 * Points every given link at the worker webpage, connected back to the gateway the calling page
 	 * was itself opened from.
 	 *
+	 * The `?gatewayUrl=` query parameter is left out when the calling page's own origin is already
+	 * the gateway the worker webpage picks by itself, so the link stays short and readable.
+	 *
 	 * @param selectors The CSS selector for each anchor element to point at the worker webpage.
 	 * @throws If the markup does not have an anchor element for every one of the given selectors.
 	 */
 	static wireLinks(selectors: string[]): void {
-		const workerPageUrl = `${WorkerPageOrigin.compute(defaultWorkerPort)}/?${new URLSearchParams({ gatewayUrl: location.origin }).toString()}`;
+		const workerPageOrigin = WorkerPageOrigin.compute(defaultWorkerPort);
+		const defaultGatewayUrl = WorkerPageOrigin._defaultGatewayUrlOf(workerPageOrigin);
+		const isDefaultGateway = new URL(location.origin).toString() === new URL(defaultGatewayUrl).toString();
+		const workerPageUrl = isDefaultGateway
+			? `${workerPageOrigin}/`
+			: `${workerPageOrigin}/?${new URLSearchParams({ gatewayUrl: location.origin }).toString()}`;
 		for (const selector of selectors) {
 			const element = document.querySelector(selector);
 			if ((element instanceof HTMLAnchorElement) === false) throw new Error(`Element ${selector} was not found`);
 			element.href = workerPageUrl;
 		}
+	}
+
+	/**
+	 * The central gateway the worker webpage connects to when no `?gatewayUrl=` query parameter is
+	 * given, mirroring `GatewayConfig` in `packages/worker_webpage`: the local gateway when the
+	 * worker webpage itself runs on `localhost`, otherwise the deployed gateway.
+	 *
+	 * @param workerPageOrigin The origin the worker webpage is served from.
+	 * @returns The gateway URL the worker webpage defaults to at that origin.
+	 */
+	static _defaultGatewayUrlOf(workerPageOrigin: string): string {
+		return new URL(workerPageOrigin).hostname === 'localhost'
+			? 'http://localhost:8787'
+			: 'https://webai-gateway.dash-menu.com';
 	}
 }
