@@ -39,20 +39,23 @@ export class WebsocketHeartbeat {
 	 * @param onPong Called with the connection that answered a ping, so that answering a ping
 	 * counts as a sign of life for the device on the other end of that connection. Leave it out
 	 * when nothing outside this class needs to know.
+	 * @param now Reads the current time. Left out everywhere but in a test, which reads a time it
+	 * moves itself so that it never has to wait for a real one.
 	 */
 	constructor(
 		private readonly websocketServer: WebSocketServer,
 		intervalMs: number,
 		private readonly timeoutMs: number,
 		private readonly onPong?: (socket: WebSocket) => void,
+		private readonly now: () => number = () => Date.now(),
 	) {
 		websocketServer.on('connection', (socket: WebSocket) => {
 			// A connection that has only just opened has answered nothing yet, so the moment it
 			// opened is what it is given credit for. Without this the first sweep would find no
 			// answer at all and terminate a connection that is perfectly healthy.
-			this.lastAnswerAtBySocket.set(socket, Date.now());
+			this.lastAnswerAtBySocket.set(socket, this.now());
 			socket.on('pong', () => {
-				this.lastAnswerAtBySocket.set(socket, Date.now());
+				this.lastAnswerAtBySocket.set(socket, this.now());
 				this.onPong?.(socket);
 			});
 		});
@@ -64,9 +67,16 @@ export class WebsocketHeartbeat {
 		clearInterval(this.timer);
 	}
 
-	/** Closes every connection that has been silent for too long, then pings what remains. */
-	private pingEveryConnection(): void {
-		const now = Date.now();
+	/**
+	 * Closes every connection that has been silent for too long, then pings what remains.
+	 *
+	 * This is one sweep, and the repeating timer built in the constructor is the only thing that
+	 * calls it in a running gateway. A test calls it directly instead, one sweep at a time beside
+	 * a time it moves itself, because a test that sleeps past a real timer asserts on whichever
+	 * sweep the machine happened to run by the time it woke up.
+	 */
+	pingEveryConnection(): void {
+		const now = this.now();
 		for (const socket of this.websocketServer.clients) {
 			// A connection this heartbeat never saw open is treated as having just answered, so
 			// that it is pinged rather than terminated on the sweep that first meets it.
