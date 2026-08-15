@@ -54,6 +54,7 @@ The central research questions are still open, especially result verification, b
 - [`packages/consumer_openai`](packages/consumer_openai/README.md) — OpenAI-compatible server, so a program that already talks to OpenAI can use the cluster by changing its base address.
 - [`packages/worker_openai`](packages/worker_openai/README.md) — native worker process that runs its assigned stage by calling a local server speaking the OpenAI-compatible API, such as LM Studio.
 - [`packages/openai_api_tool`](packages/openai_api_tool/README.md) — command-line tool that exercises and measures any server speaking the OpenAI-compatible API, this project's own and another machine's alike.
+- [`packages/openai_conformance_test`](packages/openai_conformance_test/README.md) — command-line tool that reports which parts of the OpenAI-compatible protocol a server actually honours, rather than how good its answers are.
 - [`packages/flow_viewer`](packages/flow_viewer/README.md) — flow viewer for inspecting recorded message traffic.
 - [`packages/_onnx_experiments`](packages/_onnx_experiments/README.md) — browser experiments for ONNX Runtime Web.
 - [`packages/_account_key_experiments`](packages/_account_key_experiments/README.md) — browser experiments about the signing key pair a participant's account is, and whether a real browser tab can hold one it cannot leak.
@@ -68,10 +69,11 @@ The central research questions are still open, especially result verification, b
 - [`docs/naming_scheme.md`](docs/naming_scheme.md) — how every task, task type, pipeline, and stage name is built.
 - [`docs/environment_variables.md`](docs/environment_variables.md) — which environment variables exist, which program reads each one, and which programs read command line options only.
 - [`docs/accounting_system.md`](docs/accounting_system.md) — how contributed and consumed computation are recorded: what an account is, what a credit is, and what the ledger holds.
+- [`docs/openai_api_conformance.md`](docs/openai_api_conformance.md) — which parts of the OpenAI Chat Completions protocol this project's server honours, measured against the local model server it forwards to.
 
 ## Run without cloning this repository
 
-`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai`, `worker_openai` and `consumer_cli` each run the command line program of the same name; anything else is reported as an unknown command. Every `consumer_cli` command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs behind the `consumer_cli` word.
+`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai`, `worker_openai`, `consumer_cli` and `openai_conformance_test` each run the command line program of the same name; anything else is reported as an unknown command. Every `consumer_cli` command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs behind the `consumer_cli` word.
 
 ```sh
 npx webai-at-home gateway

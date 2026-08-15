@@ -11,6 +11,7 @@ import * as Commander from 'commander';
 import { Cli as GatewayCli } from '@webai/gateway/dist/cli.js';
 import { Cli as ConsumerOpenaiCli } from '@webai/consumer-openai/dist/cli.js';
 import { Cli as WorkerOpenaiCli } from '@webai/worker-openai/dist/cli.js';
+import { Cli as OpenaiConformanceTestCli } from '@webai/openai-conformance-test/dist/cli.js';
 import { Cli as ConsumerCliCli } from '@webai/consumer-cli/cli';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -27,10 +28,10 @@ const programName = 'webai-at-home';
 /**
  * The command line program of `webai-at-home`.
  *
- * `gateway`, `consumer_openai`, `worker_openai` and `consumer_cli` each name one of the other four
- * command line programs in this repository and run it, unchanged, on whatever follows. All four are
- * exposed the same way: one line in this program's own help, and that program's own `--help` for
- * anything more.
+ * `gateway`, `consumer_openai`, `worker_openai`, `consumer_cli` and `openai_conformance_test` each
+ * name one of the other five command line programs in this repository and run it, unchanged, on
+ * whatever follows. All five are exposed the same way: one line in this program's own help, and
+ * that program's own `--help` for anything more.
  *
  * No other first word runs anything. `submit`, `status`, `capacity`, `log_statistics`, and every
  * account command belong to `@webai/consumer-cli`, and run behind the `consumer_cli` word alone; a
@@ -137,8 +138,8 @@ export class Cli {
 		const program = new Commander.Command(programName)
 			.description(
 				"Run one participant of the WebAI@Home cluster. \"gateway\", \"consumer_openai\","
-					+ ' "worker_openai" and "consumer_cli" each run the command line program of the'
-					+ ' same name in this cluster.',
+					+ ' "worker_openai", "consumer_cli" and "openai_conformance_test" each run the command'
+					+ ' line program of the same name in this cluster.',
 			)
 			.version(Cli.readVersion(), '-V, --version', 'print the version of webai-at-home that is running')
 			.enablePositionalOptions()
@@ -181,6 +182,17 @@ export class Cli {
 			.argument('[workerOpenaiArgs...]', "the worker's own options")
 			.action(async (workerOpenaiArgs: string[]): Promise<void> => {
 				await WorkerOpenaiCli.run(workerOpenaiArgs, `${programName} worker_openai`);
+			});
+
+		program
+			.command('openai_conformance_test')
+			.description('report which parts of the OpenAI-compatible protocol a server actually honours')
+			.allowUnknownOption()
+			.passThroughOptions()
+			.helpOption(false)
+			.argument('[openaiConformanceTestArgs...]', "the conformance test's own options")
+			.action(async (openaiConformanceTestArgs: string[]): Promise<void> => {
+				await OpenaiConformanceTestCli.run(openaiConformanceTestArgs, `${programName} openai_conformance_test`);
 			});
 
 		program
