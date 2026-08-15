@@ -226,6 +226,13 @@ export class OpenaiApiClient {
 	 * `null`, so that the local server applies its own default exactly as it did before this
 	 * cluster carried any of these controls.
 	 *
+	 * Only the controls the task type's own contract names ever arrive here. A task type's
+	 * contract is the intersection of what all of its workers can honour, so a control this
+	 * native worker could honour but the worker browser tab running the same task type cannot is
+	 * refused by `packages/consumer_openai` at submission and never reaches this method. The five
+	 * branches below therefore stay written out in full while fewer than five are reachable. See
+	 * step 1 of https://github.com/webai-at-home/webai-at-home/issues/196.
+	 *
 	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
 	 * nothing.
 	 * @returns The fields to spread into the request body, empty when no control was asked for.

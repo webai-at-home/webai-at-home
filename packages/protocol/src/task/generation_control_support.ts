@@ -24,6 +24,11 @@ export type GenerationControlName =
 /**
  * The generation controls each task type honours, and by omission the ones it cannot.
  *
+ * An entry is a task type's contract, and a task type's contract is the intersection of what all
+ * of its workers can honour. A consumer does not choose which of a task type's possible workers is
+ * assigned its task, so a control only one kind of worker honours is not in the contract. See step
+ * 1 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196).
+ *
  * A consumer reads this before it submits, so that a control the chosen task type cannot honour
  * is refused at submission rather than accepted and dropped. A control that is accepted and
  * dropped is the worst of the three possible answers: the consumer receives an answer generated
