@@ -32,6 +32,7 @@ import { ClientMessageHandler } from '../src/task/client_message_handler.js';
 import { WorkerPlacement } from '../src/device/worker_placement.js';
 import { Dashboard } from '../src/dashboard.js';
 import { WebsocketHeartbeat } from '../src/connection/websocket_heartbeat.js';
+import { GatewaySettings } from '../src/libs/gateway_settings.js';
 import { AccountIdentity } from '@webai/protocol';
 import type { AccountCryptoKeyPair, AccountProfile, ClientMessage, GatewayMessage, LedgerEntry, StageName, TaskInput } from '@webai/protocol';
 import type { WebSocketServer } from 'ws';
@@ -2109,7 +2110,7 @@ Test('the accounting summary lists the shared development account too, though it
 Test('the websocket heartbeat pings a connection that keeps answering, and terminates one that stops answering', async () => {
 	const intervalMs = 50;
 	const server = newFakeHeartbeatServer();
-	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, intervalMs);
+	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, intervalMs, intervalMs * 2);
 	try {
 		const responsive = newFakeHeartbeatSocket();
 		const silent = newFakeHeartbeatSocket();
@@ -2146,6 +2147,7 @@ Test('the websocket heartbeat reports every connection that answered a ping', as
 	const heartbeat = new WebsocketHeartbeat(
 		server as unknown as WebSocketServer,
 		intervalMs,
+		intervalMs * 2,
 		(socket) => answeredSockets.push(socket as unknown as FakeHeartbeatSocket),
 	);
 	try {
@@ -2161,6 +2163,61 @@ Test('the websocket heartbeat reports every connection that answered a ping', as
 	} finally {
 		heartbeat.stop();
 	}
+});
+
+Test('a silent connection is kept until the tolerated silence has passed, not until two pings have gone unanswered', async () => {
+	// The timeout is five times the interval, so a connection that answers nothing is pinged
+	// several times over before it is terminated. Under the single-number rule this connection
+	// would already have been terminated on the second sweep.
+	const intervalMs = 40;
+	const timeoutMs = intervalMs * 5;
+	const server = newFakeHeartbeatServer();
+	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, intervalMs, timeoutMs);
+	try {
+		const silent = newFakeHeartbeatSocket();
+		server.announceConnection(silent);
+
+		await delay(intervalMs * 3.5);
+		Assert.equal(silent.terminated, false);
+		Assert.ok(silent.pingCount >= 3, `expected at least three pings, saw ${silent.pingCount}`);
+
+		await delay(intervalMs * 3);
+		Assert.equal(silent.terminated, true);
+	} finally {
+		heartbeat.stop();
+	}
+});
+
+Test('a connection that answers late, but inside the tolerated silence, is never terminated', async () => {
+	const intervalMs = 50;
+	const timeoutMs = intervalMs * 5;
+	const server = newFakeHeartbeatServer();
+	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, intervalMs, timeoutMs);
+	try {
+		const slow = newFakeHeartbeatSocket();
+		server.announceConnection(slow);
+
+		// One answer, after more than one interval has passed but well inside the tolerated
+		// silence. That single answer is enough to carry the connection past the point where an
+		// unanswered ping alone would have ended it.
+		await delay(intervalMs * 2.4);
+		slow.answerWithPong();
+
+		await delay(intervalMs * 3.6);
+		Assert.equal(slow.terminated, false);
+	} finally {
+		heartbeat.stop();
+	}
+});
+
+Test('the tolerated silence defaults to two times the ping interval, and is settable on its own', () => {
+	const defaulted = new GatewaySettings(['--heartbeat-interval-ms', '10000'], 'gateway');
+	Assert.equal(defaulted.heartbeatIntervalMs, 10_000);
+	Assert.equal(defaulted.heartbeatTimeoutMs, 20_000);
+
+	const stated = new GatewaySettings(['--heartbeat-interval-ms', '10000', '--heartbeat-timeout-ms', '90000'], 'gateway');
+	Assert.equal(stated.heartbeatIntervalMs, 10_000);
+	Assert.equal(stated.heartbeatTimeoutMs, 90_000);
 });
 
 Test('a device that answers a ping has its last seen time refreshed and announced', async () => {

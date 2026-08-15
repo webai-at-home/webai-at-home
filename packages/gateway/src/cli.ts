@@ -175,7 +175,7 @@ export class Cli {
 		websocketServer.on('connection', (socket, request) => websocketRouter.acceptConnection(socket, request));
 		// Answering a ping is the only sign of life an idle device gives, so it refreshes that
 		// device's `lastSeenAt` in the same way a protocol message does.
-		const websocketHeartbeat = new WebsocketHeartbeat(websocketServer, settings.heartbeatIntervalMs, (socket) => {
+		const websocketHeartbeat = new WebsocketHeartbeat(websocketServer, settings.heartbeatIntervalMs, settings.heartbeatTimeoutMs, (socket) => {
 			const deviceId = hub.deviceIdForSocket(socket);
 			if (deviceId === undefined) return;
 			announcer.noteDeviceAnsweredPing(deviceId);
