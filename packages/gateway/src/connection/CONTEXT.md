@@ -19,8 +19,10 @@ Accepts a connection, keeps it alive, checks every arriving frame before anythin
 - `ConnectionHub` is the only place that writes to an open connection; `task/` and `accounting/` hand it a message rather than writing to a socket themselves.
 - The address a connection came from is read only in `WebsocketRouter.acceptConnection`, where the HTTP upgrade request still exists, and is kept in `ConnectionHub.ipAddressMap` until the connection closes. Nothing reads an address out of a message a device sent.
 - `ClientIpAddress` believes the `x-forwarded-for` header only when the gateway was started with `--trust-reverse-proxy`, because any client can write that header.
+- `WebsocketHeartbeat` keeps how often a connection is pinged and how long a silent connection is tolerated as two separate settings; neither is derived from the other inside the class.
 
 ## Background
 
 - The three-part registration a new browser page needs is explained on the package's own [`CONTEXT.md`](../../CONTEXT.md).
 - The address of a connection is recorded so `consumer_cli status` can show it; see [issue #183](https://github.com/webai-at-home/webai-at-home/issues/183).
+- Splitting the heartbeat into two settings comes from [issue #176](https://github.com/webai-at-home/webai-at-home/issues/176).

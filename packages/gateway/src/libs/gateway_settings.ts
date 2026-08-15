@@ -42,6 +42,7 @@ type RawOptions = {
 	deviceActivityCoalesceMs: string;
 	commitSha: string;
 	heartbeatIntervalMs: string;
+	heartbeatTimeoutMs?: string;
 	trustReverseProxy?: boolean;
 	dev?: boolean;
 };
@@ -86,6 +87,8 @@ export class GatewaySettings {
 	readonly commitSha: string;
 	/** How often an open WebSocket connection is pinged to keep it alive through a reverse proxy's own idle timeout. */
 	readonly heartbeatIntervalMs: number;
+	/** How long an open WebSocket connection may go without answering a ping before it is terminated. */
+	readonly heartbeatTimeoutMs: number;
 	/**
 	 * Whether a reverse proxy sits in front of this gateway, so the `x-forwarded-for` header may be
 	 * believed when reading the address a connection came from.
@@ -125,7 +128,12 @@ export class GatewaySettings {
 			.option('--pipeline-file <path>', 'JSON file containing additional pipeline specifications')
 			.option('--device-activity-coalesce-ms <number>', 'How long device activity changes are batched before one combined update is sent', '250')
 			.option('--commit-sha <sha>', 'Git commit this build was made from', 'unknown')
-			.option('--heartbeat-interval-ms <number>', 'How often an open WebSocket connection is pinged to keep it alive through a reverse proxy', '30000')
+			.option('--heartbeat-interval-ms <number>', 'How often an open WebSocket connection is pinged to keep it alive through a reverse proxy', '10000')
+			.option(
+				'--heartbeat-timeout-ms <number>',
+				'how long an open WebSocket connection may go without answering a ping before it is'
+					+ ' terminated (defaults to two times --heartbeat-interval-ms)',
+			)
 			.option(
 				'--trust-reverse-proxy',
 				'believe the x-forwarded-for header when recording the address a connection came from,'
@@ -150,6 +158,9 @@ export class GatewaySettings {
 		this.deviceActivityCoalesceMs = Number(options.deviceActivityCoalesceMs);
 		this.commitSha = options.commitSha;
 		this.heartbeatIntervalMs = Number(options.heartbeatIntervalMs);
+		this.heartbeatTimeoutMs = options.heartbeatTimeoutMs === undefined
+			? this.heartbeatIntervalMs * 2
+			: Number(options.heartbeatTimeoutMs);
 		this.isReverseProxyTrusted = options.trustReverseProxy === true;
 		this.dev = options.dev === true;
 	}

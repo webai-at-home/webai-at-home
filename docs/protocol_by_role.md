@@ -303,6 +303,16 @@ Reporting now travels over HTTP instead, and the scheduling connection refuses i
 
 Because a report cannot carry a message body, task data cannot travel this path at all, rather than travelling it and relying on redaction to remove the data afterwards.
 
+## A worker browser page announces its own departure over HTTP
+
+A worker browser page whose tab is being closed cannot rely on the WebSocket connection to say so. The close frame it sends is queued at the moment the browser is destroying the tab, so the browser never promises to write it to the network, and a reverse proxy in front of the gateway can hold its own upstream connection open after the browser side is gone. When the close frame never arrives, the only thing that notices is the gateway's ping, up to `--heartbeat-timeout-ms` later (see [issue #176](https://github.com/webai-at-home/webai-at-home/issues/176)).
+
+- **Where it goes.** The page sends `POST /departure` with `navigator.sendBeacon` from its `pagehide` handler, which is the one request a browser promises to deliver after the page is gone. It still closes the WebSocket connection as well, because a page merely put into the back and forward cache is alive and its close frame is written normally.
+- **What it carries.** The device identifier and the bearer token, and nothing else, validated by `DepartureSchema`.
+- **Why it is plain text.** A browser refuses to send a cross-origin JSON body until it has asked the other side for permission, and a beacon sent from a page that is being destroyed cannot wait for that answer. The content type both sides agree on is `departureContentType` in `@webai/protocol`. The token travels in the body for the same reason: a beacon can set no `authorization` header.
+- **How it is guarded.** Exactly as a diagnostics report is: the token must match, and the named device must currently hold an authenticated connection. The body is capped at 2,000 bytes.
+- **What the gateway does.** It terminates that device's WebSocket connection and nothing else. Every piece of forgetting is then done by the same close handling that runs for a connection which ended any other way.
+
 ## Task submission flow
 
 1. A consumer registers with the gateway.

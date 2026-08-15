@@ -12,6 +12,7 @@ import { GatewayLink } from './connection/gateway_link';
 import { GatewayReconnection } from './connection/gateway_reconnection';
 import { LeaseHeartbeat } from './connection/lease_heartbeat';
 import { DiagnosticsReporter } from './connection/diagnostics_reporter';
+import { GatewayDeparture } from './connection/gateway_departure';
 import { PageElements } from './page/page_elements';
 import { PageMarkup } from './page/page_markup';
 import { WorkerEventLog } from './page/worker_event_log';
@@ -367,6 +368,12 @@ export class WorkerPage {
 		// Closing the connection while the page is being put away is what makes the departure
 		// visible to the gateway. The connection is not reopened here, because the page may never
 		// be displayed again.
+		//
+		// The connection is closed and the departure is announced over HTTP, because the two cover
+		// different cases. A page merely put into the back/forward cache is still alive, and its
+		// close frame is written normally; a tab that is being destroyed gives the browser no
+		// promise that the close frame is written at all, and only `navigator.sendBeacon` is
+		// delivered then (see https://github.com/webai-at-home/webai-at-home/issues/176).
 		window.addEventListener('pagehide', (): void => {
 			// A page put away while it was waiting to connect again must not make that attempt: it
 			// may never be displayed again, and the attempt would register a worker nobody is
@@ -377,6 +384,7 @@ export class WorkerPage {
 			}
 			LeaseHeartbeat.stop();
 			DiagnosticsReporter.stop();
+			GatewayDeparture.announce();
 			this.socket.close(1000, 'Worker page is no longer displayed');
 			this.socket = undefined;
 			this.isRegistered = false;
@@ -497,6 +505,10 @@ export class WorkerPage {
 			// Posts whatever is still buffered, so the last messages before a disconnection are
 			// still recorded rather than lost with the page's state.
 			DiagnosticsReporter.stop();
+			// The connection this device identifier belonged to has already closed, so the gateway
+			// needs no departure for it, and the next connection registers again and is issued its
+			// own identifier.
+			GatewayDeparture.stop();
 			this.socket = undefined;
 			// The page asked for this close so that the next connection offers a stage this one
 			// could not, so it opens that connection at once rather than waiting.
@@ -690,6 +702,7 @@ export class WorkerPage {
 			// and it issues that name here.
 			if (message.deviceId !== undefined) {
 				DiagnosticsReporter.start(message.deviceId, GatewayConfig.authToken);
+				GatewayDeparture.start(message.deviceId);
 			}
 		}
 		DiagnosticsReporter.record('received', message.type, frame.id);
