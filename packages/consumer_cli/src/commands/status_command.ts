@@ -48,6 +48,8 @@ type StatusWorkerRow = {
 
 /** The worker cluster state `status` prints, either as a table or as JSON. */
 type StatusSnapshot = {
+	/** The address of the central gateway this snapshot was read from. */
+	gatewayUrl: string;
 	workerCount: number;
 	readyCount: number;
 	drainingCount: number;
@@ -77,7 +79,7 @@ export class StatusCommand {
 	 */
 	static async run(options: StatusCommandOptions): Promise<void> {
 		const render = (devices: Device[]): void => {
-			const snapshot = StatusCommand._buildSnapshot(devices);
+			const snapshot = StatusCommand._buildSnapshot(devices, options.url);
 			console.log(StatusCommand._format(snapshot, options.format));
 		};
 
@@ -147,14 +149,16 @@ export class StatusCommand {
 	 * Builds the snapshot `status` prints, from the live device list.
 	 *
 	 * @param devices Every currently connected device, worker and consumer alike.
+	 * @param gatewayUrl The address of the central gateway the device list was read from.
 	 * @returns The worker cluster state to print.
 	 */
-	private static _buildSnapshot(devices: Device[]): StatusSnapshot {
+	private static _buildSnapshot(devices: Device[], gatewayUrl: string): StatusSnapshot {
 		const workers = devices.filter((device) => device.deviceRole === 'worker');
 		const drainingCount = workers.filter((worker) => worker.workerState === 'draining').length;
 		const readyCount = workers.filter((worker) => worker.workerState !== 'draining' && DeviceAvailability.isAvailable(worker)).length;
 		const unavailableCount = workers.length - readyCount - drainingCount;
 		return {
+			gatewayUrl,
 			workerCount: workers.length,
 			readyCount,
 			drainingCount,
@@ -183,6 +187,7 @@ export class StatusCommand {
 	 */
 	private static _formatHuman(snapshot: StatusSnapshot): string {
 		const lines: string[] = [];
+		lines.push(`gateway ${snapshot.gatewayUrl}`);
 		lines.push(
 			`${snapshot.workerCount} worker${snapshot.workerCount === 1 ? '' : 's'} `
 			+ `(${snapshot.readyCount} ready, ${snapshot.drainingCount} draining, ${snapshot.unavailableCount} unavailable) · `
@@ -193,10 +198,10 @@ export class StatusCommand {
 			return lines.join('\n');
 		}
 		const nameWidth = Math.max(4, ...snapshot.workers.map((worker) => worker.name.length));
-		const addressWidth = Math.max(7, ...snapshot.workers.map((worker) => StatusCommand._displayedAddress(worker).length));
+		const addressWidth = Math.max(10, ...snapshot.workers.map((worker) => StatusCommand._displayedAddress(worker).length));
 		const stateWidth = Math.max(5, ...snapshot.workers.map((worker) => worker.workerState.length));
 		lines.push('');
-		lines.push(`${'NAME'.padEnd(nameWidth)}  ${'ADDRESS'.padEnd(addressWidth)}  ${'STATE'.padEnd(stateWidth)}  CAPACITY  STAGES`);
+		lines.push(`${'NAME'.padEnd(nameWidth)}  ${'IP ADDRESS'.padEnd(addressWidth)}  ${'STATE'.padEnd(stateWidth)}  CAPACITY  STAGES`);
 		for (const worker of snapshot.workers) {
 			const capacity = `${worker.activeAssignments}/${worker.maxConcurrentAssignments}`.padEnd(8);
 			const address = StatusCommand._displayedAddress(worker).padEnd(addressWidth);
@@ -215,6 +220,8 @@ export class StatusCommand {
 		const lines: string[] = [];
 		lines.push('# Worker cluster status');
 		lines.push('');
+		lines.push(`gateway ${snapshot.gatewayUrl}`);
+		lines.push('');
 		lines.push(
 			`${snapshot.workerCount} worker${snapshot.workerCount === 1 ? '' : 's'} `
 			+ `(${snapshot.readyCount} ready, ${snapshot.drainingCount} draining, ${snapshot.unavailableCount} unavailable) — `
@@ -226,7 +233,7 @@ export class StatusCommand {
 			return lines.join('\n');
 		}
 		lines.push('');
-		lines.push('| NAME | ADDRESS | STATE | CAPACITY | STAGES |');
+		lines.push('| NAME | IP ADDRESS | STATE | CAPACITY | STAGES |');
 		lines.push('| --- | --- | --- | --- | --- |');
 		for (const worker of snapshot.workers) {
 			const capacity = `${worker.activeAssignments}/${worker.maxConcurrentAssignments}`;

@@ -749,7 +749,7 @@ Test('a consumer holding no key pair registers straight away, and says its work 
  * `StatusCommand` because nothing outside it builds or writes a snapshot in the running program.
  */
 const statusCommandInternals = StatusCommand as unknown as {
-	_buildSnapshot: (devices: Device[]) => { workers: { name: string; ipAddress: string }[] };
+	_buildSnapshot: (devices: Device[], gatewayUrl: string) => { gatewayUrl: string; workers: { name: string; ipAddress: string }[] };
 	_format: (snapshot: unknown, format: StatusFormat) => string;
 };
 
@@ -769,35 +769,44 @@ const statusWorker = (name: string, ipAddress?: string): Device => ({
 });
 
 Test('a status snapshot carries the address the gateway observed for each worker', () => {
-	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one', '203.0.113.7')]);
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one', '203.0.113.7')], 'ws://localhost:8080');
 
 	Assert.equal(snapshot.workers[0]?.ipAddress, '203.0.113.7');
 });
 
 Test('a worker the gateway recorded no address for reads as no address, rather than as a missing field', () => {
-	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one')]);
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one')], 'ws://localhost:8080');
 
 	Assert.equal(snapshot.workers[0]?.ipAddress, '');
 });
 
 Test('every status format writes the address of each worker', () => {
-	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one', '203.0.113.7')]);
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one', '203.0.113.7')], 'ws://localhost:8080');
 
 	const text = statusCommandInternals._format(snapshot, 'text');
-	Assert.equal(text.includes('ADDRESS'), true);
+	Assert.equal(text.includes('IP ADDRESS'), true);
 	Assert.equal(text.includes('203.0.113.7'), true);
 
 	const markdown = statusCommandInternals._format(snapshot, 'markdown');
-	Assert.equal(markdown.includes('| NAME | ADDRESS | STATE | CAPACITY | STAGES |'), true);
+	Assert.equal(markdown.includes('| NAME | IP ADDRESS | STATE | CAPACITY | STAGES |'), true);
 	Assert.equal(markdown.includes('| worker-one | 203.0.113.7 | ready | 0/1 | stage_dev_formula_multiply |'), true);
 
 	Assert.equal((JSON.parse(statusCommandInternals._format(snapshot, 'json')) as { workers: { ipAddress: string }[] }).workers[0]?.ipAddress, '203.0.113.7');
 });
 
-Test('a worker with no observed address is written as a dash in both tables, and as an empty address in JSON', () => {
-	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one')]);
+Test('every status format writes the address of the central gateway the snapshot was read from', () => {
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one', '203.0.113.7')], 'ws://localhost:8080');
 
-	Assert.equal(statusCommandInternals._format(snapshot, 'text').includes('worker-one  -      '), true);
+	Assert.equal(snapshot.gatewayUrl, 'ws://localhost:8080');
+	Assert.equal(statusCommandInternals._format(snapshot, 'text').includes('gateway ws://localhost:8080'), true);
+	Assert.equal(statusCommandInternals._format(snapshot, 'markdown').includes('gateway ws://localhost:8080'), true);
+	Assert.equal((JSON.parse(statusCommandInternals._format(snapshot, 'json')) as { gatewayUrl: string }).gatewayUrl, 'ws://localhost:8080');
+});
+
+Test('a worker with no observed address is written as a dash in both tables, and as an empty address in JSON', () => {
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one')], 'ws://localhost:8080');
+
+	Assert.equal(statusCommandInternals._format(snapshot, 'text').includes('worker-one  -         '), true);
 	Assert.equal(statusCommandInternals._format(snapshot, 'markdown').includes('| worker-one | - | ready | 0/1 |'), true);
 	Assert.equal((JSON.parse(statusCommandInternals._format(snapshot, 'json')) as { workers: { ipAddress: string }[] }).workers[0]?.ipAddress, '');
 });
