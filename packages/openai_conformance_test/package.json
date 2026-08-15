@@ -1,0 +1,14 @@
+{
+	"name": "@webai/openai-conformance-test",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"typecheck": "tsc -p tsconfig.json",
+		"milestone_zero": "tsx milestone_zero/gate.ts"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2"
+	}
+}
