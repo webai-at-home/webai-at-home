@@ -20,6 +20,12 @@ export type Device = {
 	stageNames: StageName[];
 	connectedAt: string;
 	lastSeenAt: string;
+	/**
+	 * The address the gateway saw this device connect from, observed once when the connection
+	 * opened and never afterwards. A device never declares it, so a device cannot choose what is
+	 * recorded here. It is absent when the gateway could not observe an address at all.
+	 */
+	ipAddress?: string;
 	workerState?: 'ready' | 'draining' | undefined;
 	authIdentity?: string;
 	ready?: boolean;

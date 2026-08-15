@@ -145,6 +145,7 @@ export class Cli {
 			diagnosticsRateLimiter,
 			gatewayMessageLogger,
 			challengeRegistry,
+			settings.isReverseProxyTrusted,
 		);
 
 		// The configuration file is named rather than left to Vite to discover, because Vite looks
@@ -169,7 +170,9 @@ export class Cli {
 			console.log(`Gateway listening on http://localhost:${settings.port}`);
 		});
 		const websocketServer = new WebSocketServer({ server: httpServer });
-		websocketServer.on('connection', (socket) => websocketRouter.acceptConnection(socket));
+		// The upgrade request is passed on because it carries the address the connection came from,
+		// which is available at this one moment and nowhere later. See issue #183.
+		websocketServer.on('connection', (socket, request) => websocketRouter.acceptConnection(socket, request));
 		// Answering a ping is the only sign of life an idle device gives, so it refreshes that
 		// device's `lastSeenAt` in the same way a protocol message does.
 		const websocketHeartbeat = new WebsocketHeartbeat(websocketServer, settings.heartbeatIntervalMs, (socket) => {

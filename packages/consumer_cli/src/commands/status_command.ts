@@ -34,6 +34,11 @@ export type StatusCommandOptions = {
 type StatusWorkerRow = {
 	deviceId: string;
 	name: string;
+	/**
+	 * The address the gateway saw this worker connect from, or an empty string when the gateway
+	 * recorded no address for it.
+	 */
+	ipAddress: string;
 	stageNames: string[];
 	workerState: string;
 	activeAssignments: number;
@@ -160,6 +165,7 @@ export class StatusCommand {
 			workers: workers.map((worker) => ({
 				deviceId: worker.deviceId,
 				name: worker.name,
+				ipAddress: worker.ipAddress ?? '',
 				stageNames: worker.stageNames,
 				workerState: worker.workerState ?? 'ready',
 				activeAssignments: worker.activeAssignments ?? 0,
@@ -187,12 +193,14 @@ export class StatusCommand {
 			return lines.join('\n');
 		}
 		const nameWidth = Math.max(4, ...snapshot.workers.map((worker) => worker.name.length));
+		const addressWidth = Math.max(7, ...snapshot.workers.map((worker) => StatusCommand._displayedAddress(worker).length));
 		const stateWidth = Math.max(5, ...snapshot.workers.map((worker) => worker.workerState.length));
 		lines.push('');
-		lines.push(`${'NAME'.padEnd(nameWidth)}  ${'STATE'.padEnd(stateWidth)}  CAPACITY  STAGES`);
+		lines.push(`${'NAME'.padEnd(nameWidth)}  ${'ADDRESS'.padEnd(addressWidth)}  ${'STATE'.padEnd(stateWidth)}  CAPACITY  STAGES`);
 		for (const worker of snapshot.workers) {
 			const capacity = `${worker.activeAssignments}/${worker.maxConcurrentAssignments}`.padEnd(8);
-			lines.push(`${worker.name.padEnd(nameWidth)}  ${worker.workerState.padEnd(stateWidth)}  ${capacity}  ${worker.stageNames.join(', ') || '-'}`);
+			const address = StatusCommand._displayedAddress(worker).padEnd(addressWidth);
+			lines.push(`${worker.name.padEnd(nameWidth)}  ${address}  ${worker.workerState.padEnd(stateWidth)}  ${capacity}  ${worker.stageNames.join(', ') || '-'}`);
 		}
 		return lines.join('\n');
 	}
@@ -218,12 +226,25 @@ export class StatusCommand {
 			return lines.join('\n');
 		}
 		lines.push('');
-		lines.push('| NAME | STATE | CAPACITY | STAGES |');
-		lines.push('| --- | --- | --- | --- |');
+		lines.push('| NAME | ADDRESS | STATE | CAPACITY | STAGES |');
+		lines.push('| --- | --- | --- | --- | --- |');
 		for (const worker of snapshot.workers) {
 			const capacity = `${worker.activeAssignments}/${worker.maxConcurrentAssignments}`;
-			lines.push(`| ${worker.name} | ${worker.workerState} | ${capacity} | ${worker.stageNames.join(', ') || '-'} |`);
+			lines.push(`| ${worker.name} | ${StatusCommand._displayedAddress(worker)} | ${worker.workerState} | ${capacity} | ${worker.stageNames.join(', ') || '-'} |`);
 		}
 		return lines.join('\n');
+	}
+
+	/**
+	 * Writes the address of one worker as a table prints it.
+	 *
+	 * @param worker The worker row to read the address from.
+	 * @returns The address, or `-` when the gateway recorded no address for that worker.
+	 */
+	private static _displayedAddress(worker: StatusWorkerRow): string {
+		if (worker.ipAddress === '') {
+			return '-';
+		}
+		return worker.ipAddress;
 	}
 }
