@@ -161,9 +161,9 @@ export class TerminalReporter {
 	 * percentage must never replace the detail, so the matrix is printed above the percentage
 	 * rather than instead of it.
 	 *
-	 * A group is `✓` only when every test in it passed. A group holding any `FAIL` is `✗`; one
-	 * holding no failure but some `WARN` is `⚠`; one every test of which was skipped is `⊘`, since
-	 * nothing about it was learned.
+	 * A group is `OK` only when every test in it passed. A group holding any `FAIL` is `Failed`;
+	 * one holding no failure but some `WARN` is `Warn`; one every test of which was skipped is
+	 * `Skipped`, since nothing about it was learned.
 	 *
 	 * @param records Every test's outcome.
 	 * @returns The matrix lines, in order.

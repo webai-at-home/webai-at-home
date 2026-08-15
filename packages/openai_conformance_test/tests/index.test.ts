@@ -894,12 +894,14 @@ void Test('the feature matrix marks a group by its worst outcome, and every repo
 	];
 	const options = { endpoint: 'http://example.test/v1', modelId: 'a-model' };
 
+	// The words the terminal reporter marks a group with are the same words it marks each test
+	// with, so a reader learns one set of four rather than a set of words and a set of symbols.
 	const terminal = TerminalReporter.render(records, options);
 	Assert.match(terminal, /Capability\s+Status/);
-	Assert.match(terminal, /Models\s+✓/);
-	Assert.match(terminal, /Chat Completions\s+⚠/);
-	Assert.match(terminal, /Errors\s+✗/);
-	Assert.match(terminal, /Parameters\s+⊘/);
+	Assert.match(terminal, /Models\s+OK/);
+	Assert.match(terminal, /Chat Completions\s+Warn/);
+	Assert.match(terminal, /Errors\s+Failed/);
+	Assert.match(terminal, /Parameters\s+Skipped/);
 
 	const json = JSON.parse(JsonReporter.render(records, options)) as { summary: Record<string, number>; tests: { id: string }[] };
 	Assert.deepEqual(json.summary, { passed: 2, failed: 1, skipped: 1, warned: 1, compatibilityPercent: 50 });
