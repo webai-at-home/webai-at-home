@@ -63,6 +63,9 @@ export class WebsocketRouter {
 		private readonly isReverseProxyTrusted: boolean = false,
 	) { }
 
+	/** Whether the notice about an unnoticed reverse proxy has already been printed. */
+	private hasReportedUnnoticedReverseProxy = false;
+
 	/**
 	 * Takes on one newly opened connection.
 	 *
@@ -78,6 +81,16 @@ export class WebsocketRouter {
 		const ipAddress = ClientIpAddress.fromRequest(request, this.isReverseProxyTrusted);
 		if (ipAddress !== undefined) {
 			this.hub.ipAddressMap.set(deviceId, ipAddress);
+		}
+		// Said once per run rather than once per connection, because it describes how this gateway
+		// was started and not anything about the connection that happened to reveal it.
+		if (this.hasReportedUnnoticedReverseProxy === false && ClientIpAddress.isReverseProxyUnnoticed(request, this.isReverseProxyTrusted) === true) {
+			this.hasReportedUnnoticedReverseProxy = true;
+			console.log(
+				`Note: a connection arrived carrying an x-forwarded-for header, so a reverse proxy sits in front of this gateway, `
+					+ `and every device is being recorded at the address of that proxy (${ipAddress ?? 'none'}) rather than its own. `
+					+ 'Start this gateway with --trust-reverse-proxy to record the address each device connected from.',
+			);
 		}
 		socket.on('message', (raw: Buffer | ArrayBuffer | Buffer[]) => {
 			this.readFrame(socket, deviceId, raw);

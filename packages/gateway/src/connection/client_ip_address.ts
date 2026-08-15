@@ -39,6 +39,26 @@ export class ClientIpAddress {
 	}
 
 	/**
+	 * Reports whether this gateway is recording the address of a reverse proxy rather than the
+	 * address of the device that connected.
+	 *
+	 * A proxy sets `x-forwarded-for`, so a gateway that is not trusting one while that header keeps
+	 * arriving is behind a proxy nobody told it about. Every device then reads as the same address,
+	 * and until this was said out loud nothing on screen explained why. See issue #183.
+	 *
+	 * @param request The HTTP request that carried the WebSocket upgrade.
+	 * @param isReverseProxyTrusted Whether this gateway was told a reverse proxy sits in front.
+	 * @returns `true` when the operator should be told to start the gateway with
+	 * `--trust-reverse-proxy`.
+	 */
+	static isReverseProxyUnnoticed(request: Http.IncomingMessage, isReverseProxyTrusted: boolean): boolean {
+		if (isReverseProxyTrusted === true) {
+			return false;
+		}
+		return ClientIpAddress._leftmostForwardedFor(request.headers['x-forwarded-for']) !== undefined;
+	}
+
+	/**
 	 * Reads the leftmost address out of an `x-forwarded-for` header.
 	 *
 	 * Each proxy the request passed through appends the address it received the request from, so

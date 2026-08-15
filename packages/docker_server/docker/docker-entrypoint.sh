@@ -17,6 +17,7 @@ GATEWAY_AUTH_TOKEN="${GATEWAY_AUTH_TOKEN:-development-token}"
 GATEWAY_STATE_FILE="${GATEWAY_STATE_FILE:-/data/gateway-state.json}"
 GATEWAY_ACCOUNT_FILE="${GATEWAY_ACCOUNT_FILE:-/data/gateway-accounts.json}"
 GATEWAY_LEDGER_FILE="${GATEWAY_LEDGER_FILE:-/data/gateway-ledger.jsonl}"
+GATEWAY_TRUST_REVERSE_PROXY="${GATEWAY_TRUST_REVERSE_PROXY:-false}"
 
 WORKER_PORT="${WORKER_PORT:-8789}"
 
@@ -38,13 +39,23 @@ shutdown() {
 }
 trap shutdown TERM INT
 
+# A container reached through a reverse proxy — which is every container reached over TLS on a
+# domain name — sees that proxy on every connection, so the address of the device connecting is
+# only in the x-forwarded-for header the proxy sets. The gateway believes that header solely when
+# it is told a proxy is in front, because any client can write it. See issue #183.
+gateway_reverse_proxy_options=()
+if [ "$GATEWAY_TRUST_REVERSE_PROXY" = "true" ]; then
+	gateway_reverse_proxy_options=(--trust-reverse-proxy)
+fi
+
 node packages/gateway/dist/cli.js \
 	--port "$GATEWAY_PORT" \
 	--auth-token "$GATEWAY_AUTH_TOKEN" \
 	--state-file "$GATEWAY_STATE_FILE" \
 	--account-file "$GATEWAY_ACCOUNT_FILE" \
 	--ledger-file "$GATEWAY_LEDGER_FILE" \
-	--commit-sha "$COMMIT_SHA" &
+	--commit-sha "$COMMIT_SHA" \
+	${gateway_reverse_proxy_options[@]+"${gateway_reverse_proxy_options[@]}"} &
 gateway_pid=$!
 
 node packages/docker_server/src/static_server.mjs packages/worker_webpage/dist "$WORKER_PORT" &
