@@ -13,6 +13,7 @@ Reads this browser page's settings, connects to the central gateway over a WebSo
 - `lease_heartbeat.ts`: `LeaseHeartbeat`, which tells the gateway this browser is still working on its assignment.
 - `worker_account.ts` and `account_key_store.ts`: this browser's account, what it earns, and the key pair it cannot read out.
 - `diagnostics_reporter.ts`: `DiagnosticsReporter`, which batches this browser's message log and posts it to the gateway.
+- `gateway_departure.ts`: `GatewayDeparture`, which tells the central gateway this browser page is going away.
 
 ## Rules
 
@@ -20,7 +21,9 @@ Reads this browser page's settings, connects to the central gateway over a WebSo
 - Whether a closed connection is opened again is decided from `main.ts`'s `isAutomaticReconnectionAllowed`, never from the WebSocket close code, which says nothing about whether coming back is wanted.
 - `account_key_store.ts` never exposes the private key it stores; only a signature made with it ever leaves this folder.
 - `WorkerStageOffer` reads the stage list from `../stages/stage_catalog.ts`, never a list kept separately here.
+- `GatewayDeparture` sends its departure with `navigator.sendBeacon` and the plain-text content type `@webai/protocol` states, never with `fetch`, because only a beacon is delivered once the page is gone.
 
 ## Background
 
 - The reconnection rule comes from [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158); the account key pair guarantees were proven in [`packages/_account_key_experiments`](../../../../_account_key_experiments/).
+- The departure rule comes from [issue #176](https://github.com/webai-at-home/webai-at-home/issues/176), where a beacon sent from `pagehide` was measured arriving in every case a WebSocket close frame did not.

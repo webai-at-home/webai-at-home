@@ -66,6 +66,7 @@ Each HTML page and its assets are stored in its own directory under `web/`. Brow
 - `/debug_iframe_llm_llama3_2_1b_full` — Llama 3.2 1B Instruct full-model debug page with one worker frame.
 - `/health` — JSON health response with the current worker count.
 - `/diagnostics` — authenticated `POST` endpoint used by worker browsers to send diagnostic entries.
+- `/departure` — authenticated `POST` endpoint a worker browser page announces its own departure on while its tab is being closed.
 
 The WebSocket server uses the same port as the HTTP server. Every connection
 must authenticate with the configured bearer token before it can register or
@@ -76,12 +77,39 @@ against that account rather than against the shared development account. A worke
 worker page itself.
 
 Every open WebSocket connection is pinged every `--heartbeat-interval-ms`
-(default `30000`), and a connection that does not answer the previous ping is
+(default `10000`), and a connection that has answered nothing for
+`--heartbeat-timeout-ms` (default two times the interval, so `20000`) is
 closed. This keeps an idle connection — a worker with no assignment, a
 consumer waiting on a task, a dashboard page that is only watching — alive
 through a reverse proxy placed in front of the gateway, since a reverse proxy
 commonly closes a WebSocket connection that carries no traffic for as little
 as sixty seconds.
+
+The ping is also how the gateway notices a connection that is gone without
+having said so, which is why the interval is ten seconds rather than the
+thirty it used to be: worst case detection fell from about sixty seconds to
+about twenty. See
+[issue #176](https://github.com/webai-at-home/webai-at-home/issues/176).
+
+The two settings are separate because they answer two separate questions. How
+often a connection is pinged has to be short enough for the shortest idle
+timeout any reverse proxy in front of this gateway uses. How long a silent
+connection is tolerated is how quickly a worker that is gone without having
+said so is noticed. A single number used to do both jobs, so neither could be
+changed without changing the other.
+
+| Option | Default |
+| --- | --- |
+| `--heartbeat-interval-ms <number>` | `10000` |
+| `--heartbeat-timeout-ms <number>` | two times `--heartbeat-interval-ms` |
+
+## A worker browser page that is closed
+
+The heartbeat is the last resort, not the normal way a closed worker browser page is noticed. A worker browser page announces its own departure on `/departure` while its tab is being torn down, and the gateway terminates that device's WebSocket connection the moment the announcement arrives, so the common case is immediate rather than up to two heartbeat intervals later.
+
+The announcement is sent with `navigator.sendBeacon`, which is the one request a browser promises to deliver after the page that started it is gone. The WebSocket close frame the page also sends is not: it is queued at the moment the browser is destroying the tab, and a reverse proxy in front of the gateway can hold its own upstream connection open after the browser side is gone. Both are sent, because they cover different cases — a page merely put into the back and forward cache is still alive and its close frame is written normally.
+
+A departure carries the device identifier and the bearer token in a plain-text body, because `navigator.sendBeacon` can set no `authorization` header and cannot wait for the permission a browser demands before sending a cross-origin JSON body. It is checked exactly as a diagnostics report is: the token must match, and the named device must already hold an authenticated connection. Nothing is forgotten by the route itself; terminating the connection lets the normal close handling do every piece of forgetting. See [issue #176](https://github.com/webai-at-home/webai-at-home/issues/176).
 
 ## The address a connection came from
 
