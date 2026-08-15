@@ -281,6 +281,14 @@ Test('translates a worker\'s own stop reason into the OpenAI value under Rule 2 
 	Assert.throws(() => FinishReasonTranslator.translate('interrupted'), OpenaiError);
 });
 
+Test('reports an answer that ended on a consumer\'s stop sequence as stop, never as length', () => {
+	// A stop sequence stops generation the same way a cancelled task does, and the two mean
+	// opposite things to the consumer: one is a finished answer, the other is an abandoned one.
+	// Before `stop_sequence` existed, such an answer was reported as `interrupted` and refused
+	// with HTTP 502, which is what the de-risk gate of step 2 of issue #196 observed live.
+	Assert.equal(FinishReasonTranslator.translate('stop_sequence'), 'stop');
+});
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 //	Running A Cluster Task

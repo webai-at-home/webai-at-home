@@ -18,7 +18,7 @@ Everything specific to the shape of the OpenAI Chat Completions interface: the r
 
 - This folder imports from no other folder of this package: it is the translation layer `../http/` and `../libs/` both sit on top of, never the other way.
 - The model names in `model_catalog.ts` are task type names from [`docs/naming_scheme.md`](../../../../docs/naming_scheme.md).
-- `finish_reason_translator.ts` refuses to answer a reason with no OpenAI value — `interrupted` — rather than inventing one.
+- `finish_reason_translator.ts` refuses to answer a reason with no OpenAI value — `interrupted` — rather than inventing one, and answers `stop_sequence` as `stop`, never as `length`, because an answer that ended on a stop sequence the consumer asked for is a finished answer.
 - `generation_settings_builder.ts` never drops a generation control it cannot honour; refusing it is `../http/openai_routes.ts`'s job, not this folder's.
 
 ## Background

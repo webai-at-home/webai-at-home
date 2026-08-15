@@ -23,14 +23,19 @@ export class FinishReasonTranslator {
 	 * is what this server reported for every answer before this milestone, so an unreported
 	 * reason keeps behaving exactly as it always has.
 	 *
+	 * `stop_sequence` translates to `stop`, and must never translate to `length`. An answer that
+	 * ended on a stop sequence the consumer asked for is a finished answer, and the OpenAI Chat
+	 * Completions interface reports it the same way it reports an answer the model ended itself.
+	 * See step 3 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196).
+	 *
 	 * @param stopReason The worker's own word for why generation stopped, or `undefined` when the
 	 * worker did not report one.
 	 * @returns The OpenAI value to answer with.
 	 * @throws OpenaiError when the stop reason is `interrupted`, since there is no OpenAI value
 	 * for an answer the cluster gave up on producing.
 	 */
-	static translate(stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined): ChatCompletionFinishReason {
-		if (stopReason === undefined || stopReason === 'end_of_sequence') {
+	static translate(stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' | undefined): ChatCompletionFinishReason {
+		if (stopReason === undefined || stopReason === 'end_of_sequence' || stopReason === 'stop_sequence') {
 			return 'stop';
 		}
 		if (stopReason === 'max_new_tokens') {

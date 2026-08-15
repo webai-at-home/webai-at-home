@@ -145,7 +145,7 @@ export class StagePayloadFactory {
 	static llmDone(
 		text: string,
 		newText?: string,
-		usage?: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' },
+		usage?: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' },
 	): LlmStagePayload {
 		const payload: LlmStagePayload = { text, ...StagePayloadFactory.piece(newText), done: true };
 		if (usage?.promptTokenCount !== undefined) {
@@ -179,7 +179,7 @@ export class StagePayloadFactory {
 	 */
 	static llmToolCalls(
 		toolCalls: ToolCall[],
-		usage?: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' },
+		usage?: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' },
 	): LlmStagePayload {
 		if (toolCalls.length === 0) {
 			throw new Error('A stage result that asks for no tool and carries no answer text says nothing at all.');
