@@ -6,16 +6,22 @@ The OpenAI API Conformance Test command line program: it points at a server clai
 
 ## Key Exports & Entry Points
 
-- `milestone_zero/gate.ts`: the de-risking gate for [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182). Not the conformance runner. Runs eight candidate tests ten times each against two live endpoints and reports which verdicts held, proving whether a conformance verdict can be made stable before the runner is built on top of that answer. Run with `npx tsx milestone_zero/gate.ts`.
-- The runner, the test definitions, the report writers, and the profiles named in [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182) do not exist yet; they are milestones one through seven of that issue.
+- `src/cli.ts`: the `openai_conformance_test` program, no subcommand, options only, per section 33 of issue #181. Run with `npx tsx src/cli.ts --model <name>`.
+- `src/types.ts`: `Verdict`, `TestResult`, `TestContext`, `ConformanceTest` — the shapes every test, client, and report share.
+- `src/clients/`, `src/tests/`, `src/profiles/`, `src/reporter/`: each has its own `CONTEXT.md`.
+- `src/runner.ts`: `Runner`, runs a profile's tests in order, timing each and turning a thrown error into `FAIL` rather than stopping the run.
+- `src/json_response_reader.ts`: `JsonResponseReader`, the one place every test reads `choices[0]`, `usage`, and `error` out of an unknown parsed body.
+- `milestone_zero/gate.ts`: the de-risking gate for [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182), kept for the record, superseded by `src/runner.ts`.
 
 ## Rules
 
-- A chat completion request body, a server-sent event, and an error response body are read directly here, never through `@webai/openai-api-tool`'s `CompletionSender`, because that package's own rule is that `openai` npm package is its single transport. This package is where the raw protocol is inspected instead.
-- `ToolCallProber` and `GenerationControlProber` from `@webai/openai-api-tool` are reused for tool calling and generation control tests, never reimplemented here; see decision two of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182).
-- A test result is one of `PASS`, `FAIL`, `SKIP`, or `WARN`, exactly as section 32 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181) defines them. `SKIP` is what a server's own declared-unsupported error becomes, never `FAIL`; `WARN` is what a model's own choice not to use a declared capability becomes, never `FAIL`.
-- This package never grades whether an answer is a good one, only whether the protocol was followed, per section 38 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181).
+- `RawHttpClient` is the only file in this package that builds or parses a request or response body by hand; every test goes through it or through `OpenaiPackageClient`.
+- `ToolCallProber` and `GenerationControlProber` from `@webai/openai-api-tool` are reused, never reimplemented; see decision two of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182).
+- The endpoint options and `-f/--format` come from `@webai/openai-api-tool`'s `SharedOptions`, through its `./shared_options` subpath export.
+- A test result is `PASS`, `FAIL`, `SKIP`, or `WARN`, exactly as section 32 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181) defines them. `SKIP` is a server's declared-unsupported refusal, never `FAIL`; `WARN` is a model's own choice not to use an accepted capability, never `FAIL`. The `core` profile never reaches either; the milestone zero report on [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182) names the later groups that must.
+- Never grade an answer's content, only whether the protocol was followed, per section 38 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181).
+- `tests/index.test.ts` starts its own local HTTP server rather than depending on a cluster or LM Studio, as `packages/openai_api_tool/tests/index.test.ts` does.
 
 ## Background
 
-- Milestone zero's own findings, including the one candidate test that flipped between ten repeated requests and why, are posted as a comment on [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182) rather than restated here.
+- Milestone zero's and milestone one's own findings are posted as comments on [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182) rather than restated here.

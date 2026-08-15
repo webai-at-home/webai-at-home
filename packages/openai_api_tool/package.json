@@ -6,6 +6,16 @@
 	"bin": {
 		"openai_api_tool": "./dist/cli.js"
 	},
+	"exports": {
+		"./shared_options": {
+			"types": "./dist/shared_options.d.ts",
+			"default": "./dist/shared_options.js"
+		},
+		"./completion_types": {
+			"types": "./dist/completion_types.d.ts",
+			"default": "./dist/completion_types.js"
+		}
+	},
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
 		"typecheck": "tsc -p tsconfig.json",
