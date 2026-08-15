@@ -28,6 +28,7 @@ export class TerminalReporter {
 		['usage', 'Usage'],
 		['errors', 'Errors'],
 		['streaming', 'Streaming'],
+		['tools', 'Tool Calling'],
 	]);
 
 	/**

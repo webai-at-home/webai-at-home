@@ -1,6 +1,7 @@
 // local imports
 import type { OpenaiPackageClient } from './clients/openai_package_client.js';
 import type { RawHttpClient } from './clients/raw_http_client.js';
+import type { ToolCallProbeCache } from './tool_call_probe_cache.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -37,6 +38,11 @@ export type TestContext = {
 	readonly openaiPackageClient: OpenaiPackageClient;
 	/** The model identifier every request is sent with. */
 	readonly modelId: string;
+	/**
+	 * The one `ToolCallProber` run the six tool call tests share, so that probing six abilities
+	 * costs one run's requests rather than six.
+	 */
+	readonly toolCallProbeCache: ToolCallProbeCache;
 };
 
 /**

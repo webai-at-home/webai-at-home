@@ -8,6 +8,7 @@ One file per named profile, each an ordered list of the `ConformanceTest` object
 
 - `core.ts`: `coreProfile`, model discovery, basic chat completions, usage, and errors.
 - `streaming.ts`: `streamingProfile`, the server-sent event transport, chunk format, incremental content, `finish_reason`, `[DONE]`, and whether the answer was genuinely streamed.
+- `tools.ts`: `toolsProfile`, the six separate tool call abilities, with the negative control last.
 
 ## Rules
 
@@ -16,4 +17,4 @@ One file per named profile, each an ordered list of the `ConformanceTest` object
 
 ## Background
 
-- `tools`, `agent`, and `full` are milestones three and six of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182); each adds one file here, the same way `core.ts` and `streaming.ts` do.
+- `agent` and `full` are milestone six of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182); each adds one file here, the same way the three above do.

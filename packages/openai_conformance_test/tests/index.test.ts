@@ -8,15 +8,18 @@ import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
 import { RawHttpClient } from '../src/clients/raw_http_client.js';
 import { coreProfile } from '../src/profiles/core.js';
 import { streamingProfile } from '../src/profiles/streaming.js';
+import { toolsProfile } from '../src/profiles/tools.js';
 import { TerminalReporter } from '../src/reporter/terminal.js';
 import { Runner, type TestRunRecord } from '../src/runner.js';
 import { SseEventReader } from '../src/sse_event_reader.js';
+import { ToolCallProbeCache } from '../src/tool_call_probe_cache.js';
 import { chatBasicTest } from '../src/tests/chat/basic.js';
 import { errorsUnknownModelTest } from '../src/tests/errors/unknown_model.js';
 import { streamingDoneTest } from '../src/tests/streaming/done.js';
 import { streamingHeadersTest } from '../src/tests/streaming/headers.js';
 import { streamingTimingTest } from '../src/tests/streaming/timing.js';
 import { usageTotalIsSumTest } from '../src/tests/usage/total_is_sum.js';
+import { ToolCallVerdict } from '../src/tool_call_verdict.js';
 import type { ConformanceTest, TestContext } from '../src/types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,10 +48,12 @@ class TestFixtures {
 			throw new Error('The test server did not report a port');
 		}
 		const target = { baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: 'test-key', timeoutMs: 2_000 };
+		const openaiPackageClient = new OpenaiPackageClient(target);
 		const context: TestContext = {
 			rawHttpClient: new RawHttpClient(target),
-			openaiPackageClient: new OpenaiPackageClient(target),
+			openaiPackageClient,
 			modelId: TestFixtures.modelId,
+			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1),
 		};
 		return {
 			context,
@@ -191,6 +196,32 @@ class TestFixtures {
 	static streamingIgnored(): Http.RequestListener {
 		return (request, response) => {
 			void TestFixtures._readBody(request).then(() => {
+				TestFixtures._sendChatCompletion(response, { promptTokens: 5, completionTokens: 1 });
+			});
+		};
+	}
+
+	/**
+	 * A server that refuses any request carrying tool declarations, naming `tools` as the field at
+	 * fault — the way this project's own `consumer_openai` answers for a model that cannot read
+	 * them, with the code `unsupported_tool_declarations`, as milestone zero of issue #182 found.
+	 *
+	 * @returns The request handler.
+	 */
+	static refusesToolDeclarations(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then((rawBody) => {
+				if (rawBody.includes('"tools"') === true || rawBody.includes('"tool_choice"') === true) {
+					TestFixtures._sendJson(response, 400, {
+						error: {
+							message: `The model ${TestFixtures.modelId} cannot read tool declarations.`,
+							type: 'invalid_request_error',
+							param: 'tools',
+							code: 'unsupported_tool_declarations',
+						},
+					});
+					return;
+				}
 				TestFixtures._sendChatCompletion(response, { promptTokens: 5, completionTokens: 1 });
 			});
 		};
@@ -437,16 +468,76 @@ void Test('streaming.headers fails when a streamed request is answered with one 
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+//	ToolCallVerdict, and the tools profile
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test("ToolCallVerdict maps ToolCallProber's five statuses onto the four conformance verdicts", () => {
+	const outcome = { modelId: 'a-model', mode: 'nostream', ability: 'generates_a_call', observation: 'what was seen', answers: [] } as const;
+	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'supported' }, 'generates_a_call').verdict, 'PASS');
+	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'refused' }, 'generates_a_call').verdict, 'SKIP');
+	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'unsupported' }, 'generates_a_call').verdict, 'WARN');
+	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'inconclusive' }, 'generates_a_call').verdict, 'WARN');
+	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'failed' }, 'generates_a_call').verdict, 'FAIL');
+	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'supported' }, 'generates_a_call').detail, 'what was seen');
+});
+
+void Test('ToolCallVerdict fails, naming the ability, when the probe run produced no outcome for it', () => {
+	const result = ToolCallVerdict.fromOutcome(undefined, 'fills_in_the_arguments');
+	Assert.equal(result.verdict, 'FAIL');
+	Assert.match(result.detail, /no outcome for "fills_in_the_arguments"/);
+});
+
+void Test('every tools profile test reports SKIP against a server that refuses tool declarations outright', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.refusesToolDeclarations());
+	try {
+		const records = await Runner.run(toolsProfile, context);
+		const toolDeclaringRecords = records.filter((record) => record.test.id !== 'tools.answers_without_a_call_when_none_is_needed');
+		Assert.deepEqual(
+			toolDeclaringRecords.filter((record) => record.result.verdict !== 'SKIP').map((record) => `${record.test.id}: ${record.result.verdict} — ${record.result.detail}`),
+			[],
+		);
+		Assert.equal(records.length, toolsProfile.length);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('the six tools profile tests share one ToolCallProber run rather than probing six times over', async () => {
+	let chatCompletionRequestCount = 0;
+	const { context, stop } = await TestFixtures.startServer((request, response) => {
+		if (request.url === '/v1/chat/completions') {
+			chatCompletionRequestCount += 1;
+		}
+		TestFixtures.refusesToolDeclarations()(request, response);
+	});
+	try {
+		await Runner.run(toolsProfile, context);
+		const oneRunRequestCount = chatCompletionRequestCount;
+		Assert.ok(oneRunRequestCount > 0, 'the probe run sent no request at all');
+
+		chatCompletionRequestCount = 0;
+		await Runner.run([toolsProfile[0] as ConformanceTest], context);
+		Assert.equal(chatCompletionRequestCount, 0, 'a second run re-probed instead of reusing the cached outcomes');
+	} finally {
+		await stop();
+	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 //	Runner
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 void Test('Runner turns a request that never reaches a server into a FAIL result, not a thrown error', async () => {
 	const target = { baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'test-key', timeoutMs: 500 };
+	const openaiPackageClient = new OpenaiPackageClient(target);
 	const context: TestContext = {
 		rawHttpClient: new RawHttpClient(target),
-		openaiPackageClient: new OpenaiPackageClient(target),
+		openaiPackageClient,
 		modelId: TestFixtures.modelId,
+		toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1),
 	};
 	const records = await Runner.run([chatBasicTest], context);
 	Assert.equal(records.length, 1);

@@ -9,9 +9,10 @@ The OpenAI API Conformance Test command line program: it points at a server clai
 - `src/cli.ts`: the `openai_conformance_test` program, no subcommand, options only, per section 33 of issue #181. Run with `npx tsx src/cli.ts --model <name>`.
 - `src/types.ts`: `Verdict`, `TestResult`, `TestContext`, `ConformanceTest` — the shapes every test, client, and report share.
 - `src/clients/`, `src/tests/`, `src/profiles/`, `src/reporter/`: each has its own `CONTEXT.md`.
-- `src/runner.ts`: `Runner`, runs a profile's tests in order, timing each and turning a thrown error into `FAIL` rather than stopping the run.
+- `src/runner.ts`: `Runner`, runs a profile's tests in order, turning a thrown error into `FAIL` rather than stopping the run.
 - `src/json_response_reader.ts`: `JsonResponseReader`, the one place every test reads `choices[0]`, `delta`, `usage`, and `error` out of an unknown parsed body.
 - `src/sse_event_reader.ts`: `SseEventReader`, the one place every streaming test reads a raw server-sent event's `data:` line.
+- `src/tool_call_probe_cache.ts`, `src/tool_call_verdict.ts`: the one shared `ToolCallProber` run the six tool call tests read from, and the translation of its five statuses into four verdicts.
 - `milestone_zero/gate.ts`: the de-risking gate for [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182), kept for the record, superseded by `src/runner.ts`.
 
 ## Rules

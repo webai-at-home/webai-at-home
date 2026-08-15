@@ -15,7 +15,7 @@ The command line tool that exercises and measures a server speaking the OpenAI-c
 
 ## Rules
 
-- `./shared_options` and `./completion_types`, named in `package.json`'s `exports` field, are the only subpaths reachable from outside this package. Anything else is imported only from inside.
+- The four subpaths named in `package.json`'s `exports` field — `./shared_options`, `./completion_types`, `./tool_call_prober`, `./generation_control_prober` — are the only ones reachable from outside this package. Anything else is imported only from inside.
 - The `openai` npm package is the single transport. Never build a request body, parse a server-sent event, or read a response body by hand.
 - Every request goes through `CompletionSender`, every measurement through `BenchmarkRunner`; no subcommand or prober talks to an endpoint itself.
 - This package holds no server and no gateway protocol. It depends on `@webai/consumer-cli` only for `taskTypeNames` and `taskTypeNamesAcceptingHistory`, never restating either list, and a model name outside those two lists is passed to the endpoint unchanged.

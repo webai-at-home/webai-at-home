@@ -13,8 +13,10 @@ import { OpenaiPackageClient } from './clients/openai_package_client.js';
 import { RawHttpClient } from './clients/raw_http_client.js';
 import { coreProfile } from './profiles/core.js';
 import { streamingProfile } from './profiles/streaming.js';
+import { toolsProfile } from './profiles/tools.js';
 import { TerminalReporter } from './reporter/terminal.js';
 import { Runner } from './runner.js';
+import { ToolCallProbeCache } from './tool_call_probe_cache.js';
 import type { ConformanceTest, TestContext } from './types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,6 +41,7 @@ import type { ConformanceTest, TestContext } from './types.js';
 const knownProfiles: ReadonlyMap<string, readonly ConformanceTest[]> = new Map([
 	['core', coreProfile],
 	['streaming', streamingProfile],
+	['tools', toolsProfile],
 ]);
 
 /** The options `Cli.run` accepts, exactly as commander parses them. */
@@ -47,6 +50,8 @@ export type RawCliOptions = RawSharedOptions & {
 	model: string;
 	/** Which profile to run. */
 	profile: string;
+	/** How many times a tool call probe sends its prompt before giving up on getting a call, still as text. */
+	repeats: string;
 };
 
 /** The `openai_conformance_test` command line program. */
@@ -68,6 +73,7 @@ export class Cli {
 			.description('Points at a server claiming to speak the OpenAI-compatible Chat Completions API and reports which parts of the protocol it actually honours.')
 			.option('-m, --model <name>', 'the model identifier to request', process.env.OPENAI_MODEL);
 		program.addOption(program.createOption('-p, --profile <name>', `which group of tests to run: ${[...knownProfiles.keys()].join(', ')}`).default('core'));
+		program.option('-r, --repeats <number>', 'how many times a tool call probe sends its prompt before giving up on getting a call', '3');
 		SharedOptions.addEndpointOptions(program);
 		SharedOptions.addFormatOption(program);
 
@@ -111,10 +117,12 @@ export class Cli {
 		}
 
 		const target = SharedOptions.buildTarget(rawOptions);
+		const openaiPackageClient = new OpenaiPackageClient(target);
 		const context: TestContext = {
 			rawHttpClient: new RawHttpClient(target),
-			openaiPackageClient: new OpenaiPackageClient(target),
+			openaiPackageClient,
 			modelId: rawOptions.model,
+			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, rawOptions.model, SharedOptions.positiveInteger(rawOptions.repeats, '--repeats')),
 		};
 
 		const records = await Runner.run(profile, context);
