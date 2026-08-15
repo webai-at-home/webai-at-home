@@ -9,6 +9,8 @@ One file per named profile, each an ordered list of the `ConformanceTest` object
 - `core.ts`: `coreProfile`, model discovery, basic chat completions, usage, and errors.
 - `streaming.ts`: `streamingProfile`, the server-sent event transport, chunk format, incremental content, `finish_reason`, `[DONE]`, and whether the answer was genuinely streamed.
 - `tools.ts`: `toolsProfile`, the six separate tool call abilities, with the negative control last.
+- `parameters.ts`: `parametersProfile`, the five generation controls, measured rather than merely accepted.
+- `structured_output.ts`: `structuredOutputProfile`, `json_object` and `json_schema`, reported separately.
 
 ## Rules
 

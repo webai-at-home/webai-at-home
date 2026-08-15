@@ -6,6 +6,9 @@ import Test from 'node:test';
 // local imports
 import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
 import { RawHttpClient } from '../src/clients/raw_http_client.js';
+import { GenerationControlProbeCache } from '../src/generation_control_probe_cache.js';
+import { GenerationControlVerdict } from '../src/generation_control_verdict.js';
+import { JsonContentExtractor } from '../src/json_content_extractor.js';
 import { coreProfile } from '../src/profiles/core.js';
 import { streamingProfile } from '../src/profiles/streaming.js';
 import { toolsProfile } from '../src/profiles/tools.js';
@@ -18,6 +21,8 @@ import { errorsUnknownModelTest } from '../src/tests/errors/unknown_model.js';
 import { streamingDoneTest } from '../src/tests/streaming/done.js';
 import { streamingHeadersTest } from '../src/tests/streaming/headers.js';
 import { streamingTimingTest } from '../src/tests/streaming/timing.js';
+import { structuredOutputJsonObjectTest } from '../src/tests/structured_output/json_object.js';
+import { structuredOutputJsonSchemaTest } from '../src/tests/structured_output/json_schema.js';
 import { usageTotalIsSumTest } from '../src/tests/usage/total_is_sum.js';
 import { ToolCallVerdict } from '../src/tool_call_verdict.js';
 import type { ConformanceTest, TestContext } from '../src/types.js';
@@ -54,6 +59,7 @@ class TestFixtures {
 			openaiPackageClient,
 			modelId: TestFixtures.modelId,
 			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1),
+			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1),
 		};
 		return {
 			context,
@@ -220,6 +226,59 @@ class TestFixtures {
 							code: 'unsupported_tool_declarations',
 						},
 					});
+					return;
+				}
+				TestFixtures._sendChatCompletion(response, { promptTokens: 5, completionTokens: 1 });
+			});
+		};
+	}
+
+	/**
+	 * A server whose answer is valid JSON wrapped in a markdown code fence — what
+	 * `llm_llama3_2_1b_full` did in nine of ten tries in milestone zero of issue #182.
+	 *
+	 * @returns The request handler.
+	 */
+	static answersWithFencedJson(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then(() => {
+				TestFixtures._sendJson(response, 200, {
+					id: 'chatcmpl-mock',
+					object: 'chat.completion',
+					created: 0,
+					model: TestFixtures.modelId,
+					choices: [{ index: 0, message: { role: 'assistant', content: '```json\n{"greeting": "hello"}\n```' }, finish_reason: 'stop' }],
+					usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+				});
+			});
+		};
+	}
+
+	/**
+	 * A server that refuses `response_format: { type: "json_object" }` with `error` as a bare
+	 * string rather than an OpenAI-shaped object — exactly what LM Studio answers, so the refusal
+	 * has no `code` field to key on.
+	 *
+	 * @returns The request handler.
+	 */
+	static refusesJsonObjectWithBareStringError(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then(() => {
+				TestFixtures._sendJson(response, 400, { error: "'response_format.type' must be 'json_schema' or 'text'" });
+			});
+		};
+	}
+
+	/**
+	 * A server that refuses `response_format: { type: "json_schema" }`.
+	 *
+	 * @returns The request handler.
+	 */
+	static refusesJsonSchema(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then((rawBody) => {
+				if (rawBody.includes('json_schema') === true) {
+					TestFixtures._sendJson(response, 400, { error: { message: "'response_format.type' must be 'text'", type: 'invalid_request_error', param: 'response_format', code: null } });
 					return;
 				}
 				TestFixtures._sendChatCompletion(response, { promptTokens: 5, completionTokens: 1 });
@@ -526,6 +585,92 @@ void Test('the six tools profile tests share one ToolCallProber run rather than 
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+//	JsonContentExtractor, and the structured output group
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test('JsonContentExtractor parses bare JSON without reporting a fence', () => {
+	const { parsed, wasFenced } = JsonContentExtractor.extract('{"greeting": "hello"}');
+	Assert.deepEqual(parsed, { greeting: 'hello' });
+	Assert.equal(wasFenced, false);
+});
+
+void Test('JsonContentExtractor recovers JSON from the markdown code fence milestone zero found live', () => {
+	const triple = JsonContentExtractor.extract('```json\n{"greeting": "hello"}\n```');
+	Assert.deepEqual(triple.parsed, { greeting: 'hello' });
+	Assert.equal(triple.wasFenced, true);
+
+	const single = JsonContentExtractor.extract('`{"greeting": "hello"}`');
+	Assert.deepEqual(single.parsed, { greeting: 'hello' });
+	Assert.equal(single.wasFenced, true);
+
+	const untagged = JsonContentExtractor.extract('```\n{"greeting": "hello"}\n```');
+	Assert.deepEqual(untagged.parsed, { greeting: 'hello' });
+	Assert.equal(untagged.wasFenced, true);
+});
+
+void Test('JsonContentExtractor recovers nothing from content that is not JSON at all', () => {
+	Assert.equal(JsonContentExtractor.extract('I cannot help with that.').parsed, undefined);
+	Assert.equal(JsonContentExtractor.extract('').parsed, undefined);
+	Assert.equal(JsonContentExtractor.extract('```json\nnot json\n```').parsed, undefined);
+});
+
+void Test('structured_output.json_object warns, rather than failing, when the JSON is wrapped in a code fence', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.answersWithFencedJson());
+	try {
+		const result = await structuredOutputJsonObjectTest.run(context);
+		Assert.equal(result.verdict, 'WARN');
+		Assert.match(result.detail, /wrapped in a markdown code fence/);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('structured_output.json_object skips, rather than failing, when the endpoint refuses the parameter with a bare-string error body', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.refusesJsonObjectWithBareStringError());
+	try {
+		const result = await structuredOutputJsonObjectTest.run(context);
+		Assert.equal(result.verdict, 'SKIP');
+		Assert.match(result.detail, /json_object is not supported/);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('structured_output.json_schema skips, rather than failing, when the endpoint refuses the parameter', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.refusesJsonSchema());
+	try {
+		const result = await structuredOutputJsonSchemaTest.run(context);
+		Assert.equal(result.verdict, 'SKIP');
+		Assert.match(result.detail, /json_schema is not supported/);
+	} finally {
+		await stop();
+	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	GenerationControlVerdict
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test("GenerationControlVerdict reads a control accepted and quietly ignored as FAIL, not WARN", () => {
+	const outcome = { modelId: 'a-model', mode: 'nostream', control: 'temperature', observation: 'what was seen', answers: [] } as const;
+	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'honoured' }, 'temperature').verdict, 'PASS');
+	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'refused' }, 'temperature').verdict, 'SKIP');
+	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'not_honoured' }, 'temperature').verdict, 'FAIL');
+	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'inconclusive' }, 'temperature').verdict, 'WARN');
+	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'failed' }, 'temperature').verdict, 'FAIL');
+});
+
+void Test('GenerationControlVerdict fails, naming the control, when the probe run produced no outcome for it', () => {
+	const result = GenerationControlVerdict.fromOutcome(undefined, 'seed');
+	Assert.equal(result.verdict, 'FAIL');
+	Assert.match(result.detail, /no outcome for "seed"/);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 //	Runner
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -538,6 +683,7 @@ void Test('Runner turns a request that never reaches a server into a FAIL result
 		openaiPackageClient,
 		modelId: TestFixtures.modelId,
 		toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1),
+		generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1),
 	};
 	const records = await Runner.run([chatBasicTest], context);
 	Assert.equal(records.length, 1);

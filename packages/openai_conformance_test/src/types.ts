@@ -1,6 +1,7 @@
 // local imports
 import type { OpenaiPackageClient } from './clients/openai_package_client.js';
 import type { RawHttpClient } from './clients/raw_http_client.js';
+import type { GenerationControlProbeCache } from './generation_control_probe_cache.js';
 import type { ToolCallProbeCache } from './tool_call_probe_cache.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -43,6 +44,11 @@ export type TestContext = {
 	 * costs one run's requests rather than six.
 	 */
 	readonly toolCallProbeCache: ToolCallProbeCache;
+	/**
+	 * The one `GenerationControlProber` run the five generation control tests share, for the same
+	 * reason `toolCallProbeCache` exists.
+	 */
+	readonly generationControlProbeCache: GenerationControlProbeCache;
 };
 
 /**

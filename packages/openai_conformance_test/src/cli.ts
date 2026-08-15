@@ -11,8 +11,11 @@ import { Command } from 'commander';
 import { SharedOptions, type RawSharedOptions } from '@webai/openai-api-tool/shared_options';
 import { OpenaiPackageClient } from './clients/openai_package_client.js';
 import { RawHttpClient } from './clients/raw_http_client.js';
+import { GenerationControlProbeCache } from './generation_control_probe_cache.js';
 import { coreProfile } from './profiles/core.js';
+import { parametersProfile } from './profiles/parameters.js';
 import { streamingProfile } from './profiles/streaming.js';
+import { structuredOutputProfile } from './profiles/structured_output.js';
 import { toolsProfile } from './profiles/tools.js';
 import { TerminalReporter } from './reporter/terminal.js';
 import { Runner } from './runner.js';
@@ -42,6 +45,8 @@ const knownProfiles: ReadonlyMap<string, readonly ConformanceTest[]> = new Map([
 	['core', coreProfile],
 	['streaming', streamingProfile],
 	['tools', toolsProfile],
+	['parameters', parametersProfile],
+	['structured_output', structuredOutputProfile],
 ]);
 
 /** The options `Cli.run` accepts, exactly as commander parses them. */
@@ -50,7 +55,7 @@ export type RawCliOptions = RawSharedOptions & {
 	model: string;
 	/** Which profile to run. */
 	profile: string;
-	/** How many times a tool call probe sends its prompt before giving up on getting a call, still as text. */
+	/** How many times a tool call or generation control probe repeats its prompt, still as text. */
 	repeats: string;
 };
 
@@ -73,7 +78,7 @@ export class Cli {
 			.description('Points at a server claiming to speak the OpenAI-compatible Chat Completions API and reports which parts of the protocol it actually honours.')
 			.option('-m, --model <name>', 'the model identifier to request', process.env.OPENAI_MODEL);
 		program.addOption(program.createOption('-p, --profile <name>', `which group of tests to run: ${[...knownProfiles.keys()].join(', ')}`).default('core'));
-		program.option('-r, --repeats <number>', 'how many times a tool call probe sends its prompt before giving up on getting a call', '3');
+		program.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '3');
 		SharedOptions.addEndpointOptions(program);
 		SharedOptions.addFormatOption(program);
 
@@ -123,6 +128,7 @@ export class Cli {
 			openaiPackageClient,
 			modelId: rawOptions.model,
 			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, rawOptions.model, SharedOptions.positiveInteger(rawOptions.repeats, '--repeats')),
+			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, rawOptions.model, SharedOptions.positiveInteger(rawOptions.repeats, '--repeats')),
 		};
 
 		const records = await Runner.run(profile, context);

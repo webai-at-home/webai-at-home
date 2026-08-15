@@ -29,6 +29,8 @@ export class TerminalReporter {
 		['errors', 'Errors'],
 		['streaming', 'Streaming'],
 		['tools', 'Tool Calling'],
+		['parameters', 'Parameters'],
+		['structured_output', 'Structured Output'],
 	]);
 
 	/**
