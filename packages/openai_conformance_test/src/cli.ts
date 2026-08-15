@@ -12,6 +12,7 @@ import { SharedOptions, type RawSharedOptions } from '@webai/openai-api-tool/sha
 import { OpenaiPackageClient } from './clients/openai_package_client.js';
 import { RawHttpClient } from './clients/raw_http_client.js';
 import { coreProfile } from './profiles/core.js';
+import { streamingProfile } from './profiles/streaming.js';
 import { TerminalReporter } from './reporter/terminal.js';
 import { Runner } from './runner.js';
 import type { ConformanceTest, TestContext } from './types.js';
@@ -35,7 +36,10 @@ import type { ConformanceTest, TestContext } from './types.js';
 ///////////////////////////////////////////////////////////////////////////////
 
 /** Every profile this package can run today. `packages/openai_conformance_test/CONTEXT.md` names which milestone adds the next one. */
-const knownProfiles: ReadonlyMap<string, readonly ConformanceTest[]> = new Map([['core', coreProfile]]);
+const knownProfiles: ReadonlyMap<string, readonly ConformanceTest[]> = new Map([
+	['core', coreProfile],
+	['streaming', streamingProfile],
+]);
 
 /** The options `Cli.run` accepts, exactly as commander parses them. */
 export type RawCliOptions = RawSharedOptions & {

@@ -47,6 +47,29 @@ export class JsonResponseReader {
 	}
 
 	/**
+	 * Reads `choices[0].delta.content` out of one streamed chunk.
+	 *
+	 * @param json One streamed chunk's parsed `data:` payload.
+	 * @returns The delta's content, `undefined` when it is missing or not a string.
+	 */
+	static deltaContent(json: unknown): string | undefined {
+		const delta = JsonResponseReader.asRecord(JsonResponseReader.firstChoice(json)?.['delta']);
+		const content = delta?.['content'];
+		return typeof content === 'string' ? content : undefined;
+	}
+
+	/**
+	 * Reads `choices[0].finish_reason` out of a chat completion response body, or one streamed chunk.
+	 *
+	 * @param json The parsed response body, or one streamed chunk's parsed `data:` payload.
+	 * @returns The finish reason, `undefined` when it is missing, `null`, or not a string.
+	 */
+	static finishReason(json: unknown): string | undefined {
+		const finishReason = JsonResponseReader.firstChoice(json)?.['finish_reason'];
+		return typeof finishReason === 'string' ? finishReason : undefined;
+	}
+
+	/**
 	 * Reads `usage` out of a chat completion response body.
 	 *
 	 * @param json The parsed response body.

@@ -6,7 +6,8 @@ One file per named profile, each an ordered list of the `ConformanceTest` object
 
 ## Key Exports & Entry Points
 
-- `core.ts`: `coreProfile`, model discovery, basic chat completions, usage, and errors — the only profile this package runs today.
+- `core.ts`: `coreProfile`, model discovery, basic chat completions, usage, and errors.
+- `streaming.ts`: `streamingProfile`, the server-sent event transport, chunk format, incremental content, `finish_reason`, `[DONE]`, and whether the answer was genuinely streamed.
 
 ## Rules
 
@@ -15,4 +16,4 @@ One file per named profile, each an ordered list of the `ConformanceTest` object
 
 ## Background
 
-- `streaming`, `tools`, `agent`, and `full` are milestones two, three, and six of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182); each adds one file here, the same way `core.ts` does.
+- `tools`, `agent`, and `full` are milestones three and six of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182); each adds one file here, the same way `core.ts` and `streaming.ts` do.

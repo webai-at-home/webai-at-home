@@ -7,10 +7,15 @@ import Test from 'node:test';
 import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
 import { RawHttpClient } from '../src/clients/raw_http_client.js';
 import { coreProfile } from '../src/profiles/core.js';
+import { streamingProfile } from '../src/profiles/streaming.js';
 import { TerminalReporter } from '../src/reporter/terminal.js';
 import { Runner, type TestRunRecord } from '../src/runner.js';
+import { SseEventReader } from '../src/sse_event_reader.js';
 import { chatBasicTest } from '../src/tests/chat/basic.js';
 import { errorsUnknownModelTest } from '../src/tests/errors/unknown_model.js';
+import { streamingDoneTest } from '../src/tests/streaming/done.js';
+import { streamingHeadersTest } from '../src/tests/streaming/headers.js';
+import { streamingTimingTest } from '../src/tests/streaming/timing.js';
 import { usageTotalIsSumTest } from '../src/tests/usage/total_is_sum.js';
 import type { ConformanceTest, TestContext } from '../src/types.js';
 
@@ -119,11 +124,104 @@ class TestFixtures {
 		};
 	}
 
+	/**
+	 * A server that streams a chat completion correctly: `Content-Type: text/event-stream`, one
+	 * `data:` event per content piece, spaced far enough apart in time to be genuinely streamed, a
+	 * final chunk carrying `finish_reason`, and the `data: [DONE]` sentinel.
+	 *
+	 * @returns The request handler.
+	 */
+	static streamingWellBehaved(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then(async () => {
+				TestFixtures._openEventStream(response);
+				for (const piece of ['One', ', two', ', three']) {
+					TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: { content: piece }, finish_reason: null }] });
+					await new Promise((resolve) => setTimeout(resolve, 15));
+				}
+				TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+				response.write('data: [DONE]\n\n');
+				response.end();
+			});
+		};
+	}
+
+	/**
+	 * A server that writes every chunk in one go before ending the response — the fake streaming
+	 * section 12 of issue #181 asks this package to detect.
+	 *
+	 * @returns The request handler.
+	 */
+	static streamingBuffered(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then(() => {
+				TestFixtures._openEventStream(response);
+				for (const piece of ['One', ', two', ', three']) {
+					TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: { content: piece }, finish_reason: null }] });
+				}
+				TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+				response.write('data: [DONE]\n\n');
+				response.end();
+			});
+		};
+	}
+
+	/**
+	 * A server that streams correctly but never sends the `data: [DONE]` sentinel.
+	 *
+	 * @returns The request handler.
+	 */
+	static streamingWithoutDone(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then(() => {
+				TestFixtures._openEventStream(response);
+				TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: { content: 'One' }, finish_reason: null }] });
+				TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+				response.end();
+			});
+		};
+	}
+
+	/**
+	 * A server that answers a streamed request with one whole JSON body, as though `stream: true`
+	 * had never been sent.
+	 *
+	 * @returns The request handler.
+	 */
+	static streamingIgnored(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then(() => {
+				TestFixtures._sendChatCompletion(response, { promptTokens: 5, completionTokens: 1 });
+			});
+		};
+	}
+
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
 	//	Private Helpers
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Writes the response head of a server-sent event stream.
+	 *
+	 * @param response The response to write to.
+	 * @returns Nothing.
+	 */
+	private static _openEventStream(response: Http.ServerResponse): void {
+		response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+	}
+
+	/**
+	 * Writes one `data:` event, followed by the blank line that ends it.
+	 *
+	 * @param response The response to write to.
+	 * @param chunk The value to serialize as this event's `data:` payload.
+	 * @returns Nothing.
+	 */
+	private static _writeEvent(response: Http.ServerResponse, chunk: unknown): void {
+		response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+	}
 
 	/**
 	 * Answers a `POST /chat/completions` request the way a fully correct endpoint would: refuse an
@@ -256,6 +354,82 @@ void Test('chat.basic passes against a server that answers a well-formed reply',
 	try {
 		const result = await chatBasicTest.run(context);
 		Assert.equal(result.verdict, 'PASS');
+	} finally {
+		await stop();
+	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	SseEventReader
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test('SseEventReader reads a data: payload, recognises [DONE], and refuses an event carrying no data: line', () => {
+	Assert.equal(SseEventReader.beginsWithData('data: {"a":1}'), true);
+	Assert.equal(SseEventReader.beginsWithData('event: ping'), false);
+	Assert.equal(SseEventReader.dataPayload('data: {"a":1}'), '{"a":1}');
+	Assert.equal(SseEventReader.dataPayload('event: ping'), undefined);
+	Assert.equal(SseEventReader.isDoneSentinel('data: [DONE]'), true);
+	Assert.equal(SseEventReader.isDoneSentinel('data: {"a":1}'), false);
+	Assert.deepEqual(SseEventReader.parseDataJson('data: {"a":1}'), { a: 1 });
+	Assert.equal(SseEventReader.parseDataJson('data: [DONE]'), undefined);
+	Assert.equal(SseEventReader.parseDataJson('data: not json'), undefined);
+});
+
+void Test('SseEventReader finds the data: line among the other fields a server-sent event may carry', () => {
+	Assert.deepEqual(SseEventReader.parseDataJson('event: message\nid: 7\ndata: {"a":1}'), { a: 1 });
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	streamingProfile
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test('every streaming profile test passes against a server that streams correctly', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.streamingWellBehaved());
+	try {
+		const records = await Runner.run(streamingProfile, context);
+		const failing = records.filter((record) => record.result.verdict !== 'PASS');
+		Assert.deepEqual(
+			failing.map((record) => `${record.test.id}: ${record.result.verdict} — ${record.result.detail}`),
+			[],
+		);
+		Assert.equal(records.length, streamingProfile.length);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('streaming.timing warns, rather than failing, when every chunk arrives at once', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.streamingBuffered());
+	try {
+		const result = await streamingTimingTest.run(context);
+		Assert.equal(result.verdict, 'WARN');
+		Assert.match(result.detail, /may be buffering the complete response/);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('streaming.done fails when the stream never sends the [DONE] sentinel', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.streamingWithoutDone());
+	try {
+		const result = await streamingDoneTest.run(context);
+		Assert.equal(result.verdict, 'FAIL');
+		Assert.match(result.detail, /the last event was not "data: \[DONE\]"/);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('streaming.headers fails when a streamed request is answered with one whole JSON body', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.streamingIgnored());
+	try {
+		const result = await streamingHeadersTest.run(context);
+		Assert.equal(result.verdict, 'FAIL');
+		Assert.match(result.detail, /expected text\/event-stream/);
 	} finally {
 		await stop();
 	}

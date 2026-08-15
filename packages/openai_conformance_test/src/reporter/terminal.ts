@@ -27,6 +27,7 @@ export class TerminalReporter {
 		['chat', 'Chat Completions'],
 		['usage', 'Usage'],
 		['errors', 'Errors'],
+		['streaming', 'Streaming'],
 	]);
 
 	/**
