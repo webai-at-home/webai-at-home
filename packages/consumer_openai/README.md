@@ -139,7 +139,7 @@ What each model honours was observed live in a real browser tab, by the de-risk 
 | --- | --- |
 | `llm_llama3_2_1b_full`, `llm_qwen3_5_0_8b_full` | `temperature`, `max_completion_tokens`, and `stop`. Not `top_p` and not `seed`: `@huggingface/transformers`, the engine both run on, acts on neither. |
 | `llm_qwen3_0_6b_sharded` | All five, more than any other model here, because its sampler is written by hand over the logits rather than taken from a library: nothing there refuses a `top_p`, and a seeded source of random numbers can be built where a library offers none. It is the only model whose `top_p` and `seed` do anything. |
-| `llm_gemma_nano_chrome_full` | None. It is the one model the gate could not reach, because every Chrome available to it reported its built-in language model as unavailable. |
+| `llm_gemma_nano_chrome_full` | None. It is the one model the gate could not reach: the Chrome that ran the gate answered `unavailable` for its built-in language model and refused to create a session, so nothing about that engine is claimed here rather than observed. |
 | `dev_formula` | None — it answers with one number and generates no text. |
 
 A request that asks for no temperature and no `top_p` still decodes greedily, exactly as it did before any of this, and so does one asking for `temperature: 0`, which is what a temperature of zero means. Sampling is turned on only for an answer that asked for a temperature above zero or a `top_p`, so no existing caller's answers changed.

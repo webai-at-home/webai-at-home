@@ -54,8 +54,13 @@ export type GenerationControlName =
  *   where a library offers none. It is the only task type whose `randomSeed` and `topP` do
  *   anything.
  * - `task_type_llm_gemma_nano_chrome_full` honours none of the five, and is the one task type the
- *   gate could not reach: every Chrome available to it reported `LanguageModel.availability()` as
- *   `unavailable`, so nothing about that engine was observed rather than assumed.
+ *   gate could not reach. On Chrome/151.0.7922.138, the only Chrome installed on the machine that
+ *   ran the gate, `LanguageModel.availability()` answered `unavailable` and `LanguageModel.create()`
+ *   threw `NotSupportedError: Unable to create a text session because the service is not running` —
+ *   headless, headed, and again with the performance requirement bypassed, unchanged over ten
+ *   minutes of asking. Nothing about that engine is written here, because nothing about it was
+ *   observed. The entry stays empty until a machine whose Chrome offers its built-in model runs the
+ *   gate; step 7 of issue #196 says what to try then.
  * - `task_type_dev_formula` generates no text at all, so no control applies to it.
  *
  * `task_type_llm_llama3_2_3b_full` is retired; it was, for as long as it existed, the only task
