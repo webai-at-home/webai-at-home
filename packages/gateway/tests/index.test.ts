@@ -2277,3 +2277,14 @@ Test('the observed address is forgotten when the connection closes', () => {
 
 	Assert.equal(hub.ipAddressMap.get('worker-1'), undefined);
 });
+
+Test('a reverse proxy nobody told the gateway about is reported, so a proxy address is not recorded in silence', () => {
+	// Exactly what the deployed gateway did: every worker read as the same address, and nothing
+	// on screen said why. See issue #183.
+	const request = newUpgradeRequest('10.0.25.1', { 'x-forwarded-for': '88.163.220.204' });
+	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(request, false), true);
+
+	// Nothing to report once the gateway is trusting the proxy, nor when no proxy is in front.
+	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(request, true), false);
+	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(newUpgradeRequest('203.0.113.7'), false), false);
+});
