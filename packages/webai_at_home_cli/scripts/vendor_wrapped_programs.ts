@@ -83,11 +83,22 @@ export class VendorWrappedPrograms {
 		VendorWrappedPrograms._vendorProtocolInto('worker_openai');
 		VendorWrappedPrograms._copyProgram('worker_openai');
 
+		// `openai_conformance_test` imports `@webai/openai-api-tool` through four subpath exports,
+		// and that package in turn imports `@webai/consumer-cli`, which imports `@webai/protocol`.
+		// All three go side by side in the host's own `node_modules/@webai`, because Node resolves a
+		// bare import by walking up from the importing file until it finds a `node_modules`, and the
+		// walk out of the nested `openai-api-tool` copy reaches exactly that directory.
+		VendorWrappedPrograms._vendorProtocolInto('openai_conformance_test');
+		VendorWrappedPrograms._vendorConsumerCliInto('openai_conformance_test');
+		VendorWrappedPrograms._vendorPackageInto('openai_conformance_test', 'openai_api_tool', 'openai-api-tool');
+		VendorWrappedPrograms._copyProgram('openai_conformance_test');
+
 		let cliJs = Fs.readFileSync(cliJsPath, 'utf8');
 		cliJs = cliJs.replace("'@webai/gateway/dist/cli.js'", "'./vendor/gateway/dist/cli.js'");
 		cliJs = cliJs.replace("'@webai/consumer-openai/dist/cli.js'", "'./vendor/consumer_openai/dist/cli.js'");
 		cliJs = cliJs.replace("'@webai/worker-openai/dist/cli.js'", "'./vendor/worker_openai/dist/cli.js'");
 		cliJs = cliJs.replace("'@webai/consumer-cli/cli'", "'./vendor/consumer_cli/dist/cli.js'");
+		cliJs = cliJs.replace("'@webai/openai-conformance-test/dist/cli.js'", "'./vendor/openai_conformance_test/dist/cli.js'");
 		Fs.writeFileSync(cliJsPath, cliJs);
 	}
 
@@ -121,6 +132,21 @@ export class VendorWrappedPrograms {
 		VendorWrappedPrograms._copyDirectory(Path.join(packagesDirectory, 'consumer_cli', 'dist'), Path.join(target, 'dist'));
 		Fs.mkdirSync(target, { recursive: true });
 		Fs.copyFileSync(Path.join(packagesDirectory, 'consumer_cli', 'package.json'), Path.join(target, 'package.json'));
+	}
+
+	/**
+	 * Places one workspace member's built output inside another's vendored `node_modules/@webai`,
+	 * so the bare imports the host's compiled code uses resolve on disk.
+	 *
+	 * @param hostDirectoryName The wrapped program whose vendored copy needs the package.
+	 * @param packageDirectoryName The needed package's own directory name under `packages/`.
+	 * @param scopedName The needed package's name after `@webai/`, which is the directory Node looks for.
+	 */
+	private static _vendorPackageInto(hostDirectoryName: string, packageDirectoryName: string, scopedName: string): void {
+		const target = Path.join(vendorDirectory, hostDirectoryName, 'node_modules', '@webai', scopedName);
+		VendorWrappedPrograms._copyDirectory(Path.join(packagesDirectory, packageDirectoryName, 'dist'), Path.join(target, 'dist'));
+		Fs.mkdirSync(target, { recursive: true });
+		Fs.copyFileSync(Path.join(packagesDirectory, packageDirectoryName, 'package.json'), Path.join(target, 'package.json'));
 	}
 
 	/**

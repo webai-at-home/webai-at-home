@@ -9,10 +9,18 @@ import { RawHttpClient } from '../src/clients/raw_http_client.js';
 import { GenerationControlProbeCache } from '../src/generation_control_probe_cache.js';
 import { GenerationControlVerdict } from '../src/generation_control_verdict.js';
 import { JsonContentExtractor } from '../src/json_content_extractor.js';
+import { agentProfile } from '../src/profiles/agent.js';
 import { coreProfile } from '../src/profiles/core.js';
+import { fullProfile } from '../src/profiles/full.js';
+import { parametersProfile } from '../src/profiles/parameters.js';
 import { sdkProfile } from '../src/profiles/sdk.js';
+import { structuredOutputProfile } from '../src/profiles/structured_output.js';
 import { streamingProfile } from '../src/profiles/streaming.js';
 import { toolsProfile } from '../src/profiles/tools.js';
+import { JsonReporter } from '../src/reporter/json.js';
+import { JunitReporter } from '../src/reporter/junit.js';
+import { MarkdownReporter } from '../src/reporter/markdown.js';
+import { ReportSummary } from '../src/reporter/report_summary.js';
 import { TerminalReporter } from '../src/reporter/terminal.js';
 import { Runner, type TestRunRecord } from '../src/runner.js';
 import { SseEventReader } from '../src/sse_event_reader.js';
@@ -27,7 +35,7 @@ import { structuredOutputJsonSchemaTest } from '../src/tests/structured_output/j
 import { sdkToolsTest } from '../src/tests/sdk/tools.js';
 import { usageTotalIsSumTest } from '../src/tests/usage/total_is_sum.js';
 import { ToolCallVerdict } from '../src/tool_call_verdict.js';
-import type { ConformanceTest, TestContext } from '../src/types.js';
+import type { ConformanceTest, TestContext, Verdict } from '../src/types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -795,6 +803,27 @@ class ReporterFixtures {
 			},
 		};
 	}
+
+	/**
+	 * Builds one finished run record, naming the test after its own identifier, so a reporter test
+	 * reads as a list of verdicts rather than as a wall of object literals.
+	 *
+	 * @param id The test's stable identifier, used as its printed name as well.
+	 * @param group Which group this test belongs to.
+	 * @param verdict The verdict this test reached.
+	 * @param detail What the verdict says, empty by default.
+	 * @returns The run record.
+	 */
+	static record(id: string, group: string, verdict: Verdict, detail = ''): TestRunRecord {
+		return {
+			test: ReporterFixtures.test(id, id, group),
+			result: {
+				verdict,
+				detail,
+			},
+			durationMs: 1,
+		};
+	}
 }
 
 void Test('TerminalReporter groups tests under their headings and excludes SKIP from the compatibility percentage', () => {
@@ -813,4 +842,101 @@ void Test('TerminalReporter groups tests under their headings and excludes SKIP 
 	Assert.match(report, /Failed: 1/);
 	Assert.match(report, /Skipped: 1/);
 	Assert.match(report, /Compatibility: 50\.0%/);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The profiles, and the reporters of milestone six
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test('the full profile holds every test every other profile can reach, so it cannot fall behind', () => {
+	const everyOtherProfile = [coreProfile, streamingProfile, toolsProfile, parametersProfile, structuredOutputProfile, sdkProfile, agentProfile];
+	const missing = everyOtherProfile
+		.flat()
+		.filter((test) => fullProfile.includes(test) === false)
+		.map((test) => test.id);
+	Assert.deepEqual([...new Set(missing)], []);
+});
+
+void Test('every test identifier is unique, and every identifier begins with its own group name', () => {
+	const identifiers = fullProfile.map((test) => test.id);
+	Assert.equal(new Set(identifiers).size, identifiers.length, `duplicate identifiers in ${identifiers.join(', ')}`);
+	const mismatched = fullProfile.filter((test) => test.id.startsWith(`${test.group}.`) === false).map((test) => `${test.id} is in group ${test.group}`);
+	Assert.deepEqual(mismatched, []);
+});
+
+void Test('the agent profile is a selection from the other profiles, never a test of its own', () => {
+	const notFromElsewhere = agentProfile.filter((test) => fullProfile.includes(test) === false).map((test) => test.id);
+	Assert.deepEqual(notFromElsewhere, []);
+	Assert.ok(agentProfile.length < fullProfile.length, 'the agent profile is meant to be narrower than full');
+});
+
+void Test('ReportSummary leaves SKIP out of the compatibility percentage and keeps WARN in it', () => {
+	const summary = ReportSummary.of([
+		ReporterFixtures.record('models.list', 'models', 'PASS'),
+		ReporterFixtures.record('chat.basic', 'chat', 'WARN'),
+		ReporterFixtures.record('parameters.temperature', 'parameters', 'SKIP'),
+	]);
+	Assert.equal(summary.passedCount, 1);
+	Assert.equal(summary.warnedCount, 1);
+	Assert.equal(summary.skippedCount, 1);
+	Assert.equal(summary.compatibilityPercent, 50);
+});
+
+void Test('the feature matrix marks a group by its worst outcome, and every reporter shows the same counts', () => {
+	const records: TestRunRecord[] = [
+		ReporterFixtures.record('models.list', 'models', 'PASS'),
+		ReporterFixtures.record('chat.basic', 'chat', 'PASS'),
+		ReporterFixtures.record('chat.system_message', 'chat', 'WARN'),
+		ReporterFixtures.record('errors.unknown_model', 'errors', 'FAIL'),
+		ReporterFixtures.record('parameters.temperature', 'parameters', 'SKIP'),
+	];
+	const options = { endpoint: 'http://example.test/v1', modelId: 'a-model' };
+
+	const terminal = TerminalReporter.render(records, options);
+	Assert.match(terminal, /Capability\s+Status/);
+	Assert.match(terminal, /Models\s+✓/);
+	Assert.match(terminal, /Chat Completions\s+⚠/);
+	Assert.match(terminal, /Errors\s+✗/);
+	Assert.match(terminal, /Parameters\s+⊘/);
+
+	const json = JSON.parse(JsonReporter.render(records, options)) as { summary: Record<string, number>; tests: { id: string }[] };
+	Assert.deepEqual(json.summary, { passed: 2, failed: 1, skipped: 1, warned: 1, compatibilityPercent: 50 });
+	Assert.equal(json.tests.length, 5);
+
+	const markdown = MarkdownReporter.render(records, options);
+	Assert.match(markdown, /- Passed: 2/);
+	Assert.match(markdown, /Compatibility: 50\.0%/);
+
+	const junit = JunitReporter.render(records, options);
+	Assert.match(junit, /tests="5" failures="1" skipped="1"/);
+});
+
+void Test('the markdown reporter escapes a vertical bar and a newline, which would otherwise break its table', () => {
+	const records = [ReporterFixtures.record('chat.basic', 'chat', 'FAIL', 'broke | badly\non two lines')];
+	const markdown = MarkdownReporter.render(records, { endpoint: 'http://example.test/v1', modelId: 'a-model' });
+	const row = markdown.split('\n').find((line) => line.includes('chat.basic'));
+	Assert.equal(row?.includes('broke \\| badly on two lines'), true, `row was ${String(row)}`);
+});
+
+void Test('the junit reporter escapes the characters XML reserves, and writes WARN as a passing case', () => {
+	const records = [
+		ReporterFixtures.record('chat.basic', 'chat', 'FAIL', 'got <html> & "quotes"'),
+		ReporterFixtures.record('streaming.timing', 'streaming', 'WARN', 'all chunks arrived at once'),
+	];
+	const junit = JunitReporter.render(records, { endpoint: 'http://example.test/v1', modelId: 'a-model' });
+	Assert.match(junit, /&lt;html&gt; &amp; &quot;quotes&quot;/);
+	Assert.equal(junit.includes('<html>'), false);
+	Assert.match(junit, /<system-out>WARN: all chunks arrived at once<\/system-out>/);
+	Assert.match(junit, /failures="1"/);
+});
+
+void Test('the terminal reporter prints a passing test\'s detail only when verbose is asked for', () => {
+	const records = [ReporterFixtures.record('chat.basic', 'chat', 'PASS', 'the interesting measurement')];
+	const options = { endpoint: 'http://example.test/v1', modelId: 'a-model' };
+	Assert.equal(TerminalReporter.render(records, options).includes('the interesting measurement'), false);
+	const verbose = TerminalReporter.render(records, { ...options, verbose: true });
+	Assert.match(verbose, /the interesting measurement/);
+	Assert.match(verbose, /\[chat\.basic, \d+ ms\]/);
 });

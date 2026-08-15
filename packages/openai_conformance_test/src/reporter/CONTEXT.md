@@ -2,18 +2,26 @@
 
 ## Purpose
 
-One file per output format section 33 of issue #181 names with `-f/--format`.
+One file per output format section 33 of issue #181 names with `-f/--format`, plus the one place the counts behind every format are worked out.
 
 ## Key Exports & Entry Points
 
-- `terminal.ts`: `TerminalReporter`, the `text` format — the only format this package writes today.
+- `report_summary.ts`: `ReportSummary`, the counts and the compatibility percentage every format shows.
+- `terminal.ts`: `TerminalReporter`, the `text` format a person reads, including the feature matrix of section 31.
+- `json.ts`: `JsonReporter`, the `json` format another program reads.
+- `markdown.ts`: `MarkdownReporter`, the `markdown` format a report file holds.
+- `junit.ts`: `JunitReporter`, the `junit` format a continuous integration run already knows how to read.
 
 ## Rules
 
 - A reporter renders `TestRunRecord[]` from `../runner.ts` into a string; it never runs a test and never talks to an endpoint.
 - `render` returns the report as a string rather than printing it, so a test can assert on the returned text and `cli.ts` is the only place that calls `console.log`.
+- No reporter counts verdicts itself; every one of them asks `ReportSummary`, so four formats of one run can never disagree about how many tests passed.
+- `SKIP` stays out of the compatibility percentage and `WARN` stays in it, because a skipped test measured nothing while a warned test measured something short of correct.
 - The compatibility percentage never replaces the per-test lines above it, per section 30 of issue #181; a reporter that only printed the percentage would not satisfy this rule.
+- A format that builds a document with reserved characters escapes them itself — the vertical bar and the newline for `markdown.ts`, the five XML characters for `junit.ts` — because a test detail quotes whatever the endpoint sent back.
+- `junit.ts` writes `WARN` as a passing case carrying a note, never as `<failure>`, so a continuous integration run does not go red on a result this package deliberately does not call a failure.
 
 ## Background
 
-- `json.ts`, `markdown.ts`, and `junit.ts` are milestone six of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182); each adds one file here, the same way `terminal.ts` does.
+- The feature matrix comes from section 31 of issue #181, which calls a per-capability answer more useful to a reader than one overall percentage.

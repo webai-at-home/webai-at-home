@@ -11,6 +11,7 @@ import * as Commander from 'commander';
 import { Cli as GatewayCli } from '@webai/gateway/dist/cli.js';
 import { Cli as ConsumerOpenaiCli } from '@webai/consumer-openai/dist/cli.js';
 import { Cli as WorkerOpenaiCli } from '@webai/worker-openai/dist/cli.js';
+import { Cli as OpenaiConformanceTestCli } from '@webai/openai-conformance-test/dist/cli.js';
 import { Cli as ConsumerCliCli } from '@webai/consumer-cli/cli';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -25,7 +26,7 @@ const __dirname = import.meta.dirname;
 const programName = 'webai-at-home';
 
 /** The first word of the command line that names one of the other three command line programs. */
-const namedSubcommands = ['gateway', 'consumer_openai', 'worker_openai'] as const;
+const namedSubcommands = ['gateway', 'consumer_openai', 'worker_openai', 'openai_conformance_test'] as const;
 
 /**
  * The command line program of `webai-at-home`.
@@ -133,10 +134,10 @@ export class Cli {
 	private static _buildProgram(): Commander.Command {
 		const program = new Commander.Command(programName)
 			.description(
-				"Run one participant of the WebAI@Home cluster. \"gateway\", \"consumer_openai\" and"
-					+ ' "worker_openai" each run the command line program of the same name in this'
-					+ ' cluster; every other command is handed to consumer_cli, which submits tasks,'
-					+ ' reports cluster state, and manages this participant\'s own account.',
+				"Run one participant of the WebAI@Home cluster. \"gateway\", \"consumer_openai\","
+					+ ' "worker_openai" and "openai_conformance_test" each run the command line program of'
+					+ ' the same name in this cluster; every other command is handed to consumer_cli, which'
+					+ ' submits tasks, reports cluster state, and manages this participant\'s own account.',
 			)
 			.version(Cli.readVersion(), '-V, --version', 'print the version of webai-at-home that is running')
 			.enablePositionalOptions()
@@ -181,6 +182,17 @@ export class Cli {
 			.argument('[workerOpenaiArgs...]', "the worker's own options")
 			.action(async (workerOpenaiArgs: string[]): Promise<void> => {
 				await WorkerOpenaiCli.run(workerOpenaiArgs, `${programName} worker_openai`);
+			});
+
+		program
+			.command('openai_conformance_test')
+			.description('report which parts of the OpenAI-compatible protocol a server actually honours')
+			.allowUnknownOption()
+			.passThroughOptions()
+			.helpOption(false)
+			.argument('[openaiConformanceTestArgs...]', "the conformance test's own options")
+			.action(async (openaiConformanceTestArgs: string[]): Promise<void> => {
+				await OpenaiConformanceTestCli.run(openaiConformanceTestArgs, `${programName} openai_conformance_test`);
 			});
 
 		return program;

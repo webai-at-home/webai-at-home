@@ -4,6 +4,7 @@ import Chalk from 'chalk';
 // local imports
 import type { TestRunRecord } from '../runner.js';
 import type { Verdict } from '../types.js';
+import { ReportSummary } from './report_summary.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -17,6 +18,14 @@ export type TerminalReportOptions = {
 	readonly endpoint: string;
 	/** The model identifier requested, printed in the header. */
 	readonly modelId: string;
+	/**
+	 * Whether to print the detail of a test that passed as well.
+	 *
+	 * A passing test's detail is suppressed by default so the report reads as a list of what
+	 * worked; `--verbose` is what section 25 of issue #181 asks for when the measurement behind a
+	 * pass is the interesting part, such as the chunk timings behind `streaming.timing`.
+	 */
+	readonly verbose?: boolean;
 };
 
 /** Renders a run's records as the terminal report a person reads. */
@@ -49,12 +58,14 @@ export class TerminalReporter {
 		for (const group of TerminalReporter._orderedGroups(records)) {
 			lines.push(Chalk.bold(TerminalReporter._groupHeadings.get(group) ?? group));
 			for (const record of records.filter((candidate) => candidate.test.group === group)) {
-				lines.push(`  ${TerminalReporter._testLine(record)}`);
+				lines.push(`  ${TerminalReporter._testLine(record, options.verbose === true)}`);
 			}
 			lines.push('');
 		}
 
 		lines.push('-'.repeat(40));
+		lines.push('');
+		lines.push(...TerminalReporter._featureMatrixLines(records));
 		lines.push('');
 		lines.push(...TerminalReporter._summaryLines(records));
 
@@ -87,15 +98,17 @@ export class TerminalReporter {
 	 * Builds the one line printed for one test's outcome.
 	 *
 	 * @param record The test and the outcome it reached.
+	 * @param verbose Whether to print the detail of a test that passed as well.
 	 * @returns The line to print, colored by verdict.
 	 */
-	private static _testLine(record: TestRunRecord): string {
+	private static _testLine(record: TestRunRecord, verbose: boolean): string {
 		const line = `${TerminalReporter._icon(record.result.verdict)} ${record.test.name}`;
 		const colored = TerminalReporter._colorByVerdict(record.result.verdict, line);
-		if (record.result.verdict === 'PASS') {
+		if (record.result.verdict === 'PASS' && verbose === false) {
 			return colored;
 		}
-		return `${colored} — ${record.result.detail}`;
+		const detail = verbose === true ? `${record.result.detail} [${record.test.id}, ${record.durationMs} ms]` : record.result.detail;
+		return `${colored} — ${detail}`;
 	}
 
 	/**
@@ -140,30 +153,67 @@ export class TerminalReporter {
 	}
 
 	/**
+	 * Builds the feature matrix of section 31 of issue #181: one line per group, saying whether
+	 * every test in it passed.
+	 *
+	 * Section 31 calls this more useful than the overall percentage, and section 30 says the
+	 * percentage must never replace the detail, so the matrix is printed above the percentage
+	 * rather than instead of it.
+	 *
+	 * A group is `✓` only when every test in it passed. A group holding any `FAIL` is `✗`; one
+	 * holding no failure but some `WARN` is `⚠`; one every test of which was skipped is `⊘`, since
+	 * nothing about it was learned.
+	 *
+	 * @param records Every test's outcome.
+	 * @returns The matrix lines, in order.
+	 */
+	private static _featureMatrixLines(records: readonly TestRunRecord[]): string[] {
+		const lines: string[] = [Chalk.bold('Capability'.padEnd(28) + 'Status'), ''];
+		for (const group of TerminalReporter._orderedGroups(records)) {
+			const groupRecords = records.filter((record) => record.test.group === group);
+			const verdict = TerminalReporter._groupVerdict(groupRecords);
+			const heading = TerminalReporter._groupHeadings.get(group) ?? group;
+			lines.push(`${heading.padEnd(28)}${TerminalReporter._colorByVerdict(verdict, TerminalReporter._icon(verdict))}`);
+		}
+		return lines;
+	}
+
+	/**
+	 * Reduces one group's outcomes to the single verdict its feature matrix line shows.
+	 *
+	 * @param groupRecords Every outcome of one group.
+	 * @returns `FAIL` if any test failed, `WARN` if any warned, `SKIP` if every test was skipped,
+	 * `PASS` otherwise.
+	 */
+	private static _groupVerdict(groupRecords: readonly TestRunRecord[]): Verdict {
+		if (groupRecords.some((record) => record.result.verdict === 'FAIL')) {
+			return 'FAIL';
+		}
+		if (groupRecords.some((record) => record.result.verdict === 'WARN')) {
+			return 'WARN';
+		}
+		if (groupRecords.every((record) => record.result.verdict === 'SKIP')) {
+			return 'SKIP';
+		}
+		return 'PASS';
+	}
+
+	/**
 	 * Builds the summary lines printed at the end of the report: a count per verdict, and a
 	 * compatibility percentage.
 	 *
-	 * `SKIP` is left out of the percentage's denominator, because a feature the endpoint has
-	 * declared it does not support was never a candidate for compatibility. `WARN` stays in the
-	 * denominator on the side of "not yet confirmed compatible", alongside `FAIL`, so the
-	 * percentage never rises on a result this package could not fully confirm.
+	 * The arithmetic itself lives in `ReportSummary`, so every reporter shows the same numbers.
 	 *
 	 * @param records Every test's outcome.
 	 * @returns The summary lines, in order.
 	 */
 	private static _summaryLines(records: readonly TestRunRecord[]): string[] {
-		const passedCount = records.filter((record) => record.result.verdict === 'PASS').length;
-		const failedCount = records.filter((record) => record.result.verdict === 'FAIL').length;
-		const skippedCount = records.filter((record) => record.result.verdict === 'SKIP').length;
-		const warnedCount = records.filter((record) => record.result.verdict === 'WARN').length;
-		const scoredCount = records.length - skippedCount;
-		const compatibility = scoredCount === 0 ? 100 : (passedCount / scoredCount) * 100;
-
-		const lines = [`Passed: ${passedCount}`, Chalk.red(`Failed: ${failedCount}`), Chalk.dim(`Skipped: ${skippedCount}`)];
-		if (warnedCount > 0) {
-			lines.push(Chalk.yellow(`Warned: ${warnedCount}`));
+		const summary = ReportSummary.of(records);
+		const lines = [`Passed: ${summary.passedCount}`, Chalk.red(`Failed: ${summary.failedCount}`), Chalk.dim(`Skipped: ${summary.skippedCount}`)];
+		if (summary.warnedCount > 0) {
+			lines.push(Chalk.yellow(`Warned: ${summary.warnedCount}`));
 		}
-		lines.push('', `Compatibility: ${compatibility.toFixed(1)}%`);
+		lines.push('', `Compatibility: ${summary.compatibilityPercent.toFixed(1)}%`);
 		return lines;
 	}
 }
