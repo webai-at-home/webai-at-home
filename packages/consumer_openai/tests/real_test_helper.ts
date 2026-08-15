@@ -81,6 +81,8 @@ export class RealTestHelper {
 
 	/** Whether `teardown` has already run, so the signal handler does not run it a second time. */
 	private tornDown = false;
+	/** Why the last `consumer_cli status` command failed, or `undefined` while none of them has failed. */
+	private lastWorkerStatusFailure: string | undefined;
 
 	/**
 	 * @param options - construction options
@@ -202,14 +204,24 @@ export class RealTestHelper {
 			await this.onDebugPageOpen?.(page);
 		}
 
-		await this._waitFor(`${this.expectedWorkerCount} ready worker(s)`, async () => {
-			const status = await this._workerStatus();
-			return status !== false
-				&& status.workerCount === this.expectedWorkerCount
-				&& status.readyCount === this.expectedWorkerCount
-				? status
-				: false;
-		});
+		try {
+			await this._waitFor(`${this.expectedWorkerCount} ready worker(s)`, async () => {
+				const status = await this._workerStatus();
+				return status !== false
+					&& status.workerCount === this.expectedWorkerCount
+					&& status.readyCount === this.expectedWorkerCount
+					? status
+					: false;
+			});
+		} catch (error: unknown) {
+			// The wait polls `consumer_cli status`, so a status command that can never succeed times out
+			// exactly like a worker that never becomes ready. The last failure is added to the timeout so
+			// the two cases can be told apart.
+			if (this.lastWorkerStatusFailure !== undefined) {
+				throw new Error(`${String(error)}\nThe last worker status probe failed:\n${this.lastWorkerStatusFailure}`);
+			}
+			throw error;
+		}
 
 		// Extra settling time after the workers report ready. The exact reason is undocumented;
 		// it was added alongside the switch to launching Chrome through Puppeteer.
@@ -358,17 +370,45 @@ export class RealTestHelper {
 
 	/**
 	 * Reads the worker cluster state from `consumer_cli status`, the same probe README.md's real test used.
+	 * A failed status command is reported through `lastWorkerStatusFailure` and printed the first time it
+	 * happens, so a command that can never succeed — a renamed option, a missing file — names itself instead
+	 * of looking like a worker that is merely slow to become ready.
 	 * @returns the worker cluster snapshot, or `false` if the status command failed
 	 */
 	private async _workerStatus(): Promise<WorkerStatusSnapshot | false> {
 		const result = await this._runToCompletion('node', [
 			'--import', 'tsx', 'packages/consumer_cli/src/cli.ts',
-			'--url', 'ws://localhost:8787',
+			'--gateway-url', 'ws://localhost:8787',
 			'status', '--format', 'json',
 		]);
 		if (result.code !== 0) {
+			this._recordWorkerStatusFailure(`exit code ${result.code}`, result.stdout, result.stderr);
 			return false;
 		}
-		return JSON.parse(result.stdout) as WorkerStatusSnapshot;
+		try {
+			return JSON.parse(result.stdout) as WorkerStatusSnapshot;
+		} catch (error: unknown) {
+			this._recordWorkerStatusFailure(`unreadable JSON output (${String(error)})`, result.stdout, result.stderr);
+			return false;
+		}
+	}
+
+	/**
+	 * Remembers why the last `consumer_cli status` command failed, and prints that reason the first time,
+	 * rather than polling in silence until the timeout.
+	 * @param reason - a short description of how the command failed
+	 * @param stdout - everything the command wrote to standard output
+	 * @param stderr - everything the command wrote to standard error
+	 */
+	private _recordWorkerStatusFailure(reason: string, stdout: string, stderr: string): void {
+		const failure = [
+			`\`consumer_cli status\` failed with ${reason}`,
+			`stdout: ${stdout.trim() === '' ? '(empty)' : stdout.trim()}`,
+			`stderr: ${stderr.trim() === '' ? '(empty)' : stderr.trim()}`,
+		].join('\n');
+		if (this.lastWorkerStatusFailure === undefined) {
+			process.stderr.write(`[consumer_cli status] ${failure}\n`);
+		}
+		this.lastWorkerStatusFailure = failure;
 	}
 }
