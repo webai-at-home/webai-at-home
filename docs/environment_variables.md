@@ -56,7 +56,10 @@ These say which server speaking the OpenAI-compatible API `packages/worker_opena
 | `GATEWAY_STATE_FILE` | the gateway's `--state-file` | `/data/gateway-state.json` |
 | `GATEWAY_ACCOUNT_FILE` | the gateway's `--account-file` | `/data/gateway-accounts.json` |
 | `GATEWAY_LEDGER_FILE` | the gateway's `--ledger-file` | `/data/gateway-ledger.jsonl` |
+| `GATEWAY_TRUST_REVERSE_PROXY` | the gateway's `--trust-reverse-proxy`, when it is set to `true` | `false` |
 | `WORKER_PORT` | the port the built worker page is served on | `8789` |
+
+Set `GATEWAY_TRUST_REVERSE_PROXY` to `true` in any deployment reached over TLS on a domain name, because a reverse proxy terminates that connection and the container then sees the proxy on every connection instead of the device. Every worker is recorded at one single address until this is set, and `consumer_cli status` shows that one address for all of them. See [issue #183](https://github.com/webai-at-home/webai-at-home/issues/183).
 
 `GATEWAY_WS_URL` is not in this table, and is not read by the container. It was, while `packages/consumer_openai` ran inside the container and needed to be told which gateway to use; `packages/consumer_openai` was removed from the image in [commit c26a9b1](https://github.com/webai-at-home/webai-at-home/commit/c26a9b1) for the reasons given in [issue #139](https://github.com/webai-at-home/webai-at-home/issues/139), and nothing in the container has needed the variable since.
 

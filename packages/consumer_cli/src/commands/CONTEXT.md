@@ -17,7 +17,9 @@ One file per subcommand of `consumer_cli`: submitting a task, reporting cluster 
 - A new subcommand is one file here, named `<subcommand>_command.ts`, and is registered in [`../cli.ts`](../cli.ts).
 - Task input construction is never repeated here: `submit_command.ts` builds it through `../libs/task_input_factory.ts`.
 - A subcommand opens its own connection through `../gateway_connection/` or `../account/`; nothing here keeps a connection open across two subcommands.
+- `status_command.ts` prints the worker fields the gateway sends and computes nothing the gateway has not observed. The address of a worker is one of those fields, and reads as `-` in a table and as an empty address in JSON when the gateway observed none.
 
 ## Background
 
 - `log_stats_command.ts` still answers to the subcommand's earlier name `log_stats`.
+- The address of a worker is observed by the gateway and shown here; see [issue #183](https://github.com/webai-at-home/webai-at-home/issues/183).

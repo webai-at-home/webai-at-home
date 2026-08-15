@@ -79,9 +79,9 @@ export class Cli {
 	 * arguments this process was started with.
 	 * @param programName The name to print in every usage line and every error message. Defaults
 	 * to `consumer_cli`, which is what this program is called when it is run on its own. The
-	 * `webai-at-home` program passes its own name instead, so a person who typed
-	 * `webai-at-home submit` is not told about a program called `consumer_cli` that they never
-	 * ran. See issue #171.
+	 * `webai-at-home` program passes `webai-at-home consumer_cli` instead, so a person who typed
+	 * `webai-at-home consumer_cli submit` reads back the command they actually typed. See issue
+	 * #171.
 	 * @returns A promise that settles once the requested subcommand has finished.
 	 */
 	static async run(args: string[] = process.argv.slice(2), programName = 'consumer_cli'): Promise<void> {
@@ -150,8 +150,8 @@ export class Cli {
 				DEFAULT_CONFIG_DIR,
 			)
 			// Written under the home directory, never into the directory this command was run
-			// from, which is where they landed until issue #171 — `npx webai-at-home submit` left
-			// a `logs` folder wherever the person was standing.
+			// from, which is where they landed until issue #171 — `npx webai-at-home consumer_cli
+			// submit` left a `logs` folder wherever the person was standing.
 			.option('--log-dir <path>', 'the directory to write this submission\'s message log into', WebaiHomeDirectory.logsForProgram('consumer_cli'))
 			.action(async (
 				input: string,

@@ -96,6 +96,7 @@ Neither the gateway nor `consumer_openai` reads environment variables directly â
 | `GATEWAY_STATE_FILE` | `/data/gateway-state.json` | the gateway's `--state-file` |
 | `GATEWAY_ACCOUNT_FILE` | `/data/gateway-accounts.json` | the gateway's `--account-file` |
 | `GATEWAY_LEDGER_FILE` | `/data/gateway-ledger.jsonl` | the gateway's `--ledger-file` |
+| `GATEWAY_TRUST_REVERSE_PROXY` | `false` | the gateway's `--trust-reverse-proxy`, when it is set to `true` â€” needed in any deployment reached over TLS on a domain name, so each worker is recorded at the address it connected from rather than at the address of the reverse proxy |
 | `WORKER_PORT` | `8789` | the port the built worker page is served on |
 
 [`docs/environment_variables.md`](../../docs/environment_variables.md) lists these variables alongside the ones `worker_openai` and `consumer_cli` read on a host machine, and says which programs read no environment variables at all.
@@ -157,10 +158,10 @@ The entrypoint script forwards `SIGTERM` to the gateway and the worker page's st
 The public deployment runs this image on a virtual private server, managed by Coolify, and Coolify rebuilds it from a branch of this repository named `production`. Pushing to `main` deploys nothing. Deploying is one command, run when you decide the tip of `main` should go live:
 
 ```bash
-npm run deploy
+npm run deploy --workspace @webai/docker-server
 ```
 
-That npm script, declared in the repository root [`package.json`](../../package.json), runs `git push origin main:production`.
+That npm script, declared in this package's [`package.json`](package.json), runs `git push origin main:production`.
 
 Coolify receives the push through its GitHub webhook, rebuilds the image, and restarts the container.
 

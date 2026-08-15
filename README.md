@@ -54,6 +54,7 @@ The central research questions are still open, especially result verification, b
 - [`packages/consumer_openai`](packages/consumer_openai/README.md) — OpenAI-compatible server, so a program that already talks to OpenAI can use the cluster by changing its base address.
 - [`packages/worker_openai`](packages/worker_openai/README.md) — native worker process that runs its assigned stage by calling a local server speaking the OpenAI-compatible API, such as LM Studio.
 - [`packages/openai_api_tool`](packages/openai_api_tool/README.md) — command-line tool that exercises and measures any server speaking the OpenAI-compatible API, this project's own and another machine's alike.
+- [`packages/openai_conformance_test`](packages/openai_conformance_test/README.md) — command-line tool that reports which parts of the OpenAI-compatible protocol a server actually honours, rather than how good its answers are.
 - [`packages/flow_viewer`](packages/flow_viewer/README.md) — flow viewer for inspecting recorded message traffic.
 - [`packages/_onnx_experiments`](packages/_onnx_experiments/README.md) — browser experiments for ONNX Runtime Web.
 - [`packages/_account_key_experiments`](packages/_account_key_experiments/README.md) — browser experiments about the signing key pair a participant's account is, and whether a real browser tab can hold one it cannot leak.
@@ -72,12 +73,12 @@ The central research questions are still open, especially result verification, b
 
 ## Run without cloning this repository
 
-`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai` and `worker_openai` each run the command line program of the same name; every other command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs `consumer_cli`.
+`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai`, `worker_openai`, `consumer_cli` and `openai_conformance_test` each run the command line program of the same name; anything else is reported as an unknown command. Every `consumer_cli` command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs behind the `consumer_cli` word.
 
 ```sh
 npx webai-at-home gateway
 npx webai-at-home worker_openai --openai-model llama-3.2-1b-instruct --stage-names stage_llm_llama3_2_1b_full
-npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
+npx webai-at-home consumer_cli submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
 The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already running on `http://localhost:1234/v1`, which is that option's default and so needs no `--openai-base-url`. LM Studio loads the named model on demand, so it does not have to be loaded first. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--gateway-url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.

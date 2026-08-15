@@ -8,6 +8,7 @@ import Test from 'node:test';
 
 // local imports
 import { MessageLogger } from '@webai/protocol/message_logger';
+import { ClientIpAddress } from '../src/connection/client_ip_address.js';
 import { ConnectionHub } from '../src/connection/connection_hub.js';
 import { DeviceAnnouncer } from '../src/device/device_announcer.js';
 import { HttpRoutes } from '../src/connection/http_routes.js';
@@ -962,7 +963,7 @@ const buildClientMessageHandlerHarness = (leaseMs = 15_000) => {
 		return accountId;
 	};
 
-	return { drive, driveAccountMessage, authenticate, authenticateAccount, registerWorker, registerConsumer, allSentTo, closeReasonsOf, authToken, taskStore, deviceRegistry, sessionRegistry, accountRegistry, challengeRegistry, ledgerStore, scheduler };
+	return { drive, driveAccountMessage, authenticate, authenticateAccount, registerWorker, registerConsumer, allSentTo, closeReasonsOf, authToken, hub, taskStore, deviceRegistry, sessionRegistry, accountRegistry, challengeRegistry, ledgerStore, scheduler };
 };
 
 Test('every message needs an active session first, before any rule specific to that message type is even reached', () => {
@@ -2189,4 +2190,101 @@ Test('a device that answers a ping has its last seen time refreshed and announce
 	Assert.equal((activityMessages[0] as { devices: { deviceId: string; lastSeenAt: string }[] }).devices[0]?.lastSeenAt, deviceRegistry.get('one')?.lastSeenAt);
 
 	announcer.stop();
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The Address A Connection Came From
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Builds the HTTP request that carries a WebSocket upgrade, with only the two things the
+ * address is ever read from: the socket the request arrived on, and its headers.
+ */
+const newUpgradeRequest = (remoteAddress: string | undefined, headers: Record<string, string | string[]> = {}) => ({
+	headers,
+	socket: { remoteAddress },
+}) as unknown as Parameters<typeof ClientIpAddress.fromRequest>[0];
+
+Test('the address a connection came from is the address of the socket it arrived on', () => {
+	Assert.equal(ClientIpAddress.fromRequest(newUpgradeRequest('203.0.113.7'), false), '203.0.113.7');
+});
+
+Test('an x-forwarded-for header is ignored unless a reverse proxy is trusted', () => {
+	// Any client can write this header, so believing it without being told a proxy is in front
+	// would let a worker name its own address.
+	const request = newUpgradeRequest('203.0.113.7', { 'x-forwarded-for': '198.51.100.1' });
+	Assert.equal(ClientIpAddress.fromRequest(request, false), '203.0.113.7');
+});
+
+Test('a trusted reverse proxy names the address in x-forwarded-for, leftmost entry first', () => {
+	// Each proxy appends the address it received the request from, so the leftmost entry is the
+	// original client and everything after it is a proxy.
+	const request = newUpgradeRequest('172.17.0.1', { 'x-forwarded-for': '198.51.100.1, 203.0.113.7' });
+	Assert.equal(ClientIpAddress.fromRequest(request, true), '198.51.100.1');
+});
+
+Test('a trusted reverse proxy that sends no x-forwarded-for header leaves the socket address in use', () => {
+	Assert.equal(ClientIpAddress.fromRequest(newUpgradeRequest('203.0.113.7'), true), '203.0.113.7');
+});
+
+Test('an IPv4-mapped IPv6 address is recorded in its plain IPv4 form', () => {
+	// A browser connecting over IPv4 to a listener that accepts both produces this form, and the
+	// same machine must not be recorded two different ways depending on how it connected.
+	Assert.equal(ClientIpAddress.fromRequest(newUpgradeRequest('::ffff:127.0.0.1'), false), '127.0.0.1');
+	// A development gateway on the same machine, reached over IPv6, keeps the address it has.
+	Assert.equal(ClientIpAddress.fromRequest(newUpgradeRequest('::1'), false), '::1');
+});
+
+Test('no address is recorded when none could be observed', () => {
+	Assert.equal(ClientIpAddress.fromRequest(newUpgradeRequest(undefined), false), undefined);
+	Assert.equal(ClientIpAddress.fromRequest(newUpgradeRequest('   '), false), undefined);
+	Assert.equal(ClientIpAddress.fromRequest(newUpgradeRequest(undefined, { 'x-forwarded-for': '' }), true), undefined);
+});
+
+Test('a registered worker carries the address the gateway observed when its connection opened', () => {
+	const { hub, registerWorker, deviceRegistry } = buildClientMessageHandlerHarness();
+	// Set the way accepting a real connection sets it, before anything the device sends.
+	hub.ipAddressMap.set('worker-1', '203.0.113.7');
+	registerWorker('worker-1', 'worker-one');
+
+	Assert.equal(deviceRegistry.get('worker-1')?.ipAddress, '203.0.113.7');
+});
+
+Test('a worker whose address the gateway could not observe carries no address at all', () => {
+	const { registerWorker, deviceRegistry } = buildClientMessageHandlerHarness();
+	registerWorker('worker-1', 'worker-one');
+
+	Assert.equal(deviceRegistry.get('worker-1')?.ipAddress, undefined);
+});
+
+Test('a device cannot name its own address, because the address is never read from what it sends', () => {
+	const { hub, drive, authenticate, deviceRegistry } = buildClientMessageHandlerHarness();
+	hub.ipAddressMap.set('worker-1', '203.0.113.7');
+	authenticate('worker-1');
+	drive('worker-1', { type: 'deviceRegister', role: 'worker', name: 'worker-one', ipAddress: '198.51.100.1' } as unknown as ClientMessage);
+
+	Assert.equal(deviceRegistry.get('worker-1')?.ipAddress, '203.0.113.7');
+});
+
+Test('the observed address is forgotten when the connection closes', () => {
+	const { hub, registerWorker } = buildClientMessageHandlerHarness();
+	hub.ipAddressMap.set('worker-1', '203.0.113.7');
+	registerWorker('worker-1', 'worker-one');
+
+	hub.forget('worker-1');
+
+	Assert.equal(hub.ipAddressMap.get('worker-1'), undefined);
+});
+
+Test('a reverse proxy nobody told the gateway about is reported, so a proxy address is not recorded in silence', () => {
+	// Exactly what the deployed gateway did: every worker read as the same address, and nothing
+	// on screen said why. See issue #183.
+	const request = newUpgradeRequest('10.0.25.1', { 'x-forwarded-for': '88.163.220.204' });
+	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(request, false), true);
+
+	// Nothing to report once the gateway is trusting the proxy, nor when no proxy is in front.
+	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(request, true), false);
+	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(newUpgradeRequest('203.0.113.7'), false), false);
 });

@@ -1,9 +1,11 @@
+import type Http from 'node:http';
 import { ClientEnvelopeSchema, protocolVersion, supportedProtocolVersions } from '@webai/protocol';
 import { Envelope } from '@webai/protocol/envelope';
 import type { MessageLogger } from '@webai/protocol/message_logger';
 import type { WebSocket } from 'ws';
 import type { ChallengeRegistry } from '../accounting/challenge_registry.js';
 import type { ClientMessageHandler } from '../task/client_message_handler.js';
+import { ClientIpAddress } from './client_ip_address.js';
 import type { ConnectionHub } from './connection_hub.js';
 import type { DeviceAnnouncer } from '../device/device_announcer.js';
 import type { DeviceRegistry } from '../device/device_registry.js';
@@ -45,6 +47,8 @@ export class WebsocketRouter {
 	 * @param gatewayMessageLogger The log of this gateway's own message traffic.
 	 * @param challengeRegistry The account challenges the closed connection's outstanding one is
 	 * removed from.
+	 * @param isReverseProxyTrusted Whether this gateway sits behind a reverse proxy whose
+	 * `x-forwarded-for` header may be believed when reading the address a connection came from.
 	 */
 	constructor(
 		private readonly hub: ConnectionHub,
@@ -56,16 +60,38 @@ export class WebsocketRouter {
 		private readonly diagnosticsRateLimiter: DiagnosticsRateLimiter,
 		private readonly gatewayMessageLogger: MessageLogger,
 		private readonly challengeRegistry: ChallengeRegistry,
+		private readonly isReverseProxyTrusted: boolean = false,
 	) { }
+
+	/** Whether the notice about an unnoticed reverse proxy has already been printed. */
+	private hasReportedUnnoticedReverseProxy = false;
 
 	/**
 	 * Takes on one newly opened connection.
 	 *
+	 * The address the connection came from is read here and nowhere else, because this is the one
+	 * moment the HTTP request that carried the WebSocket upgrade is still available.
+	 *
 	 * @param socket The connection that just opened.
+	 * @param request The HTTP request that carried the WebSocket upgrade.
 	 */
-	acceptConnection(socket: WebSocket): void {
+	acceptConnection(socket: WebSocket, request: Http.IncomingMessage): void {
 		const deviceId = `device-${crypto.randomUUID()}`;
 		this.hub.socketMap.set(deviceId, socket);
+		const ipAddress = ClientIpAddress.fromRequest(request, this.isReverseProxyTrusted);
+		if (ipAddress !== undefined) {
+			this.hub.ipAddressMap.set(deviceId, ipAddress);
+		}
+		// Said once per run rather than once per connection, because it describes how this gateway
+		// was started and not anything about the connection that happened to reveal it.
+		if (this.hasReportedUnnoticedReverseProxy === false && ClientIpAddress.isReverseProxyUnnoticed(request, this.isReverseProxyTrusted) === true) {
+			this.hasReportedUnnoticedReverseProxy = true;
+			console.log(
+				`Note: a connection arrived carrying an x-forwarded-for header, so a reverse proxy sits in front of this gateway, `
+					+ `and every device is being recorded at the address of that proxy (${ipAddress ?? 'none'}) rather than its own. `
+					+ 'Start this gateway with --trust-reverse-proxy to record the address each device connected from.',
+			);
+		}
 		socket.on('message', (raw: Buffer | ArrayBuffer | Buffer[]) => {
 			this.readFrame(socket, deviceId, raw);
 		});

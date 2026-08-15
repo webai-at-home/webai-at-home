@@ -8,6 +8,7 @@
     "stop": "docker compose -f docker/docker-compose.yml --project-directory ../.. down",
     "restart": "docker compose -f docker/docker-compose.yml --project-directory ../.. restart",
     "logs": "docker compose -f docker/docker-compose.yml --project-directory ../.. logs -f",
+    "deploy": "git push origin main:production",
     "test": "echo \"packages/docker_server has no automated tests; see README.md for manual verification steps\""
   }
 }

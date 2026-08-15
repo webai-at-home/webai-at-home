@@ -20,7 +20,7 @@ export type DeviceRegistryChange = {
 };
 
 /** The device fields that describe the device itself, rather than how busy it is. */
-const stableFieldNames = ['name', 'deviceRole', 'connectedAt', 'authIdentity', 'maxConcurrentAssignments'] as const;
+const stableFieldNames = ['name', 'deviceRole', 'connectedAt', 'ipAddress', 'authIdentity', 'maxConcurrentAssignments'] as const;
 
 /** The device fields that change as work is assigned to a device and returned by it. */
 const activityFieldNames = ['workerState', 'ready', 'activeAssignments'] as const;
