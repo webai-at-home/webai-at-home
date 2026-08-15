@@ -2,7 +2,7 @@ import Fs from 'node:fs';
 import Http from 'node:http';
 import Path from 'node:path';
 import Url from 'node:url';
-import { DiagnosticsBatchSchema } from '@webai/protocol';
+import { DepartureSchema, DiagnosticsBatchSchema } from '@webai/protocol';
 import type { ConnectionHub } from './connection_hub.js';
 import type { DeviceAnnouncer } from '../device/device_announcer.js';
 import type { DiagnosticsRateLimiter } from '../libs/diagnostics_rate_limiter.js';
@@ -58,23 +58,35 @@ const assetContentTypeByExtension: Record<string, string> = {
  */
 const maximumDiagnosticsRequestBytes = 64_000;
 
+/**
+ * The largest departure the gateway will read, in bytes.
+ *
+ * A departure carries a device identifier and a bearer token and nothing else, so this is far
+ * more room than one needs. As with a diagnostics report, the limit is here so the gateway never
+ * buffers an unbounded request body before it has validated anything.
+ */
+const maximumDepartureRequestBytes = 2_000;
+
 /** The runtime files onnxruntime-web fetches by URL rather than through an import. */
 const ortAssetNames = ['ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
 
 /**
- * Serves the gateway's browser pages, its development-only model files, its health route, and
- * the endpoint worker browsers post their diagnostics to.
+ * Serves the gateway's browser pages, its development-only model files, its health route, the
+ * endpoint worker browsers post their diagnostics to, and the endpoint a worker browser page
+ * announces its own departure on while its tab is being closed.
  */
 export class HttpRoutes {
 	private readonly webDirectory: string;
 	private readonly buildDirectory: string;
 
 	/**
-	 * @param hub The connections, used to reach a worker's own relayed log file.
+	 * @param hub The connections, used to reach a worker's own relayed log file and to terminate
+	 * the connection of a worker that announced its departure.
 	 * @param announcer The source of the worker count the health route reports.
-	 * @param sessionRegistry The authenticated sessions a diagnostics report is checked against.
+	 * @param sessionRegistry The authenticated sessions a diagnostics report and a departure are
+	 * both checked against.
 	 * @param diagnosticsRateLimiter The cap on how much one device may report.
-	 * @param authToken The bearer token a diagnostics report must present.
+	 * @param authToken The bearer token a diagnostics report and a departure must both present.
 	 * @param pageDevServer The Vite development server, when the gateway is not in production.
 	 * @param commitSha The git commit this build was made from, published on the `/health` route.
 	 */
@@ -111,18 +123,39 @@ export class HttpRoutes {
 		// production, where there is no Vite.
 		if (pathname === '/diagnostics') {
 			if (request.method === 'OPTIONS') {
-				HttpRoutes.setDiagnosticsCorsHeaders(response);
+				HttpRoutes.setCrossOriginHeaders(response);
 				response.statusCode = 204;
 				response.end();
 				return;
 			}
 			if (request.method !== 'POST') {
-				HttpRoutes.endDiagnosticsResponse(response, 405, { error: 'A diagnostics report must be sent with POST' });
+				HttpRoutes.endJsonResponse(response, 405, { error: 'A diagnostics report must be sent with POST' });
 				return;
 			}
 			this.handleDiagnosticsReport(request, response).catch((error: unknown) => {
 				console.error(error);
-				HttpRoutes.endDiagnosticsResponse(response, 500, { error: 'The diagnostics report could not be recorded' });
+				HttpRoutes.endJsonResponse(response, 500, { error: 'The diagnostics report could not be recorded' });
+			});
+			return;
+		}
+
+		// Handled beside `/diagnostics`, and before the fallthrough to Vite, for the same reason
+		// that route is: an endpoint left to the fallthrough would appear to work in development
+		// and then be blocked by the browser in production.
+		if (pathname === '/departure') {
+			if (request.method === 'OPTIONS') {
+				HttpRoutes.setCrossOriginHeaders(response);
+				response.statusCode = 204;
+				response.end();
+				return;
+			}
+			if (request.method !== 'POST') {
+				HttpRoutes.endJsonResponse(response, 405, { error: 'A departure must be sent with POST' });
+				return;
+			}
+			this.handleDeparture(request, response).catch((error: unknown) => {
+				console.error(error);
+				HttpRoutes.endJsonResponse(response, 500, { error: 'The departure could not be acted on' });
 			});
 			return;
 		}
@@ -261,18 +294,18 @@ export class HttpRoutes {
 	private async handleDiagnosticsReport(request: Http.IncomingMessage, response: Http.ServerResponse): Promise<void> {
 		const bearerToken = (request.headers.authorization ?? '').replace(/^Bearer /, '');
 		if (bearerToken !== this.authToken) {
-			HttpRoutes.endDiagnosticsResponse(response, 401, { error: 'Credentials were rejected' });
+			HttpRoutes.endJsonResponse(response, 401, { error: 'Credentials were rejected' });
 			return;
 		}
 
-		const bodyText = await HttpRoutes.readDiagnosticsBody(request);
+		const bodyText = await HttpRoutes.readRequestBody(request, maximumDiagnosticsRequestBytes);
 		if (bodyText === undefined) {
 			// The rest of the oversized body is still arriving. Answer first, then close the
 			// connection rather than reading the remainder, so the sender learns why it was
 			// refused and the gateway never buffers the whole thing.
 			response.setHeader('connection', 'close');
 			response.once('finish', () => request.destroy());
-			HttpRoutes.endDiagnosticsResponse(response, 413, { error: `A diagnostics report may not exceed ${maximumDiagnosticsRequestBytes} bytes` });
+			HttpRoutes.endJsonResponse(response, 413, { error: `A diagnostics report may not exceed ${maximumDiagnosticsRequestBytes} bytes` });
 			return;
 		}
 
@@ -280,7 +313,7 @@ export class HttpRoutes {
 		try {
 			json = JSON.parse(bodyText);
 		} catch {
-			HttpRoutes.endDiagnosticsResponse(response, 400, { error: 'A diagnostics report must be valid JSON' });
+			HttpRoutes.endJsonResponse(response, 400, { error: 'A diagnostics report must be valid JSON' });
 			return;
 		}
 
@@ -288,7 +321,7 @@ export class HttpRoutes {
 		// over the scheduling connection used to do.
 		const parsed = DiagnosticsBatchSchema.safeParse(json);
 		if (parsed.success === false) {
-			HttpRoutes.endDiagnosticsResponse(response, 400, { error: 'A diagnostics report did not match the expected shape', details: parsed.error.issues.slice(0, 10) });
+			HttpRoutes.endJsonResponse(response, 400, { error: 'A diagnostics report did not match the expected shape', details: parsed.error.issues.slice(0, 10) });
 			return;
 		}
 
@@ -297,14 +330,14 @@ export class HttpRoutes {
 		// for devices that were never here.
 		const batch = parsed.data;
 		if (this.sessionRegistry.active(batch.deviceId) === undefined) {
-			HttpRoutes.endDiagnosticsResponse(response, 403, { error: 'That device does not hold an authenticated connection' });
+			HttpRoutes.endJsonResponse(response, 403, { error: 'That device does not hold an authenticated connection' });
 			return;
 		}
 
 		const limit = this.diagnosticsRateLimiter.accept(batch.deviceId, batch.entries.length);
 		if (limit.isAccepted === false) {
 			response.setHeader('retry-after', String(Math.ceil(limit.retryAfterMs / 1000)));
-			HttpRoutes.endDiagnosticsResponse(response, 429, { error: 'That device has reported too many diagnostic entries', retryAfterMs: limit.retryAfterMs });
+			HttpRoutes.endJsonResponse(response, 429, { error: 'That device has reported too many diagnostic entries', retryAfterMs: limit.retryAfterMs });
 			return;
 		}
 
@@ -323,24 +356,110 @@ export class HttpRoutes {
 				{ id: entry.messageId },
 			);
 		}
-		HttpRoutes.endDiagnosticsResponse(response, 202, { recorded: batch.entries.length, remaining: limit.remaining });
+		HttpRoutes.endJsonResponse(response, 202, { recorded: batch.entries.length, remaining: limit.remaining });
 	}
 
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	Departure
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
 	/**
-	 * Allows a worker browser page served from a different origin to post its diagnostics.
+	 * Drops a worker that has said, while its tab was being closed, that it is going away.
 	 *
-	 * The worker page is normally served by its own development server on another port, so a
-	 * report is a cross-origin request. A JSON post also carries a `content-type` the browser
-	 * treats as non-simple, so the browser asks permission with an `OPTIONS` request first and
-	 * refuses to send the report at all unless that permission is granted here.
+	 * A WebSocket close frame sent from a `pagehide` handler is queued at the moment the browser
+	 * is destroying the tab, so the browser never promises to write it to the network, and a
+	 * reverse proxy in front of this gateway can hold its own upstream connection open after the
+	 * browser side is gone. When that happens the only thing that notices is the heartbeat, up to
+	 * two of its intervals later. `navigator.sendBeacon` is the one request a browser does promise
+	 * to deliver after the page is gone, which is why the departure arrives here over HTTP rather
+	 * than over the connection it is about. See
+	 * https://github.com/webai-at-home/webai-at-home/issues/176.
+	 *
+	 * Nothing is forgotten here. The connection is terminated, and the `close` handler in
+	 * `WebsocketRouter` does every piece of forgetting exactly as it does for a connection that
+	 * ended any other way.
+	 *
+	 * @param request The incoming HTTP request.
+	 * @param response The HTTP response to answer with.
+	 */
+	private async handleDeparture(request: Http.IncomingMessage, response: Http.ServerResponse): Promise<void> {
+		const bodyText = await HttpRoutes.readRequestBody(request, maximumDepartureRequestBytes);
+		if (bodyText === undefined) {
+			response.setHeader('connection', 'close');
+			response.once('finish', () => request.destroy());
+			HttpRoutes.endJsonResponse(response, 413, { error: `A departure may not exceed ${maximumDepartureRequestBytes} bytes` });
+			return;
+		}
+
+		let json: unknown;
+		try {
+			json = JSON.parse(bodyText);
+		} catch {
+			HttpRoutes.endJsonResponse(response, 400, { error: 'A departure must be valid JSON' });
+			return;
+		}
+
+		const parsed = DepartureSchema.safeParse(json);
+		if (parsed.success === false) {
+			HttpRoutes.endJsonResponse(response, 400, { error: 'A departure did not match the expected shape', details: parsed.error.issues.slice(0, 10) });
+			return;
+		}
+
+		// The token travels in the body because `navigator.sendBeacon` cannot set a header, but it
+		// is checked exactly as the `authorization` header of a diagnostics report is.
+		const departure = parsed.data;
+		if (departure.authToken !== this.authToken) {
+			HttpRoutes.endJsonResponse(response, 401, { error: 'Credentials were rejected' });
+			return;
+		}
+
+		// A valid token is not enough on its own, for the same reason it is not enough for a
+		// diagnostics report: a leaked token must not be usable to drop devices that belong to
+		// somebody else.
+		if (this.sessionRegistry.active(departure.deviceId) === undefined) {
+			HttpRoutes.endJsonResponse(response, 403, { error: 'That device does not hold an authenticated connection' });
+			return;
+		}
+
+		const socket = this.hub.socketMap.get(departure.deviceId);
+		if (socket === undefined) {
+			HttpRoutes.endJsonResponse(response, 404, { error: 'That device holds no open connection' });
+			return;
+		}
+
+		// Terminated rather than closed: the page that held this connection is already gone, so
+		// there is nobody left to complete a closing handshake with.
+		socket.terminate();
+		HttpRoutes.endJsonResponse(response, 202, { dropped: departure.deviceId });
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	Cross-Origin Headers And Answers
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Allows a worker browser page served from a different origin to post its diagnostics and its
+	 * departure.
+	 *
+	 * The worker page is normally served by its own development server on another port, so both
+	 * are cross-origin requests. A JSON post also carries a `content-type` the browser treats as
+	 * non-simple, so the browser asks permission with an `OPTIONS` request first and refuses to
+	 * send the report at all unless that permission is granted here. A departure is sent as plain
+	 * text precisely so that it needs no such permission, because `navigator.sendBeacon` cannot
+	 * wait for one; these headers still answer the departure, so a browser that does ask is
+	 * answered rather than refused.
 	 *
 	 * Any origin is allowed because a worker may legitimately run on any host. What actually
-	 * guards the endpoint is the bearer token and the requirement that the device already hold
-	 * an authenticated connection, not the origin the report came from.
+	 * guards both endpoints is the bearer token and the requirement that the device already hold
+	 * an authenticated connection, not the origin the request came from.
 	 *
 	 * @param response The HTTP response to set the headers on.
 	 */
-	private static setDiagnosticsCorsHeaders(response: Http.ServerResponse): void {
+	private static setCrossOriginHeaders(response: Http.ServerResponse): void {
 		response.setHeader('access-control-allow-origin', '*');
 		response.setHeader('access-control-allow-methods', 'POST, OPTIONS');
 		response.setHeader('access-control-allow-headers', 'authorization, content-type');
@@ -354,29 +473,30 @@ export class HttpRoutes {
 	 * @param statusCode The HTTP status code to answer with.
 	 * @param body The object to send as the response body.
 	 */
-	private static endDiagnosticsResponse(response: Http.ServerResponse, statusCode: number, body: Record<string, unknown>): void {
-		HttpRoutes.setDiagnosticsCorsHeaders(response);
+	private static endJsonResponse(response: Http.ServerResponse, statusCode: number, body: Record<string, unknown>): void {
+		HttpRoutes.setCrossOriginHeaders(response);
 		response.statusCode = statusCode;
 		response.setHeader('content-type', 'application/json');
 		response.end(JSON.stringify(body));
 	}
 
 	/**
-	 * Reads a request body, refusing anything past the diagnostics size limit.
+	 * Reads a request body, refusing anything past the size limit it is given.
 	 *
-	 * The limit is enforced while the body arrives rather than after it, so an oversized report
+	 * The limit is enforced while the body arrives rather than after it, so an oversized body
 	 * is never fully buffered in memory.
 	 *
 	 * @param request The incoming HTTP request.
+	 * @param maximumBytes The largest body this request is allowed to carry.
 	 * @returns The body as text, or `undefined` when it exceeded the limit.
 	 */
-	private static readDiagnosticsBody(request: Http.IncomingMessage): Promise<string | undefined> {
+	private static readRequestBody(request: Http.IncomingMessage, maximumBytes: number): Promise<string | undefined> {
 		return new Promise((resolve) => {
 			const chunks: Buffer[] = [];
 			let totalBytes = 0;
 			request.on('data', (chunk: Buffer) => {
 				totalBytes += chunk.length;
-				if (totalBytes > maximumDiagnosticsRequestBytes) {
+				if (totalBytes > maximumBytes) {
 					// Stop collecting, but leave the connection alone: the caller still has to write
 					// the refusal, and destroying the connection here would reach the worker as a
 					// connection reset rather than as an answer explaining what was wrong.

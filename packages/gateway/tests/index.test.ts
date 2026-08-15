@@ -33,7 +33,7 @@ import { WorkerPlacement } from '../src/device/worker_placement.js';
 import { Dashboard } from '../src/dashboard.js';
 import { WebsocketHeartbeat } from '../src/connection/websocket_heartbeat.js';
 import { GatewaySettings } from '../src/libs/gateway_settings.js';
-import { AccountIdentity } from '@webai/protocol';
+import { AccountIdentity, departureContentType } from '@webai/protocol';
 import type { AccountCryptoKeyPair, AccountProfile, ClientMessage, GatewayMessage, LedgerEntry, StageName, TaskInput } from '@webai/protocol';
 import type { WebSocketServer } from 'ws';
 
@@ -2344,4 +2344,173 @@ Test('a reverse proxy nobody told the gateway about is reported, so a proxy addr
 	// Nothing to report once the gateway is trusting the proxy, nor when no proxy is in front.
 	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(request, true), false);
 	Assert.equal(ClientIpAddress.isReverseProxyUnnoticed(newUpgradeRequest('203.0.113.7'), false), false);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The Departure Route
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * A fake WebSocket good enough for the departure route: it records whether it was terminated,
+ * instead of holding a real network connection.
+ */
+type FakeDepartureSocket = { terminated: boolean; terminate: () => void };
+
+/** Everything one departure route test needs, and the one call that takes it all down again. */
+type DepartureHarness = {
+	/** The address the route is reachable at, for the length of the test. */
+	baseUrl: string;
+	/** The bearer token this gateway was built with. */
+	authToken: string;
+	/** The sessions a departure is checked against. */
+	sessionRegistry: SessionRegistry;
+	/** The open connections, so a test can see which one was terminated. */
+	hub: ConnectionHub;
+	/** Registers one device as connected and authenticated, and returns its fake connection. */
+	connectDevice: (deviceId: string) => FakeDepartureSocket;
+	/** Posts one departure body, exactly as `navigator.sendBeacon` would. */
+	postDeparture: (body: string) => Promise<{ status: number; json: Record<string, unknown> }>;
+	/** Closes the server and removes the temporary log directory. */
+	stop: () => Promise<void>;
+};
+
+const newDepartureHarness = async (): Promise<DepartureHarness> => {
+	const authToken = 'departure-token';
+	const logsDirectory = Fs.mkdtempSync(Path.join(Os.tmpdir(), 'gateway-departure-'));
+	const deviceRegistry = new DeviceRegistry();
+	const messageLogger = new MessageLogger(Path.join(logsDirectory, 'gateway.log_entry.jsonl'));
+	const hub = new ConnectionHub(deviceRegistry, messageLogger, logsDirectory);
+	const announcer = new DeviceAnnouncer(deviceRegistry, hub, 0);
+	const sessionRegistry = new SessionRegistry();
+	const httpRoutes = new HttpRoutes(hub, announcer, sessionRegistry, new DiagnosticsRateLimiter(), authToken, undefined, 'unknown');
+
+	const server = Http.createServer((request, response) => httpRoutes.handleRequest(request, response));
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const address = server.address();
+	if (address === null || typeof address === 'string') {
+		throw new Error('the departure test server was not given a port');
+	}
+
+	return {
+		baseUrl: `http://127.0.0.1:${address.port}`,
+		authToken,
+		sessionRegistry,
+		hub,
+		connectDevice: (deviceId): FakeDepartureSocket => {
+			const socket: FakeDepartureSocket = {
+				terminated: false,
+				terminate: (): void => { socket.terminated = true; },
+			};
+			hub.socketMap.set(deviceId, socket as unknown as Parameters<typeof hub.send>[0]);
+			sessionRegistry.open(deviceId, authToken);
+			return socket;
+		},
+		postDeparture: async (body): Promise<{ status: number; json: Record<string, unknown> }> => {
+			const response = await fetch(`http://127.0.0.1:${address.port}/departure`, {
+				method: 'POST',
+				headers: { 'content-type': departureContentType },
+				body,
+			});
+			return {
+				status: response.status,
+				json: await response.json() as Record<string, unknown>,
+			};
+		},
+		stop: async (): Promise<void> => {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+			Fs.rmSync(logsDirectory, { recursive: true, force: true });
+		},
+	};
+};
+
+Test('a departure terminates the connection of the device it names', async () => {
+	const harness = await newDepartureHarness();
+	try {
+		const socket = harness.connectDevice('device-leaving');
+
+		const answer = await harness.postDeparture(JSON.stringify({ deviceId: 'device-leaving', authToken: harness.authToken }));
+
+		Assert.equal(answer.status, 202);
+		Assert.equal(answer.json.dropped, 'device-leaving');
+		// Terminating the connection is the whole of what the route does: everything that has to
+		// be forgotten is forgotten by the `close` handler in WebsocketRouter, exactly as it is
+		// for a connection that ended any other way.
+		Assert.equal(socket.terminated, true);
+	} finally {
+		await harness.stop();
+	}
+});
+
+Test('a departure presenting the wrong token is refused, and terminates nothing', async () => {
+	const harness = await newDepartureHarness();
+	try {
+		const socket = harness.connectDevice('device-leaving');
+
+		const answer = await harness.postDeparture(JSON.stringify({ deviceId: 'device-leaving', authToken: 'the-wrong-token' }));
+
+		Assert.equal(answer.status, 401);
+		Assert.equal(socket.terminated, false);
+	} finally {
+		await harness.stop();
+	}
+});
+
+Test('a departure naming a device that holds no authenticated session is refused', async () => {
+	const harness = await newDepartureHarness();
+	try {
+		const socket = harness.connectDevice('device-leaving');
+		// The connection is still open, but its session is gone. A leaked token must not be enough
+		// on its own to drop a device.
+		harness.sessionRegistry.close('device-leaving');
+
+		const answer = await harness.postDeparture(JSON.stringify({ deviceId: 'device-leaving', authToken: harness.authToken }));
+
+		Assert.equal(answer.status, 403);
+		Assert.equal(socket.terminated, false);
+	} finally {
+		await harness.stop();
+	}
+});
+
+Test('a departure naming a device with no open connection is answered as not found', async () => {
+	const harness = await newDepartureHarness();
+	try {
+		harness.sessionRegistry.open('device-never-connected', harness.authToken);
+
+		const answer = await harness.postDeparture(JSON.stringify({ deviceId: 'device-never-connected', authToken: harness.authToken }));
+
+		Assert.equal(answer.status, 404);
+	} finally {
+		await harness.stop();
+	}
+});
+
+Test('a departure that is not valid JSON, and one of the wrong shape, are both refused', async () => {
+	const harness = await newDepartureHarness();
+	try {
+		const socket = harness.connectDevice('device-leaving');
+
+		Assert.equal((await harness.postDeparture('not json at all')).status, 400);
+		Assert.equal((await harness.postDeparture(JSON.stringify({ deviceId: 'device-leaving' }))).status, 400);
+		Assert.equal(socket.terminated, false);
+	} finally {
+		await harness.stop();
+	}
+});
+
+Test('a departure larger than the size limit is refused before it is read', async () => {
+	const harness = await newDepartureHarness();
+	try {
+		const socket = harness.connectDevice('device-leaving');
+
+		const oversized = JSON.stringify({ deviceId: 'device-leaving', authToken: 'x'.repeat(4_000) });
+		const answer = await harness.postDeparture(oversized);
+
+		Assert.equal(answer.status, 413);
+		Assert.equal(socket.terminated, false);
+	} finally {
+		await harness.stop();
+	}
 });

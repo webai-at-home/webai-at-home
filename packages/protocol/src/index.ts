@@ -109,3 +109,12 @@ export type { ClientEnvelope, GatewayEnvelope } from './message/envelope_types.j
 
 export { DiagnosticEntrySchema, DiagnosticsBatchSchema, maximumDiagnosticEntriesPerBatch } from './message/diagnostics.js';
 export type { DiagnosticEntry, DiagnosticsBatch } from './message/diagnostics.js';
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Departure
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+export { DepartureSchema, departureContentType } from './message/departure.js';
+export type { Departure } from './message/departure.js';
