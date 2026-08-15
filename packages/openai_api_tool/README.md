@@ -160,7 +160,7 @@ Because three of the five probes need a temperature beside the control they are 
 
 `-f/--format markdown` and `-f/--format json` carry every answer each probe produced, so a reader can check a conclusion against the text it was drawn from rather than taking it on trust.
 
-Convenience scripts run it against LM Studio directly and against the cluster, for a model that honours all five and one that honours none:
+Convenience scripts run it against LM Studio directly and against the cluster. LM Studio honours all five; `llm_qwen3_5_0_8b_full` honours `temperature`, `max_completion_tokens`, and `stop`, and refuses `top_p` and `seed`, so the same command against the two shows both a full row of `honoured` and the `refused` conclusion that is an answer rather than a fault:
 
 ```sh
 npm run generation_controls:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool
