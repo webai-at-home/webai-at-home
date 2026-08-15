@@ -143,20 +143,87 @@ const generationSettingsOf = (body: Record<string, unknown>, taskTypeName: TaskT
 	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming);
 };
 
-// `task_type_llm_llama3_2_3b_full` was, until issue #154 retired it, the only task type that
-// honoured any of the five generation controls, so it was what these two tests exercised
-// `GenerationSettingsBuilder.build`'s honouring branch against: carrying every control through
-// untranslated for a model that honours all five, `stop` normalised from one piece of text to a
-// list of one, and `max_completion_tokens` preferred over its older spelling `max_tokens` when a
-// request sends both. No task type honours any control today, so that branch has no live model
-// to test against; see [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151)
-// milestone 3, and reinstate these two once one does.
+// `GenerationSettingsBuilder.build`'s honouring branch is exercised against
+// `llm_llama3_2_1b_full`, which honours `temperature`, `max_completion_tokens`, and `stop` — proved
+// live in a real browser tab by the de-risk gate of
+// [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). It is the first task
+// type to honour anything since `task_type_llm_llama3_2_3b_full` was retired by issue #154, and it
+// deliberately honours three of the five rather than all five: `@huggingface/transformers` acts on
+// neither `top_p` nor a seed, so both stay refused.
+
+Test('carries a control the model honours through to the cluster, untranslated', () => {
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], temperature: 0, max_completion_tokens: 20, stop: ['\nUser:'] }, 'llm_llama3_2_1b_full'),
+		{
+			temperature: 0,
+			maximumOutputTokenCount: 20,
+			stopSequences: ['\nUser:'],
+		},
+	);
+	// `stop` is one piece of text or a list of them on this interface, and one piece of text
+	// becomes a list of one rather than being carried as text.
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], stop: '\nUser:' }, 'llm_llama3_2_1b_full'),
+		{
+			stopSequences: ['\nUser:'],
+		},
+	);
+	// `max_completion_tokens` is the newer spelling, and wins when a request sends both.
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], max_completion_tokens: 20, max_tokens: 99 }, 'llm_llama3_2_1b_full'),
+		{
+			maximumOutputTokenCount: 20,
+		},
+	);
+});
+
+Test('still refuses the two controls the model cannot honour, while honouring the three it can', () => {
+	// Both models run on `@huggingface/transformers`, which acts on neither `top_p` nor a seed, so
+	// both refuse exactly those two and honour exactly the other three.
+	for (const model of ['llm_llama3_2_1b_full', 'llm_qwen3_5_0_8b_full'] as const) {
+		for (const [field, value] of [['top_p', 0.9], ['seed', 42]] as const) {
+			const refusal = refusalOf({ model, messages: [{ role: 'user', content: 'hello' }], [field]: value }, model);
+			Assert.equal(refusal.status, 400);
+			Assert.equal(refusal.code, 'unhonourable_generation_control');
+			Assert.equal(refusal.param, field);
+			// The refusal names what this model does honour, so the sender learns what to send
+			// instead rather than only what not to send.
+			Assert.match(refusal.message, /temperature, max_completion_tokens, stop/);
+		}
+		Assert.deepEqual(
+			generationSettingsOf({ model, messages: [{ role: 'user', content: 'hello' }], temperature: 0, max_completion_tokens: 20, stop: ['\nUser:'] }, model),
+			{
+				temperature: 0,
+				maximumOutputTokenCount: 20,
+				stopSequences: ['\nUser:'],
+			},
+		);
+	}
+});
+
+Test('carries all five controls for the one model that honours all five', () => {
+	// `llm_qwen3_0_6b_sharded` is the only model here whose sampler is written by hand, and the only
+	// one whose `top_p` and `seed` do anything. Proved live in a real browser tab by the de-risk gate
+	// of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196).
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }], temperature: 0.7, top_p: 0.5, max_completion_tokens: 20, stop: ['\nUser:'], seed: 42 }, 'llm_qwen3_0_6b_sharded'),
+		{
+			temperature: 0.7,
+			topP: 0.5,
+			maximumOutputTokenCount: 20,
+			stopSequences: ['\nUser:'],
+			randomSeed: 42,
+		},
+	);
+});
 
 Test('submits no settings block at all for a request that asked for nothing', () => {
-	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }] }, 'llm_qwen3_5_0_8b_full'), undefined);
+	Assert.equal(generationSettingsOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }] }, 'llm_gemma_nano_chrome_full'), undefined);
 	// This interface's own defaults are `1` for both `temperature` and `top_p`, an empty `stop`
 	// names no text to stop at, and `null` says a client holds no value. None of the four asks a
 	// model for anything, so none of the four is refused by a model that honours nothing.
+	Assert.equal(generationSettingsOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_gemma_nano_chrome_full'), undefined);
+	// A model that does honour controls is asked for nothing by those same defaults either.
 	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_qwen3_5_0_8b_full'), undefined);
 });
 
@@ -181,10 +248,10 @@ const refusalOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName): O
 };
 
 Test('refuses a generation control the model named cannot honour, rather than dropping it', () => {
-	// Every control is refused by every model: none of the language-model task types honours any
-	// of them today. See issue #151.
+	// Every control is refused by `llm_gemma_nano_chrome_full`, the one model here whose engine no
+	// de-risk gate could reach, so nothing about it is claimed rather than observed.
 	for (const [field, value] of [['temperature', 0], ['top_p', 0.9], ['max_tokens', 20], ['stop', ['\nUser:']], ['seed', 42]] as const) {
-		const refusal = refusalOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_qwen3_5_0_8b_full');
+		const refusal = refusalOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_gemma_nano_chrome_full');
 		Assert.equal(refusal.status, 400);
 		Assert.equal(refusal.code, 'unhonourable_generation_control');
 		// `max_tokens` is refused under the newer name of the same control, which is the name the
@@ -279,6 +346,14 @@ Test('translates a worker\'s own stop reason into the OpenAI value under Rule 2 
 	// There is no OpenAI value for an answer the cluster gave up on producing, so it is refused
 	// rather than invented.
 	Assert.throws(() => FinishReasonTranslator.translate('interrupted'), OpenaiError);
+});
+
+Test('reports an answer that ended on a consumer\'s stop sequence as stop, never as length', () => {
+	// A stop sequence stops generation the same way a cancelled task does, and the two mean
+	// opposite things to the consumer: one is a finished answer, the other is an abandoned one.
+	// Before `stop_sequence` existed, such an answer was reported as `interrupted` and refused
+	// with HTTP 502, which is what the de-risk gate of step 2 of issue #196 observed live.
+	Assert.equal(FinishReasonTranslator.translate('stop_sequence'), 'stop');
 });
 
 ///////////////////////////////////////////////////////////////////////////////

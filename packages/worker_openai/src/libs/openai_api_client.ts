@@ -212,8 +212,8 @@ export class OpenaiApiClient {
 	/**
 	 * Builds the generation controls of the request body, from what the consumer asked for.
 	 *
-	 * Every one of the five is native here, which is what makes this task type the one that
-	 * honours all of them. Milestone 0's de-risk gate for
+	 * Every one of the five is a field of the request this local server already reads, so this
+	 * worker can forward whichever of them reaches it. Milestone 0's de-risk gate for
 	 * https://github.com/webai-at-home/webai-at-home/issues/151 proved all five live against
 	 * LM Studio 0.4.20 serving `llama-3.2-3b-instruct`, one at a time: `temperature: 0` repeated one
 	 * answer word for word three times where `temperature: 1.6` gave three different answers,
@@ -225,6 +225,13 @@ export class OpenaiApiClient {
 	 * A setting the consumer did not state produces no field at all, rather than a field set to
 	 * `null`, so that the local server applies its own default exactly as it did before this
 	 * cluster carried any of these controls.
+	 *
+	 * Only the controls the task type's own contract names ever arrive here. A task type's
+	 * contract is the intersection of what all of its workers can honour, so a control this
+	 * native worker could honour but the worker browser tab running the same task type cannot is
+	 * refused by `packages/consumer_openai` at submission and never reaches this method. The five
+	 * branches below therefore stay written out in full while fewer than five are reachable. See
+	 * step 1 of https://github.com/webai-at-home/webai-at-home/issues/196.
 	 *
 	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
 	 * nothing.

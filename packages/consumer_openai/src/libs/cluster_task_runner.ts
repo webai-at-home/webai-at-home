@@ -40,7 +40,7 @@ export type TaskAnswer = {
 	 * report it. Not an OpenAI value — translating this into `finish_reason` is a job for whoever
 	 * calls this runner and speaks the OpenAI Chat Completions interface.
 	 */
-	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
+	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' | undefined;
 	/**
 	 * The tools the model asked to have called, `undefined` when it answered in words, which is
 	 * every task whose history declared no tool.

@@ -2,8 +2,9 @@
 
 import * as OnnxRuntimeWeb from 'onnxruntime-web';
 import { Tokenizer } from '@huggingface/tokenizers';
-import { GeneratedText, StagePayloadFactory, type EncodedTensor, type LlmStagePayload } from '@webai/protocol';
+import { GeneratedText, StagePayloadFactory, type EncodedTensor, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
 import type { ModelDownloadProgress } from './model_download_progress.js';
+import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -100,8 +101,8 @@ type TaskGenerationState = {
 	/** Token identifiers generated so far, in order. */
 	generatedIds: number[];
 	/**
-	 * The answer as this device last reported it, which is what each round measures its own
-	 * piece against.
+	 * The answer as this device last released it to {@link TaskGenerationState.stopSequenceWatcher},
+	 * which is what each round measures its own piece against.
 	 *
 	 * A round cannot work out its piece by decoding the token it just generated on its own. A
 	 * token is not a character: one may finish a character another began, and how a token reads
@@ -110,7 +111,26 @@ type TaskGenerationState = {
 	 * `GeneratedText` is where the two are compared, including what to do about a character the
 	 * rounds so far have only half written.
 	 */
-	reportedText: string;
+	decodedText: string;
+	/**
+	 * The answer as the consumer has actually been sent it, which is everything the stop sequence
+	 * watcher has forwarded, joined.
+	 *
+	 * This is shorter than {@link TaskGenerationState.decodedText} while the watcher holds the last
+	 * few characters back, and shorter again once a stop sequence has been found, because the stop
+	 * sequence and everything after it are never sent. The result that ends the task carries this
+	 * text as the whole answer, not the decoded one.
+	 */
+	answerText: string;
+	/** Applies the consumer's stop sequences across the rounds this answer is generated in. */
+	stopSequenceWatcher: StopSequenceWatcher;
+	/**
+	 * Produces the number in `[0, 1)` each sampled round selects its token with.
+	 *
+	 * Built once for the whole answer, so a consumer's seed decides every round of it rather than
+	 * only the first. A greedy answer never calls this.
+	 */
+	nextRandom: () => number;
 };
 
 /** Loads the qwen3-0.6b shards and runs the assigned shard for each stage of a task's generation loop. */
@@ -154,10 +174,18 @@ export class StageHelperLlmQwen3_0_6bSharded {
 	 * @param taskId The task this stage belongs to, used to look up its key-value cache and generated tokens so far.
 	 * @param payload The incoming stage payload (the prompt for shard 1's first round, or the previous
 	 * shard's hand-off otherwise).
+	 * @param generationSettings What the consumer asked for about how its answer is generated. Every
+	 * round of the pipeline is sent the same settings, so a round reads them rather than remembering
+	 * them.
 	 * @returns The outgoing stage payload to send back as the stage result.
 	 * @throws If the pipeline asks for a shard beyond the number this browser's model was split into.
 	 */
-	static async compute(shardIndex: number, taskId: string, payload: LlmStagePayload): Promise<LlmStagePayload> {
+	static async compute(
+		shardIndex: number,
+		taskId: string,
+		payload: LlmStagePayload,
+		generationSettings?: GenerationSettings,
+	): Promise<LlmStagePayload> {
 		if (shardIndex < 0 || shardIndex >= StageHelperLlmQwen3_0_6bSharded.shardCount) {
 			throw new Error(`This browser runs ${StageHelperLlmQwen3_0_6bSharded.shardCount} language-model shards and was asked for shard ${shardIndex + 1}.`);
 		}
@@ -169,8 +197,8 @@ export class StageHelperLlmQwen3_0_6bSharded {
 		const isFirstShard = shardIndex === 0;
 		const isFirstRound = isFirstShard && payload.inputIds === undefined;
 		const state = isFirstRound
-			? StageHelperLlmQwen3_0_6bSharded.startTask(taskId)
-			: (StageHelperLlmQwen3_0_6bSharded.stateByTaskId.get(taskId) ?? StageHelperLlmQwen3_0_6bSharded.startTask(taskId));
+			? StageHelperLlmQwen3_0_6bSharded.startTask(taskId, generationSettings)
+			: (StageHelperLlmQwen3_0_6bSharded.stateByTaskId.get(taskId) ?? StageHelperLlmQwen3_0_6bSharded.startTask(taskId, generationSettings));
 
 		const inputIds = isFirstRound ? StageHelperLlmQwen3_0_6bSharded.encodePrompt(payload.text ?? '') : (payload.inputIds ?? []);
 		// Shard 1's first round is the only round that ever sees the prompt text, so it is also the
@@ -192,28 +220,45 @@ export class StageHelperLlmQwen3_0_6bSharded {
 
 		const isLastShard = shardIndex === StageHelperLlmQwen3_0_6bSharded.shardCount - 1;
 		if (isLastShard) {
-			const nextToken = StageHelperLlmQwen3_0_6bSharded.getNextToken(StageHelperLlmQwen3_0_6bSharded.findLogits(session, outputs));
+			const logits = StageHelperLlmQwen3_0_6bSharded.findLogits(session, outputs);
+			const nextToken = StageHelperLlmQwen3_0_6bSharded.selectNextToken(logits, state, generationSettings);
 			state.generatedIds.push(nextToken);
 			const text = StageHelperLlmQwen3_0_6bSharded.tokenizer?.decode(state.generatedIds, {
 				skip_special_tokens: true,
 			}).trim() ?? '';
 			const isEndOfSequence = nextToken === EOS_TOKEN_ID;
-			const done = isEndOfSequence || state.generatedIds.length >= MAX_NEW_TOKENS;
+			// A consumer may ask for fewer tokens than this stage would generate anyway, and never
+			// for more: the bound that protects a device from a model that never stops is not a
+			// consumer's to raise.
+			const tokenBudget = Math.min(MAX_NEW_TOKENS, generationSettings?.maximumOutputTokenCount ?? MAX_NEW_TOKENS);
+			const endsWithoutStopSequence = isEndOfSequence || state.generatedIds.length >= tokenBudget;
 			// Nothing is held back once the answer is finished: there is no round after this one to
 			// report the rest, so what a reader has been shown must add up to the whole answer.
-			const reportable = done ? text : GeneratedText.reportable(state.reportedText, text);
-			const newText = GeneratedText.addition(state.reportedText, reportable);
-			state.reportedText = reportable;
+			const decoded = endsWithoutStopSequence ? text : GeneratedText.reportable(state.decodedText, text);
+			const addition = GeneratedText.addition(state.decodedText, decoded);
+			state.decodedText = decoded;
+			// The watcher decides how much of that addition may leave this device. It holds the last
+			// few characters back while they could still begin a stop sequence, and forwards nothing
+			// at all once one has been found.
+			const forwarded = state.stopSequenceWatcher.accept(addition);
+			const hasStoppedOnSequence = state.stopSequenceWatcher.hasStopped;
+			const done = endsWithoutStopSequence || hasStoppedOnSequence;
+			const newText = done && hasStoppedOnSequence === false
+				? forwarded + state.stopSequenceWatcher.flush()
+				: forwarded;
+			state.answerText += newText;
 			if (done) {
+				const answerText = state.answerText;
+				const usage = StageHelperLlmQwen3_0_6bSharded.usageOf(
+					state,
+					promptTokenCount,
+					StageHelperLlmQwen3_0_6bSharded.stopReasonOf(hasStoppedOnSequence, isEndOfSequence),
+				);
 				StageHelperLlmQwen3_0_6bSharded.clearTask(taskId);
 				// The whole answer travels once, on the one result that ends the task, and the piece
 				// travels with it so a reader joining the pieces receives the last one as well. See
 				// milestone 3 of issue #150 for the usage this stage now reports alongside it.
-				return StagePayloadFactory.llmDone(
-					text,
-					newText,
-					StageHelperLlmQwen3_0_6bSharded.usageOf(state, promptTokenCount, isEndOfSequence ? 'end_of_sequence' : 'max_new_tokens'),
-				);
+				return StagePayloadFactory.llmDone(answerText, newText, usage);
 			}
 			return StagePayloadFactory.llmContinue(newText, nextToken, position + inputIds.length, promptTokenCount);
 		}
@@ -241,15 +286,15 @@ export class StageHelperLlmQwen3_0_6bSharded {
 	 * @param state This task's generation state, holding the tokens generated so far.
 	 * @param promptTokenCount The exact number of tokens the prompt was encoded into, carried
 	 * forward from shard 1's first round on the wire.
-	 * @param stopReason Which of the two ways this stage can finish generating just happened.
+	 * @param stopReason Which of the three ways this stage can finish generating just happened.
 	 * @returns The `usage` object to pass to `llmDone`.
 	 */
 	private static usageOf(
 		state: TaskGenerationState,
 		promptTokenCount: number | undefined,
-		stopReason: 'end_of_sequence' | 'max_new_tokens',
-	): { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' } {
-		const usage: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' } = {
+		stopReason: 'end_of_sequence' | 'max_new_tokens' | 'stop_sequence',
+	): { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' } {
+		const usage: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' } = {
 			stopReason,
 			completionTokenCount: state.generatedIds.length,
 		};
@@ -257,6 +302,28 @@ export class StageHelperLlmQwen3_0_6bSharded {
 			usage.promptTokenCount = promptTokenCount;
 		}
 		return usage;
+	}
+
+	/**
+	 * Names why this answer stopped, preferring the consumer's own reason to the model's.
+	 *
+	 * A round can reach a stop sequence and the end of the token budget at once. The stop sequence
+	 * is reported then, because an answer cut where the consumer asked it to be cut is a finished
+	 * answer, while one cut at the token budget is a truncated one, and the consumer is told the
+	 * difference through the `finish_reason` these two become.
+	 *
+	 * @param hasStoppedOnSequence Whether the stop sequence watcher found a stop sequence.
+	 * @param isEndOfSequence Whether the model generated its end-of-sequence token.
+	 * @returns The stop reason to report.
+	 */
+	private static stopReasonOf(
+		hasStoppedOnSequence: boolean,
+		isEndOfSequence: boolean,
+	): 'end_of_sequence' | 'max_new_tokens' | 'stop_sequence' {
+		if (hasStoppedOnSequence === true) {
+			return 'stop_sequence';
+		}
+		return isEndOfSequence ? 'end_of_sequence' : 'max_new_tokens';
 	}
 
 	/**
@@ -290,12 +357,22 @@ export class StageHelperLlmQwen3_0_6bSharded {
 		return runnable.length === 0 ? Promise.resolve() : StageHelperLlmQwen3_0_6bSharded.loadModel(runnable, onLoadingPhase, onProgress);
 	}
 
-	/** Creates and stores fresh generation state for a task's first round. */
-	private static startTask(taskId: string): TaskGenerationState {
+	/**
+	 * Creates and stores fresh generation state for a task's first round.
+	 *
+	 * @param taskId The task this state belongs to.
+	 * @param generationSettings What the consumer asked for about how its answer is generated, which
+	 * decides the stop sequences to watch for and the seed the sampled rounds are selected with.
+	 * @returns The state, already stored under `taskId`.
+	 */
+	private static startTask(taskId: string, generationSettings: GenerationSettings | undefined): TaskGenerationState {
 		const state: TaskGenerationState = {
 			caches: [undefined, undefined, undefined],
 			generatedIds: [],
-			reportedText: '',
+			decodedText: '',
+			answerText: '',
+			stopSequenceWatcher: new StopSequenceWatcher(generationSettings?.stopSequences ?? []),
+			nextRandom: StageHelperLlmQwen3_0_6bSharded.randomNumberSource(generationSettings?.randomSeed),
 		};
 		StageHelperLlmQwen3_0_6bSharded.stateByTaskId.set(taskId, state);
 		return state;
@@ -524,21 +601,187 @@ export class StageHelperLlmQwen3_0_6bSharded {
 		return feeds;
 	}
 
+	/**
+	 * Selects this round's token, greedily or by sampling, as the consumer asked.
+	 *
+	 * Greedy decoding is what an answer that asked for nothing receives, and what a temperature of
+	 * zero means. Sampling is reached only when a temperature above zero or a `topP` was asked for,
+	 * so no answer is generated differently because a control was named that changes nothing.
+	 *
+	 * @param logits The logits tensor the last shard produced for this round.
+	 * @param state This task's generation state, holding the source of random numbers.
+	 * @param generationSettings What the consumer asked for about how its answer is generated.
+	 * @returns The token identifier to generate next.
+	 */
+	private static selectNextToken(
+		logits: OnnxRuntimeWeb.Tensor,
+		state: TaskGenerationState,
+		generationSettings: GenerationSettings | undefined,
+	): number {
+		const temperature = generationSettings?.temperature;
+		const topP = generationSettings?.topP;
+		const isGreedy = temperature === 0 || (temperature === undefined && topP === undefined);
+		if (isGreedy === true) {
+			return StageHelperLlmQwen3_0_6bSharded.getNextToken(logits);
+		}
+		return StageHelperLlmQwen3_0_6bSharded.sampleNextToken(logits, temperature ?? 1, topP, state.nextRandom);
+	}
+
 	/** Selects the token with the highest logit value for greedy decoding. */
 	private static getNextToken(logits: OnnxRuntimeWeb.Tensor): number {
 		const vocabularySize = logits.dims.at(-1) ?? 0;
 		const values = logits.data as Float32Array | Uint16Array;
+		const isHalfPrecision = values instanceof Uint16Array;
 		const offset = values.length - vocabularySize;
 		let bestToken = 0;
 		let bestValue = Number.NEGATIVE_INFINITY;
 		for (let tokenId = 0; tokenId < vocabularySize; tokenId += 1) {
-			const value = values[offset + tokenId];
+			const raw = values[offset + tokenId];
+			const value = isHalfPrecision ? StageHelperLlmQwen3_0_6bSharded.halfPrecisionToNumber(raw) : raw;
 			if (value > bestValue) {
 				bestValue = value;
 				bestToken = tokenId;
 			}
 		}
 		return bestToken;
+	}
+
+	/**
+	 * Selects the next token by sampling the probabilities the logits stand for, rather than by
+	 * taking the highest of them.
+	 *
+	 * The logits are divided by the temperature, turned into probabilities, sorted from the most
+	 * probable down, cut at `topP` when one was asked for, and one of what remains is selected in
+	 * proportion to its probability. Dividing by a temperature above one flattens the
+	 * probabilities and makes an unlikely token more reachable; dividing by one below one sharpens
+	 * them towards the token greedy decoding would have taken.
+	 *
+	 * @param logits The logits tensor the last shard produced for this round.
+	 * @param temperature The temperature the consumer asked for, above zero.
+	 * @param topP The share of the probability the sampled tokens must add up to, when one was
+	 * asked for, counting the most probable tokens first.
+	 * @param nextRandom Produces the number in `[0, 1)` this selection is made with.
+	 * @returns The token identifier to generate next.
+	 */
+	private static sampleNextToken(
+		logits: OnnxRuntimeWeb.Tensor,
+		temperature: number,
+		topP: number | undefined,
+		nextRandom: () => number,
+	): number {
+		const vocabularySize = logits.dims.at(-1) ?? 0;
+		const values = logits.data as Float32Array | Uint16Array;
+		const isHalfPrecision = values instanceof Uint16Array;
+		const offset = values.length - vocabularySize;
+		const candidates: { tokenId: number; probability: number }[] = [];
+		let highestScore = Number.NEGATIVE_INFINITY;
+		for (let tokenId = 0; tokenId < vocabularySize; tokenId += 1) {
+			const raw = values[offset + tokenId];
+			const value = isHalfPrecision ? StageHelperLlmQwen3_0_6bSharded.halfPrecisionToNumber(raw) : raw;
+			const score = value / temperature;
+			candidates.push({
+				tokenId,
+				probability: score,
+			});
+			if (score > highestScore) {
+				highestScore = score;
+			}
+		}
+		// The highest score is taken off every score before the exponential, which leaves the
+		// probabilities unchanged and keeps the largest of them at one, so no score overflows.
+		let total = 0;
+		for (const candidate of candidates) {
+			candidate.probability = Math.exp(candidate.probability - highestScore);
+			total += candidate.probability;
+		}
+		for (const candidate of candidates) {
+			candidate.probability /= total;
+		}
+		candidates.sort((left, right) => right.probability - left.probability);
+		const sampled = topP === undefined ? candidates : StageHelperLlmQwen3_0_6bSharded.mostProbableUpTo(candidates, topP);
+		const sampledTotal = sampled.reduce((sum, candidate) => sum + candidate.probability, 0);
+		let target = nextRandom() * sampledTotal;
+		for (const candidate of sampled) {
+			target -= candidate.probability;
+			if (target <= 0) {
+				return candidate.tokenId;
+			}
+		}
+		return sampled[sampled.length - 1]?.tokenId ?? 0;
+	}
+
+	/**
+	 * Keeps the most probable tokens whose probabilities add up to `topP`, which is what `topP`
+	 * asks for.
+	 *
+	 * The token that carries the total past `topP` is kept as well, so the smallest set that
+	 * reaches `topP` is what is sampled from, and the most probable token alone is kept however
+	 * small `topP` is — a set of no tokens has nothing to sample.
+	 *
+	 * @param candidates Every token and its probability, sorted from the most probable down.
+	 * @param topP The share of the probability the kept tokens must add up to.
+	 * @returns The kept tokens, in the same order.
+	 */
+	private static mostProbableUpTo(
+		candidates: readonly { tokenId: number; probability: number }[],
+		topP: number,
+	): { tokenId: number; probability: number }[] {
+		const kept: { tokenId: number; probability: number }[] = [];
+		let keptTotal = 0;
+		for (const candidate of candidates) {
+			kept.push(candidate);
+			keptTotal += candidate.probability;
+			if (keptTotal >= topP) {
+				break;
+			}
+		}
+		return kept;
+	}
+
+	/**
+	 * Reads one 16-bit half-precision floating point number out of its raw bit pattern.
+	 *
+	 * This shard pipeline's logits arrive as half precision when the graphics card runs the model,
+	 * and a typed array of them reads as the plain 16-bit numbers those bits spell rather than as
+	 * the values they stand for, so they are decoded here.
+	 *
+	 * @param bits The raw 16 bits, as the logits tensor holds them.
+	 * @returns The number those bits stand for.
+	 */
+	private static halfPrecisionToNumber(bits: number): number {
+		const sign = (bits & 0x8000) === 0 ? 1 : -1;
+		const exponent = (bits & 0x7c00) >> 10;
+		const fraction = bits & 0x03ff;
+		if (exponent === 0) {
+			return sign * fraction * Math.pow(2, -24);
+		}
+		if (exponent === 0x1f) {
+			return fraction === 0 ? sign * Infinity : Number.NaN;
+		}
+		return sign * (1 + fraction / 1024) * Math.pow(2, exponent - 15);
+	}
+
+	/**
+	 * Builds the source of random numbers a sampled answer is selected with.
+	 *
+	 * A seeded source is the whole of what `randomSeed` promises: the same seed, the same prompt,
+	 * and the same other controls produce the same answer. The generator is `mulberry32`, chosen
+	 * because it needs one 32-bit number of state and no library.
+	 *
+	 * @param randomSeed The seed the consumer asked for, or `undefined` for an unseeded source.
+	 * @returns A function producing the next number in `[0, 1)`.
+	 */
+	private static randomNumberSource(randomSeed: number | undefined): () => number {
+		if (randomSeed === undefined) {
+			return () => Math.random();
+		}
+		let seedState = randomSeed >>> 0;
+		return () => {
+			seedState = (seedState + 0x6d2b79f5) >>> 0;
+			let value = Math.imul(seedState ^ (seedState >>> 15), 1 | seedState);
+			value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+			return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+		};
 	}
 
 	/** Finds the logits tensor among a shard's outputs. */

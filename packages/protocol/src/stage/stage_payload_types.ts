@@ -124,8 +124,13 @@ export type LlmStagePayload = {
 	 *   token appeared.
 	 * - `interrupted` — generation was stopped before either of the above, such as by a cancelled
 	 *   task. There is no OpenAI value for this.
+	 * - `stop_sequence` — generation was stopped because the answer reached one of the stop
+	 *   sequences the consumer asked for. This is a finished answer, not an abandoned one, and it
+	 *   is the reason `interrupted` cannot stand in for it: a stop sequence stops generation the
+	 *   same way a cancelled task does, and the two mean opposite things to the consumer. See step
+	 *   3 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196).
 	 */
-	stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted';
+	stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence';
 };
 
 /** The value carried by one stage: a plain number for the formula pipeline, or an LLM payload. */
@@ -146,6 +151,6 @@ export const StagePayloadSchema = z.union([
 		done: z.boolean().optional(),
 		promptTokenCount: z.number().int().nonnegative().optional(),
 		completionTokenCount: z.number().int().nonnegative().optional(),
-		stopReason: z.enum(['end_of_sequence', 'max_new_tokens', 'interrupted']).optional(),
+		stopReason: z.enum(['end_of_sequence', 'max_new_tokens', 'interrupted', 'stop_sequence']).optional(),
 	}).strict(),
 ]) as unknown as z.ZodType<StagePayload>;

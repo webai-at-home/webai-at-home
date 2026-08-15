@@ -85,11 +85,23 @@ import type { GatewayMessage } from './gateway_message.js';
  * and `@huggingface/transformers` does not offer. Defining it anyway would repeat exactly what was
  * added ahead of use and removed again in
  * [`38aa026`](https://github.com/webai-at-home/webai-at-home/commit/38aa026).
+ *
+ * Version 8 let a stage say that generation stopped on a stop sequence the consumer asked for.
+ * `LlmStagePayload.stopReason` now carries `stop_sequence` beside `end_of_sequence`,
+ * `max_new_tokens`, and `interrupted`. See step 3 of
+ * [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). Every earlier version is
+ * refused for two reasons at once, and either alone would be enough. A gateway built before this
+ * version validates a stage result with a `stopReason` enum that does not list `stop_sequence`,
+ * so it refuses the result outright and the answer is lost. And a worker built before this version
+ * ignores the generation controls a newer consumer sends, so that consumer receives an answer
+ * generated some other way and is told nothing went wrong — which is the exact fault
+ * `generation_control_support.ts` exists to prevent, and it cannot be caught anywhere except here,
+ * because no field is added for a consumer to notice the absence of.
  */
-export const protocolVersion = 7;
+export const protocolVersion = 8;
 
 /** The protocol versions the gateway accepts. No earlier version is accepted. */
-export const supportedProtocolVersions: number[] = [7];
+export const supportedProtocolVersions: number[] = [8];
 
 /**
  * The wrapper around every frame sent in either direction.

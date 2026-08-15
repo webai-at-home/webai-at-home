@@ -1,6 +1,7 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, type TextGenerationPipeline } from '@huggingface/transformers';
 import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
 import type { ModelDownloadProgress } from './model_download_progress.js';
+import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -141,7 +142,15 @@ type TaskGenerationState = {
 	 * Why generation stopped, once it has, in this stage's own word for it rather than an OpenAI
 	 * value.
 	 */
-	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
+	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' | undefined;
+	/**
+	 * Watches the answer for the stop sequences the consumer asked for, absent when it asked for
+	 * none.
+	 *
+	 * Held here rather than inside the generation stream because the stream reports why it ended
+	 * onto this state, and a stop sequence is one of the reasons it can end.
+	 */
+	stopSequenceWatcher: StopSequenceWatcher | undefined;
 };
 
 /**
@@ -265,9 +274,12 @@ export class StageHelperLlmLlama3_2_1bFull {
 	 * is the one allowed to release the answer it is reading.
 	 * @param payload The prompt or history submitted with the task, or, on a run that carries
 	 * an answer on, a value saying so and nothing else.
-	 * @param generationSettings What the consumer asked for. Only `isStreaming` is read: set, one
-	 * run returns one piece and leaves the answer open for the run that follows; absent, one run
-	 * returns the whole answer.
+	 * @param generationSettings What the consumer asked for. `isStreaming` decides how the answer
+	 * is returned: set, one run returns one piece and leaves the answer open for the run that
+	 * follows; absent, one run returns the whole answer. `temperature`, `maximumOutputTokenCount`,
+	 * and `stopSequences` decide how it is generated, and are the three controls this task type's
+	 * contract names in `generation_control_support.ts`. `topP` and `randomSeed` are refused before
+	 * a task is ever submitted, because this engine honours neither.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
 	 * @throws If the model cannot be loaded, if the run is asked to carry on an answer this
 	 * browser is not holding, if the answer is abandoned before or while it is being read, or if
@@ -288,7 +300,7 @@ export class StageHelperLlmLlama3_2_1bFull {
 		// finished answer, and every failure — releases it.
 		let leavesAnswerOpen = false;
 		try {
-			const reader = state.reader ?? await StageHelperLlmLlama3_2_1bFull.startGeneration(state, payload.history ?? payload.text ?? '');
+			const reader = state.reader ?? await StageHelperLlmLlama3_2_1bFull.startGeneration(state, payload.history ?? payload.text ?? '', generationSettings);
 			while (state.pieceCount < MAXIMUM_ANSWER_PIECES) {
 				const piece = await reader.read();
 				if (state.isReleased === true) {
@@ -402,6 +414,7 @@ export class StageHelperLlmLlama3_2_1bFull {
 			promptTokenCount: undefined,
 			completionTokenCount: undefined,
 			stopReason: undefined,
+			stopSequenceWatcher: undefined,
 		};
 		StageHelperLlmLlama3_2_1bFull.stateByTaskId.set(taskId, state);
 		return state;
@@ -491,6 +504,8 @@ export class StageHelperLlmLlama3_2_1bFull {
 	 *
 	 * @param state The generation state this run registered, already released or not.
 	 * @param promptOrHistory The prompt or history submitted with the task.
+	 * @param generationSettings What the consumer asked for about how the answer is generated, or
+	 * `undefined` when it asked for nothing.
 	 * @returns The reader that delivers the answer.
 	 * @throws If the prompt or history is empty, if the model cannot be loaded, or if the
 	 * assignment was taken away while the browser was loading the model.
@@ -498,6 +513,7 @@ export class StageHelperLlmLlama3_2_1bFull {
 	private static async startGeneration(
 		state: TaskGenerationState,
 		promptOrHistory: string | HistoryInput,
+		generationSettings: GenerationSettings | undefined,
 	): Promise<ReadableStreamDefaultReader<string>> {
 		if (StageHelperLlmLlama3_2_1bFull.isEmpty(promptOrHistory)) {
 			throw new Error('A prompt is needed to start an answer.');
@@ -524,7 +540,8 @@ export class StageHelperLlmLlama3_2_1bFull {
 		state.promptTokenCount = promptTensor.data?.length;
 		const criteria = new InterruptableStoppingCriteria();
 		state.criteria = criteria;
-		state.reader = StageHelperLlmLlama3_2_1bFull.createGenerationStream(generator, promptOrHistory, criteria, state).getReader();
+		state.stopSequenceWatcher = new StopSequenceWatcher(generationSettings?.stopSequences ?? []);
+		state.reader = StageHelperLlmLlama3_2_1bFull.createGenerationStream(generator, promptOrHistory, criteria, state, generationSettings).getReader();
 		return state.reader;
 	}
 
@@ -560,8 +577,12 @@ export class StageHelperLlmLlama3_2_1bFull {
 	 *
 	 * @param generator The loaded text-generation pipeline.
 	 * @param promptOrHistory The prompt or history to generate an answer for.
-	 * @param criteria Stops generation early when the stream's reader is cancelled.
-	 * @param state The generation state to record the completion token count and stop reason on.
+	 * @param criteria Stops generation early when the stream's reader is cancelled, and when the
+	 * answer reaches one of the consumer's stop sequences.
+	 * @param state The generation state to record the completion token count and stop reason on,
+	 * carrying the stop sequence watcher this stream forwards its text through.
+	 * @param generationSettings What the consumer asked for about how the answer is generated, or
+	 * `undefined` when it asked for nothing.
 	 * @returns A stream of the pieces of text the model produces, in order.
 	 */
 	private static createGenerationStream(
@@ -569,17 +590,29 @@ export class StageHelperLlmLlama3_2_1bFull {
 		promptOrHistory: string | HistoryInput,
 		criteria: InterruptableStoppingCriteria,
 		state: TaskGenerationState,
+		generationSettings: GenerationSettings | undefined,
 	): ReadableStream<string> {
 		let isCancelled = false;
 		const tokenIds: number[] = [];
+		const stopSequenceWatcher = state.stopSequenceWatcher ?? new StopSequenceWatcher([]);
+		const generationControls = StageHelperLlmLlama3_2_1bFull.generationControlsOf(generationSettings);
 		return new ReadableStream<string>({
 			start(controller) {
 				const streamer = new TextStreamer(generator.tokenizer, {
 					skip_prompt: true,
 					skip_special_tokens: true,
 					callback_function: (chunk: string) => {
-						if (isCancelled === false) {
-							controller.enqueue(chunk);
+						// The watcher decides what may be forwarded, because a stop sequence can
+						// straddle two chunks and a chunk once forwarded cannot be taken back.
+						const forwardable = stopSequenceWatcher.accept(chunk);
+						if (isCancelled === false && forwardable !== '') {
+							controller.enqueue(forwardable);
+						}
+						// Interrupting is an ordinary stopping condition, so the generation
+						// resolves with what it had rather than throwing. `stopReasonOf` reads the
+						// watcher first, so this interruption is not mistaken for a cancelled task.
+						if (stopSequenceWatcher.hasStopped === true) {
+							criteria.interrupt();
 						}
 					},
 					token_callback_function: (newTokens: bigint[]) => {
@@ -589,14 +622,19 @@ export class StageHelperLlmLlama3_2_1bFull {
 					},
 				});
 				generator(StageHelperLlmLlama3_2_1bFull.messagesOf(promptOrHistory), {
-					max_new_tokens: MAX_NEW_TOKENS,
-					do_sample: false,
+					...generationControls,
 					return_full_text: false,
 					stopping_criteria: criteria,
 					streamer,
 				}).then(() => {
+					// Nothing may stay held back once generation has ended: there is no chunk after
+					// the last one to release it.
+					const remaining = stopSequenceWatcher.flush();
+					if (isCancelled === false && remaining !== '') {
+						controller.enqueue(remaining);
+					}
 					state.completionTokenCount = tokenIds.length;
-					state.stopReason = StageHelperLlmLlama3_2_1bFull.stopReasonOf(criteria, generator, tokenIds);
+					state.stopReason = StageHelperLlmLlama3_2_1bFull.stopReasonOf(criteria, generator, tokenIds, stopSequenceWatcher);
 					if (isCancelled === false) {
 						controller.close();
 					}
@@ -629,8 +667,8 @@ export class StageHelperLlmLlama3_2_1bFull {
 	 */
 	private static usageOf(
 		state: TaskGenerationState,
-	): { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' } {
-		const usage: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' } = {};
+	): { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' } {
+		const usage: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' } = {};
 		if (state.promptTokenCount !== undefined) {
 			usage.promptTokenCount = state.promptTokenCount;
 		}
@@ -644,21 +682,65 @@ export class StageHelperLlmLlama3_2_1bFull {
 	}
 
 	/**
+	 * Builds what `generate()` is told about how to produce this answer, from what the consumer
+	 * asked for.
+	 *
+	 * Only the controls this task type's contract names are read: `temperature` and
+	 * `maximumOutputTokenCount`. `stopSequences`, the third control the contract names, is not
+	 * here because `@huggingface/transformers` has no parameter for it — it is applied by
+	 * {@link StopSequenceWatcher} on the generated text instead. `topP` and `randomSeed` are
+	 * absent because this engine honours neither, which milestone 0's de-risk gate observed live:
+	 * `top_p: 0.01` at `temperature: 1.6` narrowed nothing even with `top_k: 0` beside it, and the
+	 * library offers no seed at all. See
+	 * [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196).
+	 *
+	 * Sampling is turned on only for an answer that asked for a temperature. Every consumer that
+	 * asks for no temperature keeps receiving the greedy answer it receives today, unchanged.
+	 *
+	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
+	 * nothing.
+	 * @returns The fields to spread into the `generate()` call.
+	 */
+	private static generationControlsOf(
+		generationSettings: GenerationSettings | undefined,
+	): { max_new_tokens: number; do_sample: boolean; temperature?: number } {
+		const controls: { max_new_tokens: number; do_sample: boolean; temperature?: number } = {
+			max_new_tokens: Math.min(MAX_NEW_TOKENS, generationSettings?.maximumOutputTokenCount ?? MAX_NEW_TOKENS),
+			do_sample: generationSettings?.temperature !== undefined,
+		};
+		if (generationSettings?.temperature !== undefined) {
+			controls.temperature = generationSettings.temperature;
+		}
+		return controls;
+	}
+
+	/**
 	 * Works out why generation stopped, in this stage's own vocabulary rather than an OpenAI
 	 * value, from the same three signals milestone 0's de-risk gate proved cleanly distinguish
-	 * the three ways this model's generation can end.
+	 * the three ways this model's generation can end, and from the watcher for the fourth.
+	 *
+	 * The watcher is read before `criteria.interrupted`, because a stop sequence stops generation
+	 * by interrupting it. The two mean opposite things to the consumer — a finished answer against
+	 * an abandoned one — so reading them the other way round would report every stop sequence as a
+	 * task the cluster gave up on.
 	 *
 	 * @param criteria The stopping criteria generation ran with.
 	 * @param generator The loaded text-generation pipeline, read for its model's own
 	 * `eos_token_id` values.
 	 * @param tokenIds The raw token ids generated for this answer, in order.
+	 * @param stopSequenceWatcher The watcher that was forwarding this answer, which knows whether
+	 * it reached one of the consumer's stop sequences.
 	 * @returns Why generation stopped.
 	 */
 	private static stopReasonOf(
 		criteria: InterruptableStoppingCriteria,
 		generator: TextGenerationPipeline,
 		tokenIds: number[],
-	): 'end_of_sequence' | 'max_new_tokens' | 'interrupted' {
+		stopSequenceWatcher: StopSequenceWatcher,
+	): 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' {
+		if (stopSequenceWatcher.hasStopped === true) {
+			return 'stop_sequence';
+		}
 		if (criteria.interrupted === true) {
 			return 'interrupted';
 		}

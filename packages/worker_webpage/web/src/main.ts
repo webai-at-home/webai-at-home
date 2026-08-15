@@ -858,7 +858,12 @@ export class WorkerPage {
 		 */
 		const runComputation = (): Promise<StagePayload> => {
 			if (StageHelperLlmQwen3_0_6bSharded.implementsComputation(computation)) {
-				return StageHelperLlmQwen3_0_6bSharded.compute(message.stageIndex ?? 0, taskId, value as Exclude<StagePayload, number>);
+				return StageHelperLlmQwen3_0_6bSharded.compute(
+					message.stageIndex ?? 0,
+					taskId,
+					value as Exclude<StagePayload, number>,
+					message.generationSettings,
+				);
 			}
 			if (StageHelperLlmGemmaNanoChromeFull.implementsComputation(computation)) {
 				return StageHelperLlmGemmaNanoChromeFull.compute(
