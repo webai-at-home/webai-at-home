@@ -151,14 +151,14 @@ export class Cli {
 		// meant for, which prints its own real, detailed usage — rather than commander printing
 		// this program's generic "Usage: webai-at-home gateway [options] [gatewayArgs...]" instead.
 		program
-			.command('gateway')
-			.description('start the central gateway')
+			.command('consumer_cli')
+			.description("submit tasks, report cluster state, and manage this participant's own account")
 			.allowUnknownOption()
 			.passThroughOptions()
 			.helpOption(false)
-			.argument('[gatewayArgs...]', "the gateway's own options")
-			.action(async (gatewayArgs: string[]): Promise<void> => {
-				await GatewayCli.run(gatewayArgs, `${programName} gateway`);
+			.argument('[consumerCliArgs...]', "one of consumer_cli's own commands, and its own options")
+			.action(async (consumerCliArgs: string[]): Promise<void> => {
+				await ConsumerCliCli.run(consumerCliArgs, `${programName} consumer_cli`);
 			});
 
 		program
@@ -184,14 +184,14 @@ export class Cli {
 			});
 
 		program
-			.command('consumer_cli')
-			.description("submit tasks, report cluster state, and manage this participant's own account")
+			.command('gateway')
+			.description('start the central gateway')
 			.allowUnknownOption()
 			.passThroughOptions()
 			.helpOption(false)
-			.argument('[consumerCliArgs...]', "one of consumer_cli's own commands, and its own options")
-			.action(async (consumerCliArgs: string[]): Promise<void> => {
-				await ConsumerCliCli.run(consumerCliArgs, `${programName} consumer_cli`);
+			.argument('[gatewayArgs...]', "the gateway's own options")
+			.action(async (gatewayArgs: string[]): Promise<void> => {
+				await GatewayCli.run(gatewayArgs, `${programName} gateway`);
 			});
 
 		return program;
