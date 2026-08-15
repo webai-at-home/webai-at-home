@@ -109,10 +109,10 @@ npm run dev --workspace @webai/consumer-cli -- status
 
 Without `--watch`, `status` prints one snapshot and exits `0`. With `--watch`, it keeps reprinting until interrupted with Ctrl-C (clean exit `0`) or disconnected (non-zero exit); it does not reconnect on its own.
 
-The header names the central gateway the snapshot was read from. Each row names the worker, the address it connected from, its state, its capacity, and the stages it offers:
+The header names the central gateway the snapshot was read from, and the git commit that gateway was built from, which `status` reads from the gateway's `/health` route. A gateway that names no commit, or that cannot be reached over HTTP, leaves the header as the address alone. Each row names the worker, the address it connected from, its state, its capacity, and the stages it offers:
 
 ```
-gateway ws://localhost:8080
+gateway ws://localhost:8080 commit 0dc5bf47145f15bca2be97b384b35a3f240390e1
 2 workers (2 ready, 0 draining, 0 unavailable) · capacity 2/2 available, 0 active
 
 NAME               IP ADDRESS  STATE  CAPACITY  STAGES
