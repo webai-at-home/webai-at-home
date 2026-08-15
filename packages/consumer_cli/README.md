@@ -109,6 +109,16 @@ npm run dev --workspace @webai/consumer-cli -- status
 
 Without `--watch`, `status` prints one snapshot and exits `0`. With `--watch`, it keeps reprinting until interrupted with Ctrl-C (clean exit `0`) or disconnected (non-zero exit); it does not reconnect on its own.
 
+Each row names the worker, the address it connected from, its state, its capacity, and the stages it offers:
+
+```
+NAME               ADDRESS    STATE  CAPACITY  STAGES
+worker-one         ::1        ready  0/1       stage_dev_formula_multiply
+worker-two         127.0.0.1  ready  0/1       stage_dev_formula_multiply
+```
+
+The address is the one the central gateway observed when the worker connected, never one the worker states about itself; see [issue #183](https://github.com/webai-at-home/webai-at-home/issues/183) and [`packages/gateway`](../gateway/README.md) for how the gateway reads it. A worker whose address the gateway could not observe reads as `-` in the `text` and `markdown` formats, and as an empty address in `json`.
+
 ## `capacity`
 
 Estimates how many concurrent runs of a task type the cluster can currently support, from the connected workers and the pipeline that serves that task type.

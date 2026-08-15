@@ -16,6 +16,7 @@ import { AccountOutputFormatter, accountOutputFormats } from '../src/account/acc
 import { AccountBalanceCommand } from '../src/commands/account_balance_command.js';
 import { AccountHistoryCommand, accountHistoryDirections } from '../src/commands/account_history_command.js';
 import { CliError } from '../src/libs/cli_errors.js';
+import { StatusCommand, type StatusFormat } from '../src/commands/status_command.js';
 import * as ConsumerCli from '@webai/consumer-cli';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -735,4 +736,68 @@ Test('a consumer holding no key pair registers straight away, and says its work 
 
 	// The caller is told which of the two happened, rather than only hearing when there is an account.
 	Assert.equal(isAccountSettledWithNone, true);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The Worker Address In `status`
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Reaches the two steps `status` takes with a device list, both of which are private to
+ * `StatusCommand` because nothing outside it builds or writes a snapshot in the running program.
+ */
+const statusCommandInternals = StatusCommand as unknown as {
+	_buildSnapshot: (devices: Device[]) => { workers: { name: string; ipAddress: string }[] };
+	_format: (snapshot: unknown, format: StatusFormat) => string;
+};
+
+/** One connected worker, as the gateway describes it to `status`. */
+const statusWorker = (name: string, ipAddress?: string): Device => ({
+	deviceId: `device-${name}`,
+	name,
+	deviceRole: 'worker',
+	stageNames: ['stage_dev_formula_multiply'],
+	connectedAt: '2026-01-01T00:00:00.000Z',
+	lastSeenAt: '2026-01-01T00:00:00.000Z',
+	workerState: 'ready',
+	ready: true,
+	maxConcurrentAssignments: 1,
+	activeAssignments: 0,
+	...(ipAddress === undefined ? {} : { ipAddress }),
+});
+
+Test('a status snapshot carries the address the gateway observed for each worker', () => {
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one', '203.0.113.7')]);
+
+	Assert.equal(snapshot.workers[0]?.ipAddress, '203.0.113.7');
+});
+
+Test('a worker the gateway recorded no address for reads as no address, rather than as a missing field', () => {
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one')]);
+
+	Assert.equal(snapshot.workers[0]?.ipAddress, '');
+});
+
+Test('every status format writes the address of each worker', () => {
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one', '203.0.113.7')]);
+
+	const text = statusCommandInternals._format(snapshot, 'text');
+	Assert.equal(text.includes('ADDRESS'), true);
+	Assert.equal(text.includes('203.0.113.7'), true);
+
+	const markdown = statusCommandInternals._format(snapshot, 'markdown');
+	Assert.equal(markdown.includes('| NAME | ADDRESS | STATE | CAPACITY | STAGES |'), true);
+	Assert.equal(markdown.includes('| worker-one | 203.0.113.7 | ready | 0/1 | stage_dev_formula_multiply |'), true);
+
+	Assert.equal((JSON.parse(statusCommandInternals._format(snapshot, 'json')) as { workers: { ipAddress: string }[] }).workers[0]?.ipAddress, '203.0.113.7');
+});
+
+Test('a worker with no observed address is written as a dash in both tables, and as an empty address in JSON', () => {
+	const snapshot = statusCommandInternals._buildSnapshot([statusWorker('worker-one')]);
+
+	Assert.equal(statusCommandInternals._format(snapshot, 'text').includes('worker-one  -      '), true);
+	Assert.equal(statusCommandInternals._format(snapshot, 'markdown').includes('| worker-one | - | ready | 0/1 |'), true);
+	Assert.equal((JSON.parse(statusCommandInternals._format(snapshot, 'json')) as { workers: { ipAddress: string }[] }).workers[0]?.ipAddress, '');
 });

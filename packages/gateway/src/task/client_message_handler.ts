@@ -210,6 +210,7 @@ export class ClientMessageHandler {
 		// all six have to stay connected (see
 		// https://github.com/webai-at-home/webai-at-home/issues/135). A device leaves the registry
 		// only when its own connection closes.
+		const ipAddress = this.hub.ipAddressMap.get(deviceId);
 		const device: Device = {
 			deviceId,
 			name: message.name,
@@ -221,6 +222,9 @@ export class ClientMessageHandler {
 				: [],
 			connectedAt: new Date().toISOString(),
 			lastSeenAt: new Date().toISOString(),
+			// Observed by the gateway when this connection opened, never sent by the device, so a
+			// device cannot choose the address recorded for it. See issue #183.
+			...(ipAddress === undefined ? {} : { ipAddress }),
 			authIdentity: currentSession?.authIdentity ?? '',
 			...(message.role === 'worker' ? { workerState: message.ready === false ? 'draining' as const : 'ready' as const, ready: message.ready ?? true, maxConcurrentAssignments: message.maxConcurrentAssignments ?? 1, activeAssignments: 0 } : {}),
 		};

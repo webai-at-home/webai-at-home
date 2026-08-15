@@ -33,6 +33,14 @@ type ErrorOptions = {
 export class ConnectionHub {
 	/** The open connection for each connected device. */
 	readonly socketMap = new Map<string, WebSocket>();
+	/**
+	 * The address each open connection was opened from, as this gateway observed it.
+	 *
+	 * Read once when the connection opens and kept here, because by the time the connection
+	 * closes its socket is already gone. A connection whose address could not be observed has
+	 * no entry at all.
+	 */
+	readonly ipAddressMap = new Map<string, string>();
 	/** The connections that connected as observers of the whole cluster. */
 	readonly observerDeviceIds = new Set<string>();
 	/**
@@ -172,6 +180,7 @@ export class ConnectionHub {
 	 */
 	forget(deviceId: string): void {
 		this.socketMap.delete(deviceId);
+		this.ipAddressMap.delete(deviceId);
 		this.observerDeviceIds.delete(deviceId);
 		this.deviceSubscriberIds.delete(deviceId);
 		for (const observers of this.taskObserverDeviceIds.values()) observers.delete(deviceId);

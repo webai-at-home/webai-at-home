@@ -83,6 +83,18 @@ through a reverse proxy placed in front of the gateway, since a reverse proxy
 commonly closes a WebSocket connection that carries no traffic for as little
 as sixty seconds.
 
+## The address a connection came from
+
+The gateway records the address each device connected from, reading it once from the HTTP request that carried the WebSocket upgrade. A device never sends that address, so a worker cannot choose what is recorded for it. The address is part of the device record the gateway publishes, which is how `consumer_cli status` shows one address per worker. See [issue #183](https://github.com/webai-at-home/webai-at-home/issues/183).
+
+A gateway reached directly, whether on `localhost` during development or through a port forwarding rule on a server, sees the address of the device itself, because a port forwarding rule rewrites the destination of a packet and never its source. An address such as `::ffff:127.0.0.1` is recorded in its plain `127.0.0.1` form, so one machine is not recorded two different ways depending on how the connection was made.
+
+A gateway behind a reverse proxy sees the proxy on every connection instead, and the address of the device is then only in the `x-forwarded-for` header. That header is read solely when the gateway is started with `--trust-reverse-proxy`, because any client can write it, and a gateway that believed it unconditionally would let a worker name its own address.
+
+| Option | Default |
+| --- | --- |
+| `--trust-reverse-proxy` | off, so the address of the connection itself is the one recorded |
+
 ## Build and test
 
 ```sh
