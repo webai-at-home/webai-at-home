@@ -1,4 +1,5 @@
 import type { Device } from '@webai/protocol';
+import { GatewayHealthReader } from '../gateway_connection/gateway_health_reader.js';
 import { GatewaySession } from '../gateway_connection/gateway_session.js';
 import { DeviceAvailability } from '../cluster_capacity/device_availability.js';
 import type { CliError } from '../libs/cli_errors.js';
@@ -50,6 +51,11 @@ type StatusWorkerRow = {
 type StatusSnapshot = {
 	/** The address of the central gateway this snapshot was read from. */
 	gatewayUrl: string;
+	/**
+	 * The git commit that central gateway was built from, or an empty string when the gateway did
+	 * not name one.
+	 */
+	gatewayCommitSha: string;
 	workerCount: number;
 	readyCount: number;
 	drainingCount: number;
@@ -78,8 +84,12 @@ export class StatusCommand {
 	 * @throws {CliError} If the connection, authentication, or first snapshot fails.
 	 */
 	static async run(options: StatusCommandOptions): Promise<void> {
+		// Read once, before the connection is opened, because the build a gateway is running does
+		// not change while `status` watches it: a gateway that is rebuilt is a gateway that
+		// restarted, which drops the connection this command is holding.
+		const gatewayCommitSha = await GatewayHealthReader.readCommitSha(options.url, options.timeoutMs);
 		const render = (devices: Device[]): void => {
-			const snapshot = StatusCommand._buildSnapshot(devices, options.url);
+			const snapshot = StatusCommand._buildSnapshot(devices, options.url, gatewayCommitSha);
 			console.log(StatusCommand._format(snapshot, options.format));
 		};
 
@@ -150,15 +160,17 @@ export class StatusCommand {
 	 *
 	 * @param devices Every currently connected device, worker and consumer alike.
 	 * @param gatewayUrl The address of the central gateway the device list was read from.
+	 * @param gatewayCommitSha The git commit that gateway was built from, when it named one.
 	 * @returns The worker cluster state to print.
 	 */
-	private static _buildSnapshot(devices: Device[], gatewayUrl: string): StatusSnapshot {
+	private static _buildSnapshot(devices: Device[], gatewayUrl: string, gatewayCommitSha?: string): StatusSnapshot {
 		const workers = devices.filter((device) => device.deviceRole === 'worker');
 		const drainingCount = workers.filter((worker) => worker.workerState === 'draining').length;
 		const readyCount = workers.filter((worker) => worker.workerState !== 'draining' && DeviceAvailability.isAvailable(worker)).length;
 		const unavailableCount = workers.length - readyCount - drainingCount;
 		return {
 			gatewayUrl,
+			gatewayCommitSha: gatewayCommitSha ?? '',
 			workerCount: workers.length,
 			readyCount,
 			drainingCount,
@@ -187,7 +199,7 @@ export class StatusCommand {
 	 */
 	private static _formatHuman(snapshot: StatusSnapshot): string {
 		const lines: string[] = [];
-		lines.push(`gateway ${snapshot.gatewayUrl}`);
+		lines.push(`gateway ${snapshot.gatewayUrl}${StatusCommand._displayedCommit(snapshot)}`);
 		lines.push(
 			`${snapshot.workerCount} worker${snapshot.workerCount === 1 ? '' : 's'} `
 			+ `(${snapshot.readyCount} ready, ${snapshot.drainingCount} draining, ${snapshot.unavailableCount} unavailable) · `
@@ -220,7 +232,7 @@ export class StatusCommand {
 		const lines: string[] = [];
 		lines.push('# Worker cluster status');
 		lines.push('');
-		lines.push(`gateway ${snapshot.gatewayUrl}`);
+		lines.push(`gateway ${snapshot.gatewayUrl}${StatusCommand._displayedCommit(snapshot)}`);
 		lines.push('');
 		lines.push(
 			`${snapshot.workerCount} worker${snapshot.workerCount === 1 ? '' : 's'} `
@@ -240,6 +252,23 @@ export class StatusCommand {
 			lines.push(`| ${worker.name} | ${StatusCommand._displayedAddress(worker)} | ${worker.workerState} | ${capacity} | ${worker.stageNames.join(', ') || '-'} |`);
 		}
 		return lines.join('\n');
+	}
+
+	/**
+	 * Writes the git commit of the central gateway as the header line prints it.
+	 *
+	 * A gateway that named no commit adds nothing to the line, rather than a word saying the commit
+	 * is missing: the header names where the snapshot came from, and a gateway reached over the
+	 * WebSocket endpoint alone is still the gateway this snapshot came from.
+	 *
+	 * @param snapshot The worker cluster state to print.
+	 * @returns The text to add to the header line, which is empty when the gateway named no commit.
+	 */
+	private static _displayedCommit(snapshot: StatusSnapshot): string {
+		if (snapshot.gatewayCommitSha === '') {
+			return '';
+		}
+		return ` commit ${snapshot.gatewayCommitSha}`;
 	}
 
 	/**
