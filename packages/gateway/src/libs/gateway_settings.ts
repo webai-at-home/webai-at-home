@@ -125,7 +125,7 @@ export class GatewaySettings {
 			.option('--pipeline-file <path>', 'JSON file containing additional pipeline specifications')
 			.option('--device-activity-coalesce-ms <number>', 'How long device activity changes are batched before one combined update is sent', '250')
 			.option('--commit-sha <sha>', 'Git commit this build was made from', 'unknown')
-			.option('--heartbeat-interval-ms <number>', 'How often an open WebSocket connection is pinged to keep it alive through a reverse proxy', '30000')
+			.option('--heartbeat-interval-ms <number>', 'How often an open WebSocket connection is pinged to keep it alive through a reverse proxy', '10000')
 			.option(
 				'--trust-reverse-proxy',
 				'believe the x-forwarded-for header when recording the address a connection came from,'

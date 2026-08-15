@@ -76,12 +76,18 @@ against that account rather than against the shared development account. A worke
 worker page itself.
 
 Every open WebSocket connection is pinged every `--heartbeat-interval-ms`
-(default `30000`), and a connection that does not answer the previous ping is
+(default `10000`), and a connection that does not answer the previous ping is
 closed. This keeps an idle connection — a worker with no assignment, a
 consumer waiting on a task, a dashboard page that is only watching — alive
 through a reverse proxy placed in front of the gateway, since a reverse proxy
 commonly closes a WebSocket connection that carries no traffic for as little
 as sixty seconds.
+
+The ping is also how the gateway notices a connection that is gone without
+having said so, which is why the interval is ten seconds rather than the
+thirty it used to be: worst case detection is two intervals, so it fell from
+about sixty seconds to about twenty. See
+[issue #176](https://github.com/webai-at-home/webai-at-home/issues/176).
 
 ## The address a connection came from
 
