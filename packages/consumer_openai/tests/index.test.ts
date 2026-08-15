@@ -201,12 +201,28 @@ Test('still refuses the two controls the model cannot honour, while honouring th
 	}
 });
 
+Test('carries all five controls for the one model that honours all five', () => {
+	// `llm_qwen3_0_6b_sharded` is the only model here whose sampler is written by hand, and the only
+	// one whose `top_p` and `seed` do anything. Proved live in a real browser tab by the de-risk gate
+	// of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196).
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }], temperature: 0.7, top_p: 0.5, max_completion_tokens: 20, stop: ['\nUser:'], seed: 42 }, 'llm_qwen3_0_6b_sharded'),
+		{
+			temperature: 0.7,
+			topP: 0.5,
+			maximumOutputTokenCount: 20,
+			stopSequences: ['\nUser:'],
+			randomSeed: 42,
+		},
+	);
+});
+
 Test('submits no settings block at all for a request that asked for nothing', () => {
-	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }] }, 'llm_qwen3_0_6b_sharded'), undefined);
+	Assert.equal(generationSettingsOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }] }, 'llm_gemma_nano_chrome_full'), undefined);
 	// This interface's own defaults are `1` for both `temperature` and `top_p`, an empty `stop`
 	// names no text to stop at, and `null` says a client holds no value. None of the four asks a
 	// model for anything, so none of the four is refused by a model that honours nothing.
-	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_qwen3_0_6b_sharded'), undefined);
+	Assert.equal(generationSettingsOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_gemma_nano_chrome_full'), undefined);
 	// A model that does honour controls is asked for nothing by those same defaults either.
 	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_qwen3_5_0_8b_full'), undefined);
 });
@@ -232,10 +248,10 @@ const refusalOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName): O
 };
 
 Test('refuses a generation control the model named cannot honour, rather than dropping it', () => {
-	// Every control is still refused by `llm_qwen3_0_6b_sharded`, which honours none of them until
-	// step 6 of issue #196 gives it the sampler its four reachable controls need.
+	// Every control is refused by `llm_gemma_nano_chrome_full`, the one model here whose engine no
+	// de-risk gate could reach, so nothing about it is claimed rather than observed.
 	for (const [field, value] of [['temperature', 0], ['top_p', 0.9], ['max_tokens', 20], ['stop', ['\nUser:']], ['seed', 42]] as const) {
-		const refusal = refusalOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_qwen3_0_6b_sharded');
+		const refusal = refusalOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_gemma_nano_chrome_full');
 		Assert.equal(refusal.status, 400);
 		Assert.equal(refusal.code, 'unhonourable_generation_control');
 		// `max_tokens` is refused under the newer name of the same control, which is the name the

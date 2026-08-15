@@ -138,11 +138,11 @@ What each model honours was observed live in a real browser tab, by the de-risk 
 | Model | Honours |
 | --- | --- |
 | `llm_llama3_2_1b_full`, `llm_qwen3_5_0_8b_full` | `temperature`, `max_completion_tokens`, and `stop`. Not `top_p` and not `seed`: `@huggingface/transformers`, the engine both run on, acts on neither. |
-| `llm_qwen3_0_6b_sharded` | None yet. The gate found it can honour four, more than any other model here, because its sampler is written by hand rather than taken from a library; that is step 6 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). |
+| `llm_qwen3_0_6b_sharded` | All five, more than any other model here, because its sampler is written by hand over the logits rather than taken from a library: nothing there refuses a `top_p`, and a seeded source of random numbers can be built where a library offers none. It is the only model whose `top_p` and `seed` do anything. |
 | `llm_gemma_nano_chrome_full` | None. It is the one model the gate could not reach, because every Chrome available to it reported its built-in language model as unavailable. |
 | `dev_formula` | None — it answers with one number and generates no text. |
 
-A model that asks for no temperature still decodes greedily, exactly as it did before any of this: sampling is turned on only for an answer that asked for a temperature, so no existing caller's answers changed.
+A request that asks for no temperature and no `top_p` still decodes greedily, exactly as it did before any of this, and so does one asking for `temperature: 0`, which is what a temperature of zero means. Sampling is turned on only for an answer that asked for a temperature above zero or a `top_p`, so no existing caller's answers changed.
 
 **A control a model cannot honour is refused, not dropped.** Ignoring it would return an answer generated some other way and report nothing, which is a wrong answer with no error. The refusal is an HTTP 400 whose `code` is `unhonourable_generation_control` and whose `param` names the field at fault, and its message lists the controls that model does honour.
 
@@ -165,7 +165,7 @@ Rule 3: a value the OpenAI Chat Completions interface has no field for travels i
 
 This is a first version. It serves the two endpoints above rather than the whole OpenAI completion interface, and the following are left out on purpose rather than by oversight:
 
-- **It ignores every field of a request outside `stream`, `stream_options`, and the five generation controls above.** `n`, `tools`, `logprobs`, `presence_penalty`, `frequency_penalty`, and the rest are accepted in the body and then ignored. A model that honours none of the five generation controls still generates under the worker browser tab's own limits: 160 tokens for the sharded Qwen3-0.6B task, and 400 pieces of an answer for the Chrome built-in task.
+- **It ignores every field of a request outside `stream`, `stream_options`, and the five generation controls above.** `n`, `tools`, `logprobs`, `presence_penalty`, `frequency_penalty`, and the rest are accepted in the body and then ignored. Every answer also generates under the worker browser tab's own limits, which a request cannot raise: 160 tokens for the sharded Qwen3-0.6B task, and 400 pieces of an answer for the Chrome built-in task. A `max_completion_tokens` above such a limit lowers nothing, and the answer stops at the limit.
 - **It refuses a message whose content is a list of parts**, which is what a request carrying an image or audio sends, rather than joining the parts together. It also refuses the `tool` role, because it ignores the tool settings of a request and so could not continue a history containing the answer of a tool.
 - **It keeps no history state.** One request is one cluster task, and the whole history is sent with every request.
 
