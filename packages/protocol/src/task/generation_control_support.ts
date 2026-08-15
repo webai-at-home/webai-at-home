@@ -35,25 +35,28 @@ export type GenerationControlName =
  * some other way and is told nothing went wrong. See milestone 4 of
  * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
  *
- * The table below is what milestone 0's de-risk gate for that issue observed live, not what an
- * engine's documentation claims. No task type honours any of the five today:
+ * The table below is what a de-risk gate observed live in a real browser tab, not what an engine's
+ * documentation claims. The gate for the task types that run in a worker browser tab is milestone 0
+ * of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196), and its raw answers
+ * are recorded on [issue #180](https://github.com/webai-at-home/webai-at-home/issues/180):
  *
- * - `task_type_llm_qwen3_5_0_8b_full`, `task_type_llm_gemma_nano_chrome_full`, and
- *   `task_type_llm_qwen3_0_6b_sharded` honour none of the five. Two of the three do not
- *   sample at all today — one calls `generate()` with `do_sample: false`, the other selects the
- *   highest logit in a decode loop written by hand — so honouring a temperature on either means
- *   turning sampling on for the first time and changing the answer every existing consumer
- *   already receives. That is milestone 3 of the issue, and it waits on a de-risk gate of its own
- *   run in a real browser tab.
- * - `task_type_llm_llama3_2_1b_full` honours none of the five either, for the same reason as
- *   `task_type_llm_qwen3_5_0_8b_full` when a worker browser tab runs it: its stage helper also
- *   calls `generate()` with `do_sample: false`. See milestone 2 of
- *   [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154). This task type can
- *   also be run by a native worker forwarding the prompt to a local OpenAI-compatible server,
- *   which could honour all five the way `task_type_llm_llama3_2_3b_full` once did — but the entry
- *   below is the task type's contract, not one worker's capability, and which of the task type's
- *   two possible workers ends up assigned a given task is not something a consumer chooses, so
- *   the contract stays `[]` until both workers honour the same controls.
+ * - `task_type_llm_llama3_2_1b_full` honours `temperature`, `maximumOutputTokenCount`, and
+ *   `stopSequences`. It honours neither `topP` nor `randomSeed`, because `@huggingface/transformers`
+ *   honours neither: `top_p: 0.01` at `temperature: 1.6` narrowed nothing even with `top_k: 0`
+ *   beside it, and the library offers no seed at all. This task type can also be run by a native
+ *   worker forwarding the prompt to a local OpenAI-compatible server, which does honour all five —
+ *   but this entry is the task type's contract, not one worker's capability, so the two controls
+ *   only that worker honours are not in it.
+ * - `task_type_llm_qwen3_5_0_8b_full` honours none of the five yet. It runs on the same engine as
+ *   `task_type_llm_llama3_2_1b_full` and the gate observed the same three controls working, so it
+ *   gains the same three in step 5 of issue #196.
+ * - `task_type_llm_qwen3_0_6b_sharded` honours none of the five yet. The gate found it can honour
+ *   four — `temperature`, `topP`, `maximumOutputTokenCount`, and `randomSeed`, beside
+ *   `stopSequences` — more than any other task type here, because its sampler is written by hand
+ *   over the logits tensor rather than taken from a library. That is step 6 of issue #196.
+ * - `task_type_llm_gemma_nano_chrome_full` honours none of the five, and is the one task type the
+ *   gate could not reach: every Chrome available to it reported `LanguageModel.availability()` as
+ *   `unavailable`, so nothing about that engine was observed rather than assumed.
  * - `task_type_dev_formula` generates no text at all, so no control applies to it.
  *
  * `task_type_llm_llama3_2_3b_full` is retired; it was, for as long as it existed, the only task
@@ -65,7 +68,7 @@ const controlsByTaskType: Record<TaskType, readonly GenerationControlName[]> = {
 	task_type_llm_qwen3_0_6b_sharded: [],
 	task_type_llm_gemma_nano_chrome_full: [],
 	task_type_llm_qwen3_5_0_8b_full: [],
-	task_type_llm_llama3_2_1b_full: [],
+	task_type_llm_llama3_2_1b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences'],
 };
 
 /** Which task type honours which generation control. */

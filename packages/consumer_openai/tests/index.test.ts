@@ -143,14 +143,51 @@ const generationSettingsOf = (body: Record<string, unknown>, taskTypeName: TaskT
 	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming);
 };
 
-// `task_type_llm_llama3_2_3b_full` was, until issue #154 retired it, the only task type that
-// honoured any of the five generation controls, so it was what these two tests exercised
-// `GenerationSettingsBuilder.build`'s honouring branch against: carrying every control through
-// untranslated for a model that honours all five, `stop` normalised from one piece of text to a
-// list of one, and `max_completion_tokens` preferred over its older spelling `max_tokens` when a
-// request sends both. No task type honours any control today, so that branch has no live model
-// to test against; see [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151)
-// milestone 3, and reinstate these two once one does.
+// `GenerationSettingsBuilder.build`'s honouring branch is exercised against
+// `llm_llama3_2_1b_full`, which honours `temperature`, `max_completion_tokens`, and `stop` — proved
+// live in a real browser tab by the de-risk gate of
+// [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). It is the first task
+// type to honour anything since `task_type_llm_llama3_2_3b_full` was retired by issue #154, and it
+// deliberately honours three of the five rather than all five: `@huggingface/transformers` acts on
+// neither `top_p` nor a seed, so both stay refused.
+
+Test('carries a control the model honours through to the cluster, untranslated', () => {
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], temperature: 0, max_completion_tokens: 20, stop: ['\nUser:'] }, 'llm_llama3_2_1b_full'),
+		{
+			temperature: 0,
+			maximumOutputTokenCount: 20,
+			stopSequences: ['\nUser:'],
+		},
+	);
+	// `stop` is one piece of text or a list of them on this interface, and one piece of text
+	// becomes a list of one rather than being carried as text.
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], stop: '\nUser:' }, 'llm_llama3_2_1b_full'),
+		{
+			stopSequences: ['\nUser:'],
+		},
+	);
+	// `max_completion_tokens` is the newer spelling, and wins when a request sends both.
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], max_completion_tokens: 20, max_tokens: 99 }, 'llm_llama3_2_1b_full'),
+		{
+			maximumOutputTokenCount: 20,
+		},
+	);
+});
+
+Test('still refuses the two controls the model cannot honour, while honouring the three it can', () => {
+	for (const [field, value] of [['top_p', 0.9], ['seed', 42]] as const) {
+		const refusal = refusalOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_llama3_2_1b_full');
+		Assert.equal(refusal.status, 400);
+		Assert.equal(refusal.code, 'unhonourable_generation_control');
+		Assert.equal(refusal.param, field);
+		// The refusal names what this model does honour, so the sender learns what to send instead
+		// rather than only what not to send.
+		Assert.match(refusal.message, /temperature, max_completion_tokens, stop/);
+	}
+});
 
 Test('submits no settings block at all for a request that asked for nothing', () => {
 	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }] }, 'llm_qwen3_5_0_8b_full'), undefined);
@@ -181,8 +218,8 @@ const refusalOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName): O
 };
 
 Test('refuses a generation control the model named cannot honour, rather than dropping it', () => {
-	// Every control is refused by every model: none of the language-model task types honours any
-	// of them today. See issue #151.
+	// Every control is still refused by `llm_qwen3_5_0_8b_full`, which honours none of them until
+	// step 5 of issue #196 teaches it the three its engine can honour.
 	for (const [field, value] of [['temperature', 0], ['top_p', 0.9], ['max_tokens', 20], ['stop', ['\nUser:']], ['seed', 42]] as const) {
 		const refusal = refusalOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_qwen3_5_0_8b_full');
 		Assert.equal(refusal.status, 400);

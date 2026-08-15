@@ -133,16 +133,21 @@ A caller that hangs up mid-answer is told nothing, because the connection it wou
 
 These five fields of a request are read and carried to the cluster, for whichever models honour them. `max_completion_tokens` is a budget for the whole answer rather than for one stage run, and its older spelling `max_tokens` is accepted too; a request that sends both means the newer one. `stop` is accepted as either one piece of text or a list of up to four, and is applied where the tokens are produced rather than by this server dropping pieces of the answer as it forwards them, since a stop sequence can straddle two pieces.
 
-No language-model task type honours any of the five generation controls today. `llm_llama3_2_3b_full` was the only one that ever did, proved live against LM Studio 0.4.20 serving `llama-3.2-3b-instruct`, until [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154) retired that task type:
+What each model honours was observed live in a real browser tab, by the de-risk gate of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196), rather than taken from what an engine documents:
 
 | Model | Honours |
 | --- | --- |
-| `llm_llama3_2_1b_full`, `llm_qwen3_5_0_8b_full`, `llm_gemma_nano_chrome_full`, `llm_qwen3_0_6b_sharded` | None yet. Some of the four do not sample at all today, so honouring a temperature on one of those means turning sampling on for the first time and changing the answer every existing caller already receives; that is milestone 3 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151). |
+| `llm_llama3_2_1b_full` | `temperature`, `max_completion_tokens`, and `stop`. Not `top_p` and not `seed`: `@huggingface/transformers` acts on neither. |
+| `llm_qwen3_5_0_8b_full` | None yet. It runs on the same engine, and gains the same three in step 5 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). |
+| `llm_qwen3_0_6b_sharded` | None yet. The gate found it can honour four, more than any other model here, because its sampler is written by hand rather than taken from a library; that is step 6 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). |
+| `llm_gemma_nano_chrome_full` | None. It is the one model the gate could not reach, because every Chrome available to it reported its built-in language model as unavailable. |
 | `dev_formula` | None — it answers with one number and generates no text. |
+
+A model that asks for no temperature still decodes greedily, exactly as it did before any of this: sampling is turned on only for an answer that asked for a temperature, so no existing caller's answers changed.
 
 **A control a model cannot honour is refused, not dropped.** Ignoring it would return an answer generated some other way and report nothing, which is a wrong answer with no error. The refusal is an HTTP 400 whose `code` is `unhonourable_generation_control` and whose `param` names the field at fault, and its message lists the controls that model does honour.
 
-A request that asks for this interface's own default is never refused, whatever model it names: `temperature: 1`, `top_p: 1`, an empty `stop` list, and a control sent as `null` all ask for nothing unusual, so a client that always sends `temperature: 1` works against every model as it always did. Since no model honours anything else today, a request naming any other value for any of the five is refused, whatever model it names:
+A request that asks for this interface's own default is never refused, whatever model it names: `temperature: 1`, `top_p: 1`, an empty `stop` list, and a control sent as `null` all ask for nothing unusual, so a client that always sends `temperature: 1` works against every model as it always did. Any other value is refused unless the model named honours that control — so the request below is answered for its `temperature`, `max_completion_tokens`, and `stop`, and refused for its `seed`:
 
 ```sh
 curl http://localhost:8788/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"llm_llama3_2_1b_full","messages":[{"role":"user","content":"Write one short sentence about a cat."}],"temperature":0,"seed":42,"max_completion_tokens":20,"stop":["\nUser:"]}'
