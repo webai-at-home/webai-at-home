@@ -178,22 +178,36 @@ Test('carries a control the model honours through to the cluster, untranslated',
 });
 
 Test('still refuses the two controls the model cannot honour, while honouring the three it can', () => {
-	for (const [field, value] of [['top_p', 0.9], ['seed', 42]] as const) {
-		const refusal = refusalOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_llama3_2_1b_full');
-		Assert.equal(refusal.status, 400);
-		Assert.equal(refusal.code, 'unhonourable_generation_control');
-		Assert.equal(refusal.param, field);
-		// The refusal names what this model does honour, so the sender learns what to send instead
-		// rather than only what not to send.
-		Assert.match(refusal.message, /temperature, max_completion_tokens, stop/);
+	// Both models run on `@huggingface/transformers`, which acts on neither `top_p` nor a seed, so
+	// both refuse exactly those two and honour exactly the other three.
+	for (const model of ['llm_llama3_2_1b_full', 'llm_qwen3_5_0_8b_full'] as const) {
+		for (const [field, value] of [['top_p', 0.9], ['seed', 42]] as const) {
+			const refusal = refusalOf({ model, messages: [{ role: 'user', content: 'hello' }], [field]: value }, model);
+			Assert.equal(refusal.status, 400);
+			Assert.equal(refusal.code, 'unhonourable_generation_control');
+			Assert.equal(refusal.param, field);
+			// The refusal names what this model does honour, so the sender learns what to send
+			// instead rather than only what not to send.
+			Assert.match(refusal.message, /temperature, max_completion_tokens, stop/);
+		}
+		Assert.deepEqual(
+			generationSettingsOf({ model, messages: [{ role: 'user', content: 'hello' }], temperature: 0, max_completion_tokens: 20, stop: ['\nUser:'] }, model),
+			{
+				temperature: 0,
+				maximumOutputTokenCount: 20,
+				stopSequences: ['\nUser:'],
+			},
+		);
 	}
 });
 
 Test('submits no settings block at all for a request that asked for nothing', () => {
-	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }] }, 'llm_qwen3_5_0_8b_full'), undefined);
+	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }] }, 'llm_qwen3_0_6b_sharded'), undefined);
 	// This interface's own defaults are `1` for both `temperature` and `top_p`, an empty `stop`
 	// names no text to stop at, and `null` says a client holds no value. None of the four asks a
 	// model for anything, so none of the four is refused by a model that honours nothing.
+	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_qwen3_0_6b_sharded'), undefined);
+	// A model that does honour controls is asked for nothing by those same defaults either.
 	Assert.equal(generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], temperature: 1, top_p: 1, stop: [], seed: null }, 'llm_qwen3_5_0_8b_full'), undefined);
 });
 
@@ -218,10 +232,10 @@ const refusalOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName): O
 };
 
 Test('refuses a generation control the model named cannot honour, rather than dropping it', () => {
-	// Every control is still refused by `llm_qwen3_5_0_8b_full`, which honours none of them until
-	// step 5 of issue #196 teaches it the three its engine can honour.
+	// Every control is still refused by `llm_qwen3_0_6b_sharded`, which honours none of them until
+	// step 6 of issue #196 gives it the sampler its four reachable controls need.
 	for (const [field, value] of [['temperature', 0], ['top_p', 0.9], ['max_tokens', 20], ['stop', ['\nUser:']], ['seed', 42]] as const) {
-		const refusal = refusalOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_qwen3_5_0_8b_full');
+		const refusal = refusalOf({ model: 'llm_qwen3_0_6b_sharded', messages: [{ role: 'user', content: 'hello' }], [field]: value }, 'llm_qwen3_0_6b_sharded');
 		Assert.equal(refusal.status, 400);
 		Assert.equal(refusal.code, 'unhonourable_generation_control');
 		// `max_tokens` is refused under the newer name of the same control, which is the name the

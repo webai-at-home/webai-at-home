@@ -40,16 +40,14 @@ export type GenerationControlName =
  * of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196), and its raw answers
  * are recorded on [issue #180](https://github.com/webai-at-home/webai-at-home/issues/180):
  *
- * - `task_type_llm_llama3_2_1b_full` honours `temperature`, `maximumOutputTokenCount`, and
- *   `stopSequences`. It honours neither `topP` nor `randomSeed`, because `@huggingface/transformers`
- *   honours neither: `top_p: 0.01` at `temperature: 1.6` narrowed nothing even with `top_k: 0`
- *   beside it, and the library offers no seed at all. This task type can also be run by a native
- *   worker forwarding the prompt to a local OpenAI-compatible server, which does honour all five —
- *   but this entry is the task type's contract, not one worker's capability, so the two controls
- *   only that worker honours are not in it.
- * - `task_type_llm_qwen3_5_0_8b_full` honours none of the five yet. It runs on the same engine as
- *   `task_type_llm_llama3_2_1b_full` and the gate observed the same three controls working, so it
- *   gains the same three in step 5 of issue #196.
+ * - `task_type_llm_llama3_2_1b_full` and `task_type_llm_qwen3_5_0_8b_full` honour `temperature`,
+ *   `maximumOutputTokenCount`, and `stopSequences`. Both run on `@huggingface/transformers`, and
+ *   neither honours `topP` or `randomSeed`, because that library honours neither: `top_p: 0.01` at
+ *   `temperature: 1.6` narrowed nothing even with `top_k: 0` beside it, and there is no seed to
+ *   give. `task_type_llm_llama3_2_1b_full` can also be run by a native worker forwarding the prompt
+ *   to a local OpenAI-compatible server, which does honour all five — but this entry is the task
+ *   type's contract, not one worker's capability, so the two controls only that worker honours are
+ *   not in it.
  * - `task_type_llm_qwen3_0_6b_sharded` honours none of the five yet. The gate found it can honour
  *   four — `temperature`, `topP`, `maximumOutputTokenCount`, and `randomSeed`, beside
  *   `stopSequences` — more than any other task type here, because its sampler is written by hand
@@ -67,7 +65,7 @@ const controlsByTaskType: Record<TaskType, readonly GenerationControlName[]> = {
 	task_type_dev_formula: [],
 	task_type_llm_qwen3_0_6b_sharded: [],
 	task_type_llm_gemma_nano_chrome_full: [],
-	task_type_llm_qwen3_5_0_8b_full: [],
+	task_type_llm_qwen3_5_0_8b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences'],
 	task_type_llm_llama3_2_1b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences'],
 };
 

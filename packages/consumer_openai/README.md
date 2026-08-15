@@ -137,8 +137,7 @@ What each model honours was observed live in a real browser tab, by the de-risk 
 
 | Model | Honours |
 | --- | --- |
-| `llm_llama3_2_1b_full` | `temperature`, `max_completion_tokens`, and `stop`. Not `top_p` and not `seed`: `@huggingface/transformers` acts on neither. |
-| `llm_qwen3_5_0_8b_full` | None yet. It runs on the same engine, and gains the same three in step 5 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). |
+| `llm_llama3_2_1b_full`, `llm_qwen3_5_0_8b_full` | `temperature`, `max_completion_tokens`, and `stop`. Not `top_p` and not `seed`: `@huggingface/transformers`, the engine both run on, acts on neither. |
 | `llm_qwen3_0_6b_sharded` | None yet. The gate found it can honour four, more than any other model here, because its sampler is written by hand rather than taken from a library; that is step 6 of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196). |
 | `llm_gemma_nano_chrome_full` | None. It is the one model the gate could not reach, because every Chrome available to it reported its built-in language model as unavailable. |
 | `dev_formula` | None — it answers with one number and generates no text. |
