@@ -102,7 +102,7 @@ export class TerminalReporter {
 	 * @returns The line to print, colored by verdict.
 	 */
 	private static _testLine(record: TestRunRecord, verbose: boolean): string {
-		const line = `${TerminalReporter._icon(record.result.verdict)} ${record.test.name}`;
+		const line = `${TerminalReporter._statusWord(record.result.verdict)} ${record.test.name}`;
 		const colored = TerminalReporter._colorByVerdict(record.result.verdict, line);
 		if (record.result.verdict === 'PASS' && verbose === false) {
 			return colored;
@@ -112,28 +112,29 @@ export class TerminalReporter {
 	}
 
 	/**
-	 * The symbol printed ahead of one test's name, one per verdict so `SKIP` and `WARN` are never
+	 * The word printed ahead of one test's name, one per verdict so `SKIP` and `WARN` are never
 	 * mistaken for `FAIL` at a glance.
 	 *
-	 * @param verdict The verdict to symbolize.
-	 * @returns The symbol.
+	 * @param verdict The verdict to name.
+	 * @returns The word.
 	 */
-	private static _icon(verdict: Verdict): string {
+	private static _statusWord(verdict: Verdict): string {
 		switch (verdict) {
 			case 'PASS':
-				return '✓';
+				return 'OK';
 			case 'FAIL':
-				return '✗';
+				return 'Failed';
 			case 'SKIP':
-				return '⊘';
+				return 'Skipped';
 			case 'WARN':
-				return '⚠';
+				return 'Warn';
 		}
 	}
 
 	/**
-	 * Colors one line by its verdict: green for `PASS`, red for `FAIL`, dim for `SKIP`, yellow for
-	 * `WARN`. Chalk turns coloring off automatically once output is piped or redirected.
+	 * Colors one line by its verdict: green for `PASS`, red for `FAIL`, cyan for `SKIP`, yellow for
+	 * `WARN`. Cyan keeps `SKIP` visibly distinct from a dimmed, uncolored line. Chalk turns coloring
+	 * off automatically once output is piped or redirected.
 	 *
 	 * @param verdict The verdict to color by.
 	 * @param line The line to color.
@@ -146,7 +147,7 @@ export class TerminalReporter {
 			case 'FAIL':
 				return Chalk.red(line);
 			case 'SKIP':
-				return Chalk.dim(line);
+				return Chalk.cyan(line);
 			case 'WARN':
 				return Chalk.yellow(line);
 		}
@@ -173,7 +174,7 @@ export class TerminalReporter {
 			const groupRecords = records.filter((record) => record.test.group === group);
 			const verdict = TerminalReporter._groupVerdict(groupRecords);
 			const heading = TerminalReporter._groupHeadings.get(group) ?? group;
-			lines.push(`${heading.padEnd(28)}${TerminalReporter._colorByVerdict(verdict, TerminalReporter._icon(verdict))}`);
+			lines.push(`${heading.padEnd(28)}${TerminalReporter._colorByVerdict(verdict, TerminalReporter._statusWord(verdict))}`);
 		}
 		return lines;
 	}
@@ -209,7 +210,7 @@ export class TerminalReporter {
 	 */
 	private static _summaryLines(records: readonly TestRunRecord[]): string[] {
 		const summary = ReportSummary.of(records);
-		const lines = [`Passed: ${summary.passedCount}`, Chalk.red(`Failed: ${summary.failedCount}`), Chalk.dim(`Skipped: ${summary.skippedCount}`)];
+		const lines = [`Passed: ${summary.passedCount}`, Chalk.red(`Failed: ${summary.failedCount}`), Chalk.cyan(`Skipped: ${summary.skippedCount}`)];
 		if (summary.warnedCount > 0) {
 			lines.push(Chalk.yellow(`Warned: ${summary.warnedCount}`));
 		}
