@@ -7,7 +7,7 @@ The single command line program published to the npm registry as `webai-at-home`
 ```sh
 npx webai-at-home gateway
 npx webai-at-home worker_openai --openai-model llama-3.2-1b-instruct --stage-names stage_llm_llama3_2_1b_full
-npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
+npx webai-at-home consumer_cli submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
 The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already running on `http://localhost:1234/v1`, which is that address's default and so needs no `--openai-base-url`. LM Studio loads the named model on demand, so it does not have to be loaded first. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--gateway-url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
@@ -21,7 +21,11 @@ The first word of the command line decides:
 | `gateway` | [`@webai/gateway`](../gateway/README.md), the central gateway |
 | `consumer_openai` | [`@webai/consumer-openai`](../consumer_openai/README.md), the OpenAI-compatible server |
 | `worker_openai` | [`@webai/worker-openai`](../worker_openai/README.md), the native worker |
-| anything else | [`@webai/consumer-cli`](../consumer_cli/README.md), on the whole command line unchanged |
+| `consumer_cli` | [`@webai/consumer-cli`](../consumer_cli/README.md), the command line client |
+
+Anything else is reported as an unknown command. Each of the four words above runs one program on whatever follows it, unchanged, and no program runs under any other name.
+
+Every `consumer_cli` command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs behind the `consumer_cli` word, as `npx webai-at-home consumer_cli submit ...`. A global option such as `--gateway-url` belongs after that word too, exactly as the gateway's `--port` belongs after `gateway`, because `consumer_cli` is what reads it. Run `npx webai-at-home consumer_cli --help` for the list of those commands. See each program's own README, linked above, for its own options.
 
 ## `--version`
 
@@ -30,8 +34,6 @@ npx webai-at-home --version
 ```
 
 `npx` fetches whichever version of this package the npm registry currently holds, and prints nothing about which one that was, so this is what a bug report should quote.
-
-"Anything else" covers every `consumer_cli` subcommand — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — and a global option such as `--gateway-url` written ahead of one of them, since `consumer_cli` is what reads it. See each program's own README, linked above, for its own options.
 
 ## Build
 

@@ -71,12 +71,12 @@ The central research questions are still open, especially result verification, b
 
 ## Run without cloning this repository
 
-`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai` and `worker_openai` each run the command line program of the same name; every other command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs `consumer_cli`.
+`npx webai-at-home <command>` runs one participant of the cluster without installing anything first. `gateway`, `consumer_openai`, `worker_openai` and `consumer_cli` each run the command line program of the same name; anything else is reported as an unknown command. Every `consumer_cli` command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs behind the `consumer_cli` word.
 
 ```sh
 npx webai-at-home gateway
 npx webai-at-home worker_openai --openai-model llama-3.2-1b-instruct --stage-names stage_llm_llama3_2_1b_full
-npx webai-at-home submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
+npx webai-at-home consumer_cli submit --task_type llm_llama3_2_1b_full "What is the capital of France?"
 ```
 
 The worker above expects an OpenAI-compatible server, such as [LM Studio](https://lmstudio.ai), already running on `http://localhost:1234/v1`, which is that option's default and so needs no `--openai-base-url`. LM Studio loads the named model on demand, so it does not have to be loaded first. Run `npx webai-at-home <command> --help` for a command's own options — every option a command line program in this repository already has, `--port`, `--gateway-url`, `--config_dir`, and the rest, works the same way through `npx webai-at-home`.
