@@ -10,6 +10,7 @@ import { GenerationControlProbeCache } from '../src/generation_control_probe_cac
 import { GenerationControlVerdict } from '../src/generation_control_verdict.js';
 import { JsonContentExtractor } from '../src/json_content_extractor.js';
 import { coreProfile } from '../src/profiles/core.js';
+import { sdkProfile } from '../src/profiles/sdk.js';
 import { streamingProfile } from '../src/profiles/streaming.js';
 import { toolsProfile } from '../src/profiles/tools.js';
 import { TerminalReporter } from '../src/reporter/terminal.js';
@@ -23,6 +24,7 @@ import { streamingHeadersTest } from '../src/tests/streaming/headers.js';
 import { streamingTimingTest } from '../src/tests/streaming/timing.js';
 import { structuredOutputJsonObjectTest } from '../src/tests/structured_output/json_object.js';
 import { structuredOutputJsonSchemaTest } from '../src/tests/structured_output/json_schema.js';
+import { sdkToolsTest } from '../src/tests/sdk/tools.js';
 import { usageTotalIsSumTest } from '../src/tests/usage/total_is_sum.js';
 import { ToolCallVerdict } from '../src/tool_call_verdict.js';
 import type { ConformanceTest, TestContext } from '../src/types.js';
@@ -234,6 +236,38 @@ class TestFixtures {
 	}
 
 	/**
+	 * A fully correct server that also streams correctly, so the `sdk` profile — which asks for
+	 * both in one run — has one endpoint that answers every one of its four requests.
+	 *
+	 * @returns The request handler.
+	 */
+	static wellBehavedAndStreaming(): Http.RequestListener {
+		return (request, response) => {
+			void TestFixtures._readBody(request).then(async (rawBody) => {
+				if (request.url === '/v1/models' && request.method === 'GET') {
+					TestFixtures._sendJson(response, 200, { object: 'list', data: [{ id: TestFixtures.modelId, object: 'model' }] });
+					return;
+				}
+				// The body is parsed rather than searched for `"stream":true`, because the official
+				// `openai` Node.js package pretty-prints its request body: it sends `"stream": true`,
+				// with a space, which no substring check written against `JSON.stringify` output finds.
+				if (TestFixtures._isStreamingRequest(rawBody) === true) {
+					TestFixtures._openEventStream(response);
+					for (const piece of ['One', ', two']) {
+						TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: { content: piece }, finish_reason: null }] });
+						await new Promise((resolve) => setTimeout(resolve, 5));
+					}
+					TestFixtures._writeEvent(response, { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+					response.write('data: [DONE]\n\n');
+					response.end();
+					return;
+				}
+				TestFixtures._answerChatCompletion(response, rawBody);
+			});
+		};
+	}
+
+	/**
 	 * A server whose answer is valid JSON wrapped in a markdown code fence — what
 	 * `llm_llama3_2_1b_full` did in nine of ten tries in milestone zero of issue #182.
 	 *
@@ -291,6 +325,20 @@ class TestFixtures {
 	//	Private Helpers
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Reports whether a request body asked for a streamed answer.
+	 *
+	 * @param rawBody The raw request body received.
+	 * @returns `true` when the body parses as JSON carrying `stream: true`.
+	 */
+	private static _isStreamingRequest(rawBody: string): boolean {
+		try {
+			return (JSON.parse(rawBody) as Record<string, unknown>)['stream'] === true;
+		} catch {
+			return false;
+		}
+	}
 
 	/**
 	 * Writes the response head of a server-sent event stream.
@@ -667,6 +715,38 @@ void Test('GenerationControlVerdict fails, naming the control, when the probe ru
 	const result = GenerationControlVerdict.fromOutcome(undefined, 'seed');
 	Assert.equal(result.verdict, 'FAIL');
 	Assert.match(result.detail, /no outcome for "seed"/);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	sdkProfile — the same requests again, through the official `openai` Node.js package
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test('every sdk profile test passes against a server the official openai Node.js package can read', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.wellBehavedAndStreaming());
+	try {
+		const records = await Runner.run(sdkProfile, context);
+		const failing = records.filter((record) => record.result.verdict !== 'PASS');
+		Assert.deepEqual(
+			failing.map((record) => `${record.test.id}: ${record.result.verdict} — ${record.result.detail}`),
+			[],
+		);
+		Assert.equal(records.length, sdkProfile.length);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('sdk.node.tools skips, rather than failing, when the endpoint refuses the tool declaration', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.refusesToolDeclarations());
+	try {
+		const result = await sdkToolsTest.run(context);
+		Assert.equal(result.verdict, 'SKIP');
+		Assert.match(result.detail, /refused the tool declaration: HTTP 400/);
+	} finally {
+		await stop();
+	}
 });
 
 ///////////////////////////////////////////////////////////////////////////////

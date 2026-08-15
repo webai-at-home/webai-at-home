@@ -14,6 +14,7 @@ import { RawHttpClient } from './clients/raw_http_client.js';
 import { GenerationControlProbeCache } from './generation_control_probe_cache.js';
 import { coreProfile } from './profiles/core.js';
 import { parametersProfile } from './profiles/parameters.js';
+import { sdkProfile } from './profiles/sdk.js';
 import { streamingProfile } from './profiles/streaming.js';
 import { structuredOutputProfile } from './profiles/structured_output.js';
 import { toolsProfile } from './profiles/tools.js';
@@ -47,6 +48,7 @@ const knownProfiles: ReadonlyMap<string, readonly ConformanceTest[]> = new Map([
 	['tools', toolsProfile],
 	['parameters', parametersProfile],
 	['structured_output', structuredOutputProfile],
+	['sdk', sdkProfile],
 ]);
 
 /** The options `Cli.run` accepts, exactly as commander parses them. */

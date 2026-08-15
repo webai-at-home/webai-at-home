@@ -11,6 +11,7 @@ One file per named profile, each an ordered list of the `ConformanceTest` object
 - `tools.ts`: `toolsProfile`, the six separate tool call abilities, with the negative control last.
 - `parameters.ts`: `parametersProfile`, the five generation controls, measured rather than merely accepted.
 - `structured_output.ts`: `structuredOutputProfile`, `json_object` and `json_schema`, reported separately.
+- `sdk.ts`: `sdkProfile`, the same requests through the official `openai` Node.js package, deliberately repeating what the raw groups already asked, because the second transport is the point.
 
 ## Rules
 

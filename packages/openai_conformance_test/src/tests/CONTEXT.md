@@ -14,6 +14,7 @@ One file per conformance test, grouped into subfolders by the part of the protoc
 - `tools/`: the six separate tool call abilities, each file reading its own ability's outcome out of the one shared `ToolCallProber` run and translating it through `../../tool_call_verdict.ts`.
 - `parameters/`: the five generation controls, the same arrangement over `GenerationControlProber` and `../../generation_control_verdict.ts`.
 - `structured_output/`: whether `response_format` `json_object` and `json_schema` are honoured, reported separately.
+- `sdk/`: the same requests again through the official `openai` Node.js package — the only group using `context.openaiPackageClient` directly.
 
 ## Rules
 
@@ -26,4 +27,4 @@ One file per conformance test, grouped into subfolders by the part of the protoc
 
 ## Background
 
-- The tests here today are the `core`, `streaming`, `tools`, `parameters`, and `structured_output` profiles, in `src/profiles/`. A later milestone's group adds its own subfolder here the same way.
+- The tests here are the `core`, `streaming`, `tools`, `parameters`, `structured_output`, and `sdk` profiles, in `src/profiles/`.

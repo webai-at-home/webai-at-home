@@ -31,6 +31,7 @@ export class TerminalReporter {
 		['tools', 'Tool Calling'],
 		['parameters', 'Parameters'],
 		['structured_output', 'Structured Output'],
+		['sdk', 'OpenAI Node.js Package'],
 	]);
 
 	/**
