@@ -835,8 +835,35 @@ const newFakeHeartbeatServer = (): FakeHeartbeatServer => {
 	return server;
 };
 
-/** Waits for real time to pass, so a `WebsocketHeartbeat` built on a real timer can be observed. */
+/** Waits for real time to pass. */
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The ping interval every `WebsocketHeartbeat` test builds its heartbeat with: long enough that
+ * the repeating timer never fires while the test runs, so the only sweeps that happen are the ones
+ * the test asks for by hand.
+ */
+const UNREACHED_INTERVAL_MS = 600_000;
+
+/** A clock a test moves itself, and the reader it hands to whatever it is testing. */
+type FakeClock = { read: () => number; advance: (ms: number) => void };
+
+/**
+ * Builds a clock that only ever moves when a test moves it.
+ *
+ * A heartbeat test used to sleep past a real repeating timer and assert on whatever sweep the
+ * machine had run by the time it woke up, which failed about one run in six on a busy machine. A
+ * test moves this clock and calls one sweep instead, so what it asserts on is what it asked for.
+ *
+ * @returns The reader to hand to the code under test, and the mover the test keeps for itself.
+ */
+const newFakeClock = (): FakeClock => {
+	let currentTime = 1_000_000;
+	return {
+		read: (): number => currentTime,
+		advance: (ms): void => { currentTime += ms; },
+	};
+};
 
 /** Builds the `task.submit` input for the two-stage `dev_formula` pipeline these tests drive. */
 const devFormulaInput = (value: number): TaskInput => ({ taskType: 'task_type_dev_formula', input: value });
@@ -2107,20 +2134,21 @@ Test('the accounting summary lists the shared development account too, though it
 	Assert.deepEqual(summaries, [{ accountId: 'account-shared-development', displayName: '', balance: 0, earnedStageCount: 2, spentStageCount: 2 }]);
 });
 
-Test('the websocket heartbeat pings a connection that keeps answering, and terminates one that stops answering', async () => {
+Test('the websocket heartbeat pings a connection that keeps answering, and terminates one that stops answering', () => {
 	const intervalMs = 50;
+	const clock = newFakeClock();
 	const server = newFakeHeartbeatServer();
-	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, intervalMs, intervalMs * 2);
+	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, UNREACHED_INTERVAL_MS, intervalMs * 2, undefined, clock.read);
 	try {
 		const responsive = newFakeHeartbeatSocket();
 		const silent = newFakeHeartbeatSocket();
 		server.announceConnection(responsive);
 		server.announceConnection(silent);
 
-		// After the first sweep (comfortably past one interval, comfortably before two): both
-		// connections were still assumed alive from when they connected, so both were pinged and
-		// marked as not yet having answered.
-		await delay(intervalMs * 1.5);
+		// The first sweep, one interval on: both connections were still assumed alive from when
+		// they connected, so both were pinged and marked as not yet having answered.
+		clock.advance(intervalMs);
+		heartbeat.pingEveryConnection();
 		Assert.equal(responsive.pingCount, 1);
 		Assert.equal(silent.pingCount, 1);
 		Assert.equal(responsive.terminated, false);
@@ -2128,10 +2156,11 @@ Test('the websocket heartbeat pings a connection that keeps answering, and termi
 
 		responsive.answerWithPong();
 
-		// After the second sweep (comfortably past two intervals, comfortably before three): the
-		// responsive connection answered, so it was pinged again; the silent one did not, so it was
-		// terminated instead of being pinged a second time.
-		await delay(intervalMs);
+		// The second sweep, far enough on that a connection which answered nothing since it opened
+		// has passed the tolerated silence: the responsive connection answered, so it is pinged
+		// again; the silent one did not, so it is terminated instead of being pinged a second time.
+		clock.advance(intervalMs * 1.5);
+		heartbeat.pingEveryConnection();
 		Assert.equal(responsive.pingCount, 2);
 		Assert.equal(responsive.terminated, false);
 		Assert.equal(silent.terminated, true);
@@ -2140,15 +2169,17 @@ Test('the websocket heartbeat pings a connection that keeps answering, and termi
 	}
 });
 
-Test('the websocket heartbeat reports every connection that answered a ping', async () => {
+Test('the websocket heartbeat reports every connection that answered a ping', () => {
 	const intervalMs = 50;
+	const clock = newFakeClock();
 	const server = newFakeHeartbeatServer();
 	const answeredSockets: FakeHeartbeatSocket[] = [];
 	const heartbeat = new WebsocketHeartbeat(
 		server as unknown as WebSocketServer,
-		intervalMs,
+		UNREACHED_INTERVAL_MS,
 		intervalMs * 2,
 		(socket) => answeredSockets.push(socket as unknown as FakeHeartbeatSocket),
+		clock.read,
 	);
 	try {
 		const responsive = newFakeHeartbeatSocket();
@@ -2156,7 +2187,8 @@ Test('the websocket heartbeat reports every connection that answered a ping', as
 		server.announceConnection(responsive);
 		server.announceConnection(silent);
 
-		await delay(intervalMs * 1.5);
+		clock.advance(intervalMs);
+		heartbeat.pingEveryConnection();
 		responsive.answerWithPong();
 
 		Assert.deepEqual(answeredSockets, [responsive]);
@@ -2165,34 +2197,40 @@ Test('the websocket heartbeat reports every connection that answered a ping', as
 	}
 });
 
-Test('a silent connection is kept until the tolerated silence has passed, not until two pings have gone unanswered', async () => {
+Test('a silent connection is kept until the tolerated silence has passed, not until two pings have gone unanswered', () => {
 	// The timeout is five times the interval, so a connection that answers nothing is pinged
 	// several times over before it is terminated. Under the single-number rule this connection
 	// would already have been terminated on the second sweep.
 	const intervalMs = 40;
 	const timeoutMs = intervalMs * 5;
+	const clock = newFakeClock();
 	const server = newFakeHeartbeatServer();
-	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, intervalMs, timeoutMs);
+	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, UNREACHED_INTERVAL_MS, timeoutMs, undefined, clock.read);
 	try {
 		const silent = newFakeHeartbeatSocket();
 		server.announceConnection(silent);
 
-		await delay(intervalMs * 3.5);
+		for (let sweepIndex = 0; sweepIndex < 3; sweepIndex += 1) {
+			clock.advance(intervalMs);
+			heartbeat.pingEveryConnection();
+		}
 		Assert.equal(silent.terminated, false);
-		Assert.ok(silent.pingCount >= 3, `expected at least three pings, saw ${silent.pingCount}`);
+		Assert.equal(silent.pingCount, 3);
 
-		await delay(intervalMs * 3);
+		clock.advance(intervalMs * 3);
+		heartbeat.pingEveryConnection();
 		Assert.equal(silent.terminated, true);
 	} finally {
 		heartbeat.stop();
 	}
 });
 
-Test('a connection that answers late, but inside the tolerated silence, is never terminated', async () => {
+Test('a connection that answers late, but inside the tolerated silence, is never terminated', () => {
 	const intervalMs = 50;
 	const timeoutMs = intervalMs * 5;
+	const clock = newFakeClock();
 	const server = newFakeHeartbeatServer();
-	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, intervalMs, timeoutMs);
+	const heartbeat = new WebsocketHeartbeat(server as unknown as WebSocketServer, UNREACHED_INTERVAL_MS, timeoutMs, undefined, clock.read);
 	try {
 		const slow = newFakeHeartbeatSocket();
 		server.announceConnection(slow);
@@ -2200,10 +2238,19 @@ Test('a connection that answers late, but inside the tolerated silence, is never
 		// One answer, after more than one interval has passed but well inside the tolerated
 		// silence. That single answer is enough to carry the connection past the point where an
 		// unanswered ping alone would have ended it.
-		await delay(intervalMs * 2.4);
+		for (let sweepIndex = 0; sweepIndex < 2; sweepIndex += 1) {
+			clock.advance(intervalMs);
+			heartbeat.pingEveryConnection();
+		}
+		clock.advance(intervalMs * 0.4);
 		slow.answerWithPong();
 
-		await delay(intervalMs * 3.6);
+		// Four more sweeps, which is six in all: two more than the number of unanswered pings that
+		// would have ended this connection under the single-number rule.
+		for (let sweepIndex = 0; sweepIndex < 4; sweepIndex += 1) {
+			clock.advance(intervalMs);
+			heartbeat.pingEveryConnection();
+		}
 		Assert.equal(slow.terminated, false);
 	} finally {
 		heartbeat.stop();
