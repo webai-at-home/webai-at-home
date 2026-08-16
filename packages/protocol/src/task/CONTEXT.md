@@ -11,15 +11,18 @@ What a task is: the work a consumer submits, the pipeline of stages it runs thro
 - `history_types.ts`: `HistoryInput`, `HistoryMessage`, `ToolDeclaration`, `ToolCall`.
 - `task_projection.ts`: `TaskProjection`, which builds the two task shapes that travel over the connection.
 - `generation_control_support.ts`: `GenerationControlSupport`, recording which task type honours which generation control.
+- `structured_output_support.ts`: `StructuredOutputSupport`, recording which task type honours which response format.
 
 ## Rules
 
 - `TaskType` and `StageName` follow [`docs/naming_scheme.md`](../../../../docs/naming_scheme.md); adding a name here means adding its row there too.
 - `generation_control_support.ts` is the one place recording which task type honours which generation control. A consumer reads it before submitting rather than keeping a list of its own.
+- `structured_output_support.ts` is the one place recording which task type honours which response format, read by a consumer before submitting for the same reason `generation_control_support.ts` is.
 - `GenerationSettings` carries each of the five generation controls exactly as the consumer asked for it, and never translated for the engine that will run the task.
 - Nothing here imports from `../message/`: `../message/` imports task and pipeline shapes from here, never the other way, because a task shape must not depend on the message that happens to carry it.
 
 ## Background
 
 - `GenerationSettings` and `generation_control_support.ts` come from [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+- `structured_output_support.ts` comes from [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
 - The tool declaration and tool call shapes in `history_types.ts` come from [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78).
