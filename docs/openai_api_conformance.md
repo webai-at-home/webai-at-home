@@ -31,7 +31,7 @@ A refusal is never a failure. An endpoint that says "I cannot do this" is behavi
 
 ## What was measured
 
-Four targets, all on 2026-08-15, with the `full` profile:
+Four targets, all on 2026-08-15, with the `full` profile. One of the four, `consumer_openai` running `llm_qwen3_5_0_8b_full`, was measured again on 2026-08-16 after [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190) was fixed, and its column carries that later run. The other three columns are the 2026-08-15 run, so a row that changed in the re-measured column is no longer a same-day comparison with the LM Studio control beside it.
 
 - `consumer_openai` running `llm_llama3_2_1b_full`, served by a `worker_openai` forwarding to LM Studio.
 - `consumer_openai` running `llm_qwen3_5_0_8b_full`, served the same way.
@@ -42,11 +42,11 @@ The two LM Studio columns are the control. When a test passes there and fails th
 
 | | `consumer_openai` llama | `consumer_openai` qwen | LM Studio llama | LM Studio qwen |
 | --- | --- | --- | --- | --- |
-| Passed | 18 | 20 | 25 | 24 |
-| Failed | 1 | 6 | 2 | 7 |
-| Skipped | 12 | 6 | 1 | 1 |
+| Passed | 18 | 25 | 25 | 24 |
+| Failed | 1 | 4 | 2 | 7 |
+| Skipped | 12 | 3 | 1 | 1 |
 | Warned | 1 | 0 | 4 | 0 |
-| Compatibility | 90.0% | 76.9% | 80.6% | 77.4% |
+| Compatibility | 90.0% | 86.2% | 80.6% | 77.4% |
 
 Per test:
 
@@ -55,7 +55,7 @@ Per test:
 | `models.list` | ✅ | ✅ | ✅ | ✅ |
 | `chat.basic` | ✅ | ✅ | ✅ | ✅ |
 | `chat.system_message` | ✅ | ✅ | ✅ | ✅ |
-| `chat.multi_turn` | ✅ | ❌ | ✅ | ❌ |
+| `chat.multi_turn` | ✅ | ✅ | ✅ | ❌ |
 | `usage.present` | ✅ | ✅ | ✅ | ✅ |
 | `usage.total_is_sum` | ✅ | ✅ | ✅ | ✅ |
 | `errors.unknown_model` | ✅ | ✅ | ❌ | ❌ |
@@ -67,23 +67,23 @@ Per test:
 | `streaming.finish_reason` | ✅ | ✅ | ✅ | ✅ |
 | `streaming.done` | ✅ | ✅ | ✅ | ✅ |
 | `streaming.timing` | ✅ | ✅ | ✅ | ✅ |
-| `tools.generates_a_call` | ⊘ | ❌ | ⚠️ | ✅ |
+| `tools.generates_a_call` | ⊘ | ✅ | ⚠️ | ✅ |
 | `tools.generates_a_call_when_forced` | ⊘ | ⊘ | ⚠️ | ✅ |
-| `tools.fills_in_the_arguments` | ⊘ | ❌ | ⚠️ | ✅ |
-| `tools.chooses_among_several_tools` | ⊘ | ❌ | ⚠️ | ✅ |
+| `tools.fills_in_the_arguments` | ⊘ | ✅ | ⚠️ | ✅ |
+| `tools.chooses_among_several_tools` | ⊘ | ✅ | ⚠️ | ✅ |
 | `tools.reads_a_tool_result_back` | ⊘ | ✅ | ✅ | ✅ |
 | `tools.answers_without_a_call_when_none_is_needed` | ⊘ | ✅ | ✅ | ✅ |
-| `parameters.temperature` | ⊘ | ⊘ | ✅ | ✅ |
+| `parameters.temperature` | ⊘ | ❌ | ✅ | ✅ |
 | `parameters.top_p` | ⊘ | ⊘ | ✅ | ✅ |
-| `parameters.max_completion_tokens` | ⊘ | ⊘ | ✅ | ❌ |
-| `parameters.stop` | ⊘ | ⊘ | ✅ | ❌ |
+| `parameters.max_completion_tokens` | ⊘ | ❌ | ✅ | ❌ |
+| `parameters.stop` | ⊘ | ❌ | ✅ | ❌ |
 | `parameters.seed` | ⊘ | ⊘ | ✅ | ❌ |
 | `structured_output.json_object` | ⚠️ | ✅ | ⊘ | ⊘ |
 | `structured_output.json_schema` | ❌ | ❌ | ✅ | ❌ |
 | `sdk.node.models_list` | ✅ | ✅ | ✅ | ✅ |
 | `sdk.node.basic` | ✅ | ✅ | ✅ | ✅ |
 | `sdk.node.streaming` | ✅ | ✅ | ✅ | ✅ |
-| `sdk.node.tools` | ⊘ | ❌ | ✅ | ✅ |
+| `sdk.node.tools` | ⊘ | ✅ | ✅ | ✅ |
 
 ## What the numbers do not say
 
@@ -93,21 +93,24 @@ This is why the report prints a status for each capability and not only one numb
 
 ## What this found
 
-### Tool declarations never reach the model
+### Tool declarations never reached the model — fixed on 2026-08-16
 
-`consumer_openai` reports that `llm_qwen3_5_0_8b_full` reads tool declarations, accepts a request carrying `tools`, and then drops the declaration before the model sees it. The model answers in words, having never been offered a tool.
+The 2026-08-15 run found that `consumer_openai` reported that `llm_qwen3_5_0_8b_full` reads tool declarations, accepted a request carrying `tools`, and then dropped the declaration before the model saw it. The model answered in words, having never been offered a tool.
 
-The token counts prove it. The same request, the same model, the same LM Studio behind both:
+The token counts proved it, and now show the fix. The same request, the same model, the same LM Studio behind every row:
 
 | Path | Prompt tokens | Result |
 | --- | --- | --- |
 | LM Studio, `tools` declared | 275 | emits a tool call |
 | LM Studio, no `tools` | 17 | answers in words |
-| `consumer_openai`, `tools` declared | 17 | answers in words |
+| `consumer_openai`, `tools` declared, 2026-08-15 | 17 | answers in words |
+| `consumer_openai`, `tools` declared, 2026-08-16 | 275 | emits a tool call |
 
-Seventeen is exactly the count for a prompt with no tools in it. The declaration is not merely unhonoured, it is absent.
+Seventeen is exactly the count for a prompt with no tools in it, so the declaration was not merely unhonoured, it was absent. Two hundred and seventy-five is the count with the declaration in the prompt, which is what the fixed path now sends.
 
-This is the failure this project's own rule forbids. `packages/consumer_openai/src/api/openai_types.ts` states that a request declaring tools to a model that cannot read them is refused rather than answered as though it had declared none. Here the model *can* read them, and the request is answered as though none had been declared, which is the same wrong outcome by the opposite route.
+The declaration was being dropped by `worker_openai` rather than by `consumer_openai`: the request it built for the local server carried no `tools` field at all. It now carries one, sends an assistant tool call and the tool result answering it under identifiers it mints, and reads the streamed tool call back. See [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190).
+
+`tools.generates_a_call`, `tools.fills_in_the_arguments`, `tools.chooses_among_several_tools`, and `sdk.node.tools` all pass on the re-measured column. `tools.generates_a_call_when_forced` is skipped rather than failed, because `consumer_openai` refuses a `tool_choice: "required"` it cannot enforce: enforcing it means constraining generation, which the chat templates this cluster drives cannot express. That refusal is the decision [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) settled.
 
 ### `response_format` is accepted and ignored
 
@@ -119,7 +122,7 @@ An ignored field also fails at random, which is what makes it hard to notice by 
 
 ### `llm_qwen3_5_0_8b_full` answers plain questions with nothing at all
 
-`chat.multi_turn` fails on this model both through `consumer_openai` and against LM Studio directly, so the cause is upstream of this project. The mechanism is visible in one request:
+`chat.multi_turn` failed on this model on 2026-08-15 both through `consumer_openai` and against LM Studio directly, so the cause is upstream of this project. The mechanism is visible in one request:
 
 ```
 finish_reason: length
@@ -132,6 +135,10 @@ reasoning_content: 29935 characters
 Every one of the 8153 generated tokens is a reasoning token. The model thinks until the 8192-token context is exhausted and never reaches an answer, so `content` arrives empty with `finish_reason: length`. The same runaway explains this model's failures on `parameters.max_completion_tokens`, `parameters.stop`, `parameters.seed`, and `structured_output.json_schema`.
 
 The root cause is the model and its context window rather than any code here, but the cluster offers this model, and a client asking it a two-turn question receives an empty answer.
+
+It is a runaway rather than a certainty, so which tests it takes down varies between runs. On the 2026-08-16 re-measurement of the `consumer_openai` qwen column, `chat.multi_turn` passed.
+
+That same column now fails `parameters.temperature`, `parameters.max_completion_tokens`, and `parameters.stop` with "the endpoint returned no answer text", where the 2026-08-15 run skipped all five `parameters` tests. Those three stopped being skipped because [`5be8998`](https://github.com/webai-at-home/webai-at-home/commit/5be8998) added them to this task type's generation control contract, so they are now attempted rather than refused — and what they run into is this same runaway. They were measured against a `worker_openai` built from the commit before [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190) was fixed as well as after, and failed identically both times, so they belong to the runaway and not to that fix.
 
 ### Two gaps in LM Studio, which `consumer_openai` does not share
 

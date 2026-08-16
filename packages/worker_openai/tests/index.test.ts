@@ -1,7 +1,7 @@
 import Assert from 'node:assert/strict';
 import Http from 'node:http';
 import Test from 'node:test';
-import { protocolVersion, type ClientMessage, type GatewayMessage, type GenerationSettings } from '@webai/protocol';
+import { protocolVersion, type ClientMessage, type GatewayMessage, type GenerationSettings, type HistoryInput, type LlmStagePayload } from '@webai/protocol';
 import { GatewayWorkerClient, type WorkerSocket } from '../src/libs/gateway_worker_client.js';
 import { GatewayConnectionSupervisor } from '../src/libs/gateway_connection_supervisor.js';
 import { WorkerStageOffer } from '../src/libs/worker_stage_offer.js';
@@ -83,9 +83,11 @@ const fakeChatClient = (
  * body this client builds, which no fake client would build.
  *
  * @param generationSettings What the consumer asked for, passed to the client unchanged.
+ * @param promptOrHistory The prompt or history submitted with the task, a single prompt by default
+ * so that every test written before a history could carry tools reads unchanged.
  * @returns The parsed request body the local server received.
  */
-const requestBodyOf = async (generationSettings: GenerationSettings | undefined): Promise<Record<string, unknown>> => {
+const requestBodyOf = async (generationSettings: GenerationSettings | undefined, promptOrHistory: string | HistoryInput = 'hello'): Promise<Record<string, unknown>> => {
 	let receivedBody = '';
 	const server = Http.createServer((request, response) => {
 		request.on('data', (piece: Buffer) => {
@@ -101,7 +103,7 @@ const requestBodyOf = async (generationSettings: GenerationSettings | undefined)
 	const port = typeof address === 'object' && address !== null ? address.port : 0;
 	try {
 		const client = new OpenaiApiClient(`http://127.0.0.1:${port}/v1`);
-		const { stream } = await client.chatCompletionStream('llama-3.2-1b-instruct', 'hello', new AbortController(), generationSettings);
+		const { stream } = await client.chatCompletionStream('llama-3.2-1b-instruct', promptOrHistory, new AbortController(), generationSettings);
 		const reader = stream.getReader();
 		while ((await reader.read()).done === false) {
 			continue;
@@ -110,6 +112,98 @@ const requestBodyOf = async (generationSettings: GenerationSettings | undefined)
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 	}
 	return JSON.parse(receivedBody) as Record<string, unknown>;
+};
+
+/**
+ * Runs one stage run against a local HTTP server that answers with the streamed events given, and
+ * returns the stage result.
+ *
+ * A local server is used rather than a fake client because what is being checked is what
+ * {@link OpenaiApiClient} reads out of a real stream of events, which no fake client would produce.
+ * The events are the ones LM Studio sent in milestone 0's de-risk gate for
+ * https://github.com/webai-at-home/webai-at-home/issues/190, so a tool call arrives the way a
+ * local server really sends one: the name in one event, the arguments in a later one of the same
+ * index.
+ *
+ * @param events The bodies of the `data:` lines the local server answers with, in order.
+ * @param payload The stage payload the run is given, which is what declares the tools.
+ * @param generationSettings What the consumer asked for, passed to the stage unchanged.
+ * @returns The stage result.
+ */
+const streamedStageResultOf = async (
+	events: Record<string, unknown>[],
+	payload: LlmStagePayload,
+	generationSettings?: GenerationSettings,
+): Promise<LlmStagePayload> => {
+	const server = Http.createServer((request, response) => {
+		request.on('data', () => undefined);
+		request.on('end', () => {
+			response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+			for (const event of events) {
+				response.write(`data: ${JSON.stringify(event)}\n`);
+			}
+			response.end('data: [DONE]\n');
+		});
+	});
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+	const address = server.address();
+	const port = typeof address === 'object' && address !== null ? address.port : 0;
+	const taskId = `task-${String(port)}`;
+	const stageAssignmentId = `assignment-${String(port)}`;
+	try {
+		const client = new OpenaiApiClient(`http://127.0.0.1:${port}/v1`);
+		return await StageHelperLlmQwen3_5_0_8bFull.compute(
+			taskId, stageAssignmentId, payload, generationSettings, client, 'qwen_qwen3.5-0.8b',
+		);
+	} finally {
+		// A run that returned a piece leaves its answer open, holding the request to this local
+		// server open with it, and a local server with an open request never finishes closing.
+		StageHelperLlmQwen3_5_0_8bFull.clearGeneration(taskId, stageAssignmentId);
+		server.closeAllConnections();
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+	}
+};
+
+/** One streamed event carrying a tool call fragment, as a local server sends one. */
+const toolCallEvent = (index: number, fragment: { name?: string; arguments?: string }): Record<string, unknown> => ({
+	choices: [
+		{
+			delta: {
+				tool_calls: [
+					{
+						index,
+						type: 'function',
+						function: fragment,
+					},
+				],
+			},
+		},
+	],
+});
+
+/** The history the tool tests submit: one question, and one tool that answers it. */
+const weatherHistory: HistoryInput = {
+	messages: [
+		{
+			role: 'user',
+			content: 'What is the weather in Paris?',
+		},
+	],
+	tools: [
+		{
+			name: 'get_weather',
+			description: 'Get the weather for a city',
+			parametersJsonSchema: {
+				type: 'object',
+				properties: {
+					city: {
+						type: 'string',
+					},
+				},
+				required: ['city'],
+			},
+		},
+	],
 };
 
 /**
@@ -370,6 +464,202 @@ Test('reads an answer for the Qwen3.5-0.8B stage as well, and holds it apart fro
 
 	StageHelperLlmQwen3_5_0_8bFull.clearGeneration('task-two-stages', 'assignment-qwen');
 	StageHelperLlmLlama3_2_1bFull.clearGeneration('task-two-stages', 'assignment-llama');
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Tools
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+Test('sends the tools the history declared to the local server, so the model reads them at all', async () => {
+	const body = await requestBodyOf(undefined, weatherHistory);
+	Assert.deepEqual(body.tools, [
+		{
+			type: 'function',
+			function: {
+				name: 'get_weather',
+				description: 'Get the weather for a city',
+				parameters: {
+					type: 'object',
+					properties: {
+						city: {
+							type: 'string',
+						},
+					},
+					required: ['city'],
+				},
+			},
+		},
+	]);
+	// There is no `tool_choice` beside it: the protocol carries no such value, and
+	// `packages/consumer_openai` refuses at submission the one it cannot enforce.
+	Assert.equal('tool_choice' in body, false);
+});
+
+Test('sends no tools field at all when the history declared none, so a request without tools is the request it always was', async () => {
+	const withoutTools = await requestBodyOf(undefined, { messages: [{ role: 'user', content: 'What is the capital of France?' }] });
+	Assert.equal('tools' in withoutTools, false);
+	const withoutHistory = await requestBodyOf(undefined);
+	Assert.equal('tools' in withoutHistory, false);
+});
+
+Test('sends an assistant tool call and the tool result answering it, each carrying an identifier this worker minted', async () => {
+	const body = await requestBodyOf(undefined, {
+		messages: [
+			{
+				role: 'user',
+				content: 'What is the weather in Paris?',
+			},
+			{
+				role: 'assistant',
+				content: '',
+				toolCalls: [
+					{
+						name: 'get_weather',
+						argumentValues: {
+							city: 'Paris',
+						},
+					},
+				],
+			},
+			{
+				role: 'tool',
+				content: '{"celsius":31}',
+			},
+		],
+		tools: weatherHistory.tools,
+	});
+	// The local server refuses a message list whose tool call carries no identifier, while the
+	// protocol carries none, so the identifier is minted here and the result that answers the call
+	// is given the same one. See milestone 0's de-risk gate for
+	// https://github.com/webai-at-home/webai-at-home/issues/190.
+	Assert.deepEqual(body.messages, [
+		{
+			role: 'user',
+			content: 'What is the weather in Paris?',
+		},
+		{
+			role: 'assistant',
+			content: '',
+			tool_calls: [
+				{
+					id: 'call_0',
+					type: 'function',
+					function: {
+						name: 'get_weather',
+						arguments: '{"city":"Paris"}',
+					},
+				},
+			],
+		},
+		{
+			role: 'tool',
+			content: '{"celsius":31}',
+			tool_call_id: 'call_0',
+		},
+	]);
+});
+
+Test('assembles a tool call from the fragments the local server streamed, and reports it as the stage result', async () => {
+	const result = await streamedStageResultOf(
+		[
+			toolCallEvent(0, { name: 'get_weather', arguments: '' }),
+			toolCallEvent(0, { arguments: '{"city":' }),
+			toolCallEvent(0, { arguments: '"Paris"}' }),
+			{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+			{ choices: [], usage: { prompt_tokens: 275, completion_tokens: 100 } },
+		],
+		{ history: weatherHistory },
+	);
+	// `finish_reason: tool_calls` is left untranslated, because the protocol has no such stopReason
+	// and inventing one is forbidden. `packages/consumer_openai` answers `finish_reason: "tool_calls"`
+	// from the presence of the tool calls themselves.
+	Assert.deepEqual(result, {
+		text: '',
+		toolCalls: [
+			{
+				name: 'get_weather',
+				argumentValues: {
+					city: 'Paris',
+				},
+			},
+		],
+		done: true,
+		promptTokenCount: 275,
+		completionTokenCount: 100,
+	});
+});
+
+Test('carries every argument value as the text the model wrote, whatever type the local server wrote it as', async () => {
+	const result = await streamedStageResultOf(
+		[
+			toolCallEvent(0, { name: 'book_room', arguments: '{"city":"Paris","nights":3,"balcony":true,"guests":["ana","bo"]}' }),
+		],
+		{ history: weatherHistory },
+	);
+	Assert.deepEqual((result as { toolCalls: unknown }).toolCalls, [
+		{
+			name: 'book_room',
+			argumentValues: {
+				city: 'Paris',
+				nights: '3',
+				balcony: 'true',
+				guests: '["ana","bo"]',
+			},
+		},
+	]);
+});
+
+Test('keeps the order the model asked for its tool calls in, however the fragments were interleaved', async () => {
+	const result = await streamedStageResultOf(
+		[
+			toolCallEvent(1, { name: 'get_time', arguments: '' }),
+			toolCallEvent(0, { name: 'get_weather', arguments: '{"city":"Paris"}' }),
+			toolCallEvent(1, { arguments: '{"city":"Rome"}' }),
+		],
+		{ history: weatherHistory },
+	);
+	Assert.deepEqual((result as { toolCalls: { name: string }[] }).toolCalls.map((toolCall) => toolCall.name), ['get_weather', 'get_time']);
+});
+
+Test('fails the stage when a tool call could not be read, rather than passing on a half-formed call', async () => {
+	await Assert.rejects(
+		async () => await streamedStageResultOf(
+			[
+				toolCallEvent(0, { name: 'get_weather', arguments: '{"city":' }),
+			],
+			{ history: weatherHistory },
+		),
+		/get_weather/,
+	);
+});
+
+Test('reads the whole answer in one run when the history declared tools, even when the consumer asked for pieces', async () => {
+	const result = await streamedStageResultOf(
+		[
+			toolCallEvent(0, { name: 'get_weather', arguments: '{"city":"Paris"}' }),
+		],
+		{ history: weatherHistory },
+		{ isStreaming: true },
+	);
+	// A run that returned a piece would leave the answer open and report `newText`. A history that
+	// declared tools is read whole instead, because a model that asks for a tool writes no answer
+	// text at all, so there is nothing to report a piece of.
+	Assert.deepEqual((result as { done: boolean }).done, true);
+	Assert.equal('newText' in result, false);
+});
+
+Test('still answers in words, in pieces, when the history declared no tool', async () => {
+	const result = await streamedStageResultOf(
+		[
+			{ choices: [{ delta: { content: 'Paris' } }] },
+			{ choices: [{ delta: { content: ' it is.' } }] },
+		],
+		{ history: { messages: [{ role: 'user', content: 'What is the capital of France?' }] } },
+		{ isStreaming: true },
+	);
+	Assert.deepEqual(result, { newText: 'Paris', isContinuation: true, done: false });
 });
 
 ///////////////////////////////////////////////////////////////////////////////

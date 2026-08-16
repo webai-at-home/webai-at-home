@@ -1,5 +1,5 @@
-import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
-import type { ChatCompletionStreamUsage, OpenaiApiClient } from '../libs/openai_api_client.js';
+import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolCall, type ToolDeclaration } from '@webai/protocol';
+import { OpenaiApiClient, type ChatCompletionStreamToolCalls, type ChatCompletionStreamUsage, type StreamedToolCall } from '../libs/openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -80,6 +80,19 @@ type TaskGenerationState = {
 	 * https://github.com/webai-at-home/webai-at-home/issues/150.
 	 */
 	usage: ChatCompletionStreamUsage | undefined;
+	/**
+	 * The tools the history that started this answer declared, empty when it declared none.
+	 *
+	 * Read on the run that starts the answer and kept, because a run that carries the answer on
+	 * receives a payload saying only that it is a continuation, and whether tools were declared
+	 * decides how the answer is read.
+	 */
+	declaredTools: readonly ToolDeclaration[];
+	/**
+	 * The tool calls the local server reports for this answer, filled in as `startGeneration`'s
+	 * stream is read and complete only once it has closed.
+	 */
+	toolCalls: ChatCompletionStreamToolCalls | undefined;
 };
 
 /**
@@ -181,10 +194,18 @@ export class LocalServerGeneration {
 		openaiApiClient: OpenaiApiClient,
 		modelId: string,
 	): Promise<LlmStagePayload> {
-		const wantsPieces = generationSettings?.isStreaming === true;
 		const state = payload.isContinuation === true
 			? this.heldGeneration(taskId, stageAssignmentId)
 			: this.newGeneration(taskId, stageAssignmentId);
+		if (payload.isContinuation !== true) {
+			state.declaredTools = payload.history?.tools ?? [];
+		}
+		// A history that declared tools is never read in pieces, even when the consumer asked for
+		// pieces, which is the rule `packages/worker_webpage`'s own stage helper already applies to
+		// this same task type. A model that asks for a tool writes no answer text at all, so there is
+		// nothing to report a piece of, and the run that ends the generation is the one that has the
+		// whole tool call to report.
+		const wantsPieces = generationSettings?.isStreaming === true && state.declaredTools.length === 0;
 		// A run that returns a piece leaves the answer open behind it, so it is the one kind of
 		// run that must not release what it was reading. Every other way out of this method — the
 		// finished answer, and every failure — releases it.
@@ -212,6 +233,15 @@ export class LocalServerGeneration {
 				}
 			}
 			this.refuseIfReplaced(state, stageAssignmentId);
+			// A tool call whose arguments could not be read throws out of here, which fails the stage
+			// and names what could not be read. That is deliberate, and is the same rule
+			// `packages/worker_webpage`'s own stage helper follows: a calling program runs whatever
+			// tool call it receives, so a call read wrongly is a call run wrongly on the caller's own
+			// machine.
+			const toolCalls = this.toolCallsOf(state.toolCalls);
+			if (toolCalls.length > 0) {
+				return StagePayloadFactory.llmToolCalls(toolCalls, this.usageOf(state.usage));
+			}
 			return StagePayloadFactory.llmDone(state.text, undefined, this.usageOf(state.usage));
 		} finally {
 			if (leavesAnswerOpen === false) {
@@ -274,6 +304,8 @@ export class LocalServerGeneration {
 			pieceCount: 0,
 			isReleased: false,
 			usage: undefined,
+			declaredTools: [],
+			toolCalls: undefined,
 		};
 		this.stateByTaskId.set(taskId, state);
 		return state;
@@ -387,7 +419,7 @@ export class LocalServerGeneration {
 		}
 		const abortController = new AbortController();
 		state.abortController = abortController;
-		const { stream, usage } = await openaiApiClient.chatCompletionStream(modelId, promptOrHistory, abortController, generationSettings);
+		const { stream, usage, toolCalls } = await openaiApiClient.chatCompletionStream(modelId, promptOrHistory, abortController, generationSettings);
 		// A release that arrives while the request is still connecting leaves this flag and
 		// nothing else, since no reader exists yet to cancel; reading it here is what stops this
 		// worker reading a whole answer for a task that was already given up on.
@@ -396,6 +428,7 @@ export class LocalServerGeneration {
 			throw new Error('The answer this stage was to produce was abandoned before the local server had answered.');
 		}
 		state.usage = usage;
+		state.toolCalls = toolCalls;
 		state.reader = stream.getReader();
 		return state.reader;
 	}
@@ -416,6 +449,66 @@ export class LocalServerGeneration {
 			return promptOrHistory.trim() === '';
 		}
 		return promptOrHistory.messages.length === 0;
+	}
+
+	/**
+	 * Turns the tool calls read from the local server's stream into the shape the protocol carries.
+	 *
+	 * The two interfaces disagree about the arguments, and this is where that is settled. The OpenAI
+	 * Chat Completions interface carries them as one string of JSON, while the protocol carries each
+	 * argument value as the text the model wrote, keyed by argument name — see `ToolCallSchema` in
+	 * `@webai/protocol` for why. Converting each value back into the type its tool declared belongs
+	 * to `packages/consumer_openai`, which is the one that knows the declared types and the one whose
+	 * interface asks for types at all.
+	 *
+	 * @param toolCalls The tool calls assembled while the stream was read, `undefined` when
+	 * generation never started.
+	 * @returns The tool calls to report, empty when the model asked for none.
+	 * @throws If a tool call's arguments are not a JSON object, since a call that could not be read
+	 * is a failed stage rather than a call passed on half-formed.
+	 */
+	private toolCallsOf(toolCalls: ChatCompletionStreamToolCalls | undefined): ToolCall[] {
+		if (toolCalls === undefined) {
+			return [];
+		}
+		return OpenaiApiClient.orderedToolCallsOf(toolCalls).map((toolCall) => ({
+			name: toolCall.name,
+			argumentValues: this.argumentValuesOf(toolCall),
+		}));
+	}
+
+	/**
+	 * Reads one tool call's arguments out of the string of JSON the local server carried them in.
+	 *
+	 * A value that is not already text is written back out as the text of what it was: the number
+	 * `31` becomes `"31"`, and an object or a list becomes its JSON. That is what the protocol
+	 * carries, and it is the same text the model itself wrote, because the local server built this
+	 * JSON out of what the model wrote in the first place.
+	 *
+	 * @param toolCall The tool call assembled from the stream.
+	 * @returns Each argument the model filled in, as text, keyed by argument name.
+	 * @throws If the arguments are not a JSON object, naming the tool and what could not be read.
+	 */
+	private argumentValuesOf(toolCall: StreamedToolCall): Record<string, string> {
+		// A tool that takes nothing is asked for with empty arguments rather than with `{}`, which
+		// is a complete tool call and not an unreadable one.
+		if (toolCall.argumentsJson.trim() === '') {
+			return {};
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(toolCall.argumentsJson);
+		} catch {
+			throw new Error(`The local server asked for the tool ${toolCall.name} with arguments that are not JSON: ${toolCall.argumentsJson}`);
+		}
+		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) === true) {
+			throw new Error(`The local server asked for the tool ${toolCall.name} with arguments that are not a JSON object: ${toolCall.argumentsJson}`);
+		}
+		const argumentValues: Record<string, string> = {};
+		for (const [argumentName, writtenValue] of Object.entries(parsed as Record<string, unknown>)) {
+			argumentValues[argumentName] = typeof writtenValue === 'string' ? writtenValue : JSON.stringify(writtenValue);
+		}
+		return argumentValues;
 	}
 
 	/**

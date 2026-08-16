@@ -1,4 +1,4 @@
-import type { HistoryInput, GenerationSettings } from '@webai/protocol';
+import type { HistoryInput, GenerationSettings, ToolDeclaration } from '@webai/protocol';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -26,11 +26,31 @@ type ModelListResponse = {
 	data: ModelListEntry[];
 };
 
+/**
+ * One fragment of a tool call, as one streamed event carries it.
+ *
+ * A tool call arrives in pieces the same way text does: the name arrives once and the arguments
+ * arrive a fragment at a time, each fragment carrying the `index` of the tool call it belongs to so
+ * that several tool calls can be streamed at once and interleaved. Measured live against LM Studio
+ * 0.4.20 serving `qwen_qwen3.5-0.8b` in milestone 0's de-risk gate for
+ * https://github.com/webai-at-home/webai-at-home/issues/190: one fragment carried the identifier and
+ * the name with empty arguments, and a later fragment of the same `index` carried
+ * `{"city":"Paris"}`.
+ */
+type ChatCompletionToolCallFragment = {
+	index: number;
+	function?: {
+		name?: string;
+		arguments?: string;
+	};
+};
+
 /** The shape of one Chat Completions streaming event this client reads, and ignores the rest of. */
 type ChatCompletionChunk = {
 	choices?: {
 		delta?: {
 			content?: string;
+			tool_calls?: ChatCompletionToolCallFragment[];
 		};
 		finish_reason?: string | null;
 	}[];
@@ -62,10 +82,77 @@ export type ChatCompletionStreamUsage = {
 	finishReason: string | undefined;
 };
 
+/**
+ * One tool call this client read out of a stream, assembled from every fragment that carried it.
+ *
+ * It carries no identifier, because the protocol carries none: `ToolCallSchema` in
+ * `@webai/protocol` states why. The identifier the local server issued is read past rather than
+ * kept, and the identifier this client sends back in a later history is minted by
+ * {@link OpenaiApiClient} rather than remembered from here.
+ */
+export type StreamedToolCall = {
+	/** The name of the tool the model asked to have called. */
+	name: string;
+	/** The arguments the model filled in, as the string of JSON this interface carries them as. */
+	argumentsJson: string;
+};
+
+/**
+ * The tool calls one Chat Completions stream carries, assembled as the stream is read and complete
+ * only once it has closed.
+ *
+ * Keyed by the `index` each fragment names rather than held as a list, because fragments of
+ * several tool calls can be interleaved. {@link OpenaiApiClient.orderedToolCallsOf} puts them back
+ * into the order the model asked for them in.
+ */
+export type ChatCompletionStreamToolCalls = {
+	/** The tool calls assembled so far, keyed by the index the local server gave each one. */
+	byIndex: Map<number, StreamedToolCall>;
+};
+
+/**
+ * One tool declaration of the request this client sends to the local server, spelled the way the
+ * OpenAI Chat Completions interface spells it on the connection.
+ *
+ * These spellings are part of a format the local server reads, so they are not renamed to match
+ * this repository's own naming rules, for the same reason {@link OutgoingGenerationControls} is not.
+ */
+type OutgoingToolDeclaration = {
+	type: 'function';
+	function: {
+		name: string;
+		description?: string;
+		parameters: Record<string, unknown>;
+	};
+};
+
+/**
+ * One tool call of an outgoing assistant message, in the shape the local server reads it in.
+ *
+ * The identifier is minted by this client. The local server refuses a message list whose tool call
+ * carries none — measured live in milestone 0's de-risk gate for
+ * https://github.com/webai-at-home/webai-at-home/issues/190, where a round trip sent without one
+ * was answered with HTTP 400 and `Invalid 'messages' in payload` — while the protocol deliberately
+ * carries no identifier at all. Minting one here is what closes that gap, and the same gate proved
+ * a minted identifier the server never issued is accepted.
+ */
+type OutgoingToolCall = {
+	id: string;
+	type: 'function';
+	function: {
+		name: string;
+		arguments: string;
+	};
+};
+
 /** One message of the request this client sends to the local server, in the shape it expects. */
 type OutgoingMessage = {
 	role: string;
 	content: string;
+	/** The tools an assistant message asked to have called, absent on every other message. */
+	tool_calls?: OutgoingToolCall[];
+	/** The tool call a `tool` message answers, absent on every other message. */
+	tool_call_id?: string;
 };
 
 /**
@@ -172,8 +259,9 @@ export class OpenaiApiClient {
 	 * @param generationSettings What the consumer asked for about how the answer is generated. Its
 	 * five generation controls become the fields of the same meaning in the request body; a
 	 * setting the consumer did not state is left out of the body entirely.
-	 * @returns The stream of text pieces the model produces, in order, and the usage object that
-	 * is filled in as the stream is read and is only complete once the stream has closed.
+	 * @returns The stream of text pieces the model produces, in order, the usage object, and the
+	 * tool calls the model asked for. The usage object and the tool calls are both filled in as the
+	 * stream is read and are only complete once the stream has closed.
 	 * @throws If the server cannot be reached, or answers with a failure status.
 	 */
 	async chatCompletionStream(
@@ -181,7 +269,7 @@ export class OpenaiApiClient {
 		promptOrHistory: string | HistoryInput,
 		abortController: AbortController,
 		generationSettings?: GenerationSettings,
-	): Promise<{ stream: ReadableStream<string>; usage: ChatCompletionStreamUsage }> {
+	): Promise<{ stream: ReadableStream<string>; usage: ChatCompletionStreamUsage; toolCalls: ChatCompletionStreamToolCalls }> {
 		const response = await fetch(`${this.baseUrl}/chat/completions`, {
 			method: 'POST',
 			headers: {
@@ -193,6 +281,7 @@ export class OpenaiApiClient {
 				stream: true,
 				stream_options: { include_usage: true },
 				messages: OpenaiApiClient.messagesOf(promptOrHistory),
+				...OpenaiApiClient.toolFieldsOf(promptOrHistory),
 				...OpenaiApiClient.generationControlsOf(generationSettings),
 			}),
 			signal: abortController.signal,
@@ -206,7 +295,21 @@ export class OpenaiApiClient {
 			throw new Error(`The server at ${this.baseUrl} answered the chat completion with no body`);
 		}
 		const usage: ChatCompletionStreamUsage = { promptTokenCount: undefined, completionTokenCount: undefined, finishReason: undefined };
-		return { stream: OpenaiApiClient.textPiecesOf(response.body, abortController, usage), usage };
+		const toolCalls: ChatCompletionStreamToolCalls = { byIndex: new Map<number, StreamedToolCall>() };
+		return { stream: OpenaiApiClient.textPiecesOf(response.body, abortController, usage, toolCalls), usage, toolCalls };
+	}
+
+	/**
+	 * Puts the tool calls read from a stream back into the order the model asked for them in.
+	 *
+	 * @param toolCalls The tool calls assembled while the stream was read.
+	 * @returns The tool calls, ordered by the index the local server gave each one, empty when the
+	 * model asked for no tool.
+	 */
+	static orderedToolCallsOf(toolCalls: ChatCompletionStreamToolCalls): StreamedToolCall[] {
+		return [...toolCalls.byIndex.entries()]
+			.sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
+			.map(([, toolCall]) => toolCall);
 	}
 
 	/**
@@ -261,12 +364,57 @@ export class OpenaiApiClient {
 	}
 
 	/**
+	 * Builds the tool declaration field of the request body, from the tools the history declared.
+	 *
+	 * The local server reads the declarations and renders them through the model's own chat
+	 * template, which is what puts them in front of the model at all. Milestone 0's de-risk gate for
+	 * https://github.com/webai-at-home/webai-at-home/issues/190 proved this live against LM Studio
+	 * 0.4.20 serving `qwen_qwen3.5-0.8b`: the same question sent with one `get_weather` declaration
+	 * was counted as 275 prompt tokens and answered with `finish_reason: tool_calls`, where the
+	 * request built without this field was counted as 17 and answered in words. Those 17 tokens are
+	 * the defect this method exists to fix.
+	 *
+	 * A history that declared no tool, and every task submitted as a single prompt, produce no
+	 * field at all, so every request this worker sent before it carried tools is byte for byte the
+	 * request it still sends.
+	 *
+	 * There is deliberately no `tool_choice` beside it. The protocol carries no such value, for the
+	 * reason `HistoryInputSchema` states, and `packages/consumer_openai` refuses at submission a
+	 * `tool_choice` it cannot enforce.
+	 *
+	 * @param promptOrHistory The prompt or history submitted with the task.
+	 * @returns The fields to spread into the request body, empty when no tool was declared.
+	 */
+	private static toolFieldsOf(promptOrHistory: string | HistoryInput): { tools?: OutgoingToolDeclaration[] } {
+		if (typeof promptOrHistory === 'string' || promptOrHistory.tools === undefined || promptOrHistory.tools.length === 0) {
+			return {};
+		}
+		return {
+			tools: promptOrHistory.tools.map((tool: ToolDeclaration): OutgoingToolDeclaration => ({
+				type: 'function',
+				function: {
+					name: tool.name,
+					...(tool.description === undefined ? {} : { description: tool.description }),
+					parameters: tool.parametersJsonSchema,
+				},
+			})),
+		};
+	}
+
+	/**
 	 * Builds the message list to send to the local server, from either a prompt or a history.
 	 *
 	 * A single prompt becomes the one user message this client has always sent. A history
 	 * becomes its messages, each carrying the role it was given, so the local server's own chat
 	 * template can place a system message and an earlier assistant turn where they belong instead
 	 * of receiving one user message whose content happens to be a transcript.
+	 *
+	 * An assistant message that asked for tools is sent with those tool calls beside its content,
+	 * so a history carrying a finished tool round trip can be answered: the model reads its own
+	 * earlier request in the form its chat template writes, rather than a rewriting of it. Each
+	 * call is given an identifier minted here, and the `tool` messages that follow it answer the
+	 * calls in order, which is all the protocol says about which result answers which call — see
+	 * `ToolCallSchema` in `@webai/protocol` for why there is no identifier to carry instead.
 	 *
 	 * @param promptOrHistory The prompt or history submitted with the task.
 	 * @returns The message list to send in the request body.
@@ -275,7 +423,73 @@ export class OpenaiApiClient {
 		if (typeof promptOrHistory === 'string') {
 			return [{ role: 'user', content: promptOrHistory }];
 		}
-		return promptOrHistory.messages.map((message) => ({ role: message.role, content: message.content }));
+		// The identifiers minted for the tool calls of the most recent assistant message, in the
+		// order that message asked for them, waiting for the `tool` messages that answer them.
+		let awaitedToolCallIds: string[] = [];
+		let mintedToolCallCount = 0;
+		return promptOrHistory.messages.map((message): OutgoingMessage => {
+			if (message.role === 'tool') {
+				// A result with no call left to answer is sent without an identifier and refused by
+				// the local server, which is the right outcome: a history that answers a call it
+				// never made is not a history this worker can repair.
+				const answeredToolCallId = awaitedToolCallIds.shift();
+				return {
+					role: message.role,
+					content: message.content,
+					...(answeredToolCallId === undefined ? {} : { tool_call_id: answeredToolCallId }),
+				};
+			}
+			if (message.toolCalls === undefined) {
+				return { role: message.role, content: message.content };
+			}
+			const toolCalls = message.toolCalls.map((toolCall): OutgoingToolCall => {
+				const id = `call_${mintedToolCallCount}`;
+				mintedToolCallCount += 1;
+				return {
+					id,
+					type: 'function',
+					function: {
+						name: toolCall.name,
+						// The protocol carries every argument value as the text the model wrote, so
+						// the string of JSON this interface asks for is built here rather than
+						// carried through.
+						arguments: JSON.stringify(toolCall.argumentValues),
+					},
+				};
+			});
+			awaitedToolCallIds = toolCalls.map((toolCall) => toolCall.id);
+			return {
+				role: message.role,
+				content: message.content,
+				tool_calls: toolCalls,
+			};
+		});
+	}
+
+	/**
+	 * Merges the tool call fragments of one streamed event into the tool calls assembled so far.
+	 *
+	 * @param fragments The tool call fragments of one event, `undefined` when it carried none.
+	 * @param toolCalls The tool calls assembled so far, updated in place.
+	 * @returns Nothing.
+	 */
+	private static collectToolCallFragments(fragments: ChatCompletionToolCallFragment[] | undefined, toolCalls: ChatCompletionStreamToolCalls): void {
+		if (fragments === undefined) {
+			return;
+		}
+		for (const fragment of fragments) {
+			const assembled = toolCalls.byIndex.get(fragment.index) ?? {
+				name: '',
+				argumentsJson: '',
+			};
+			if (fragment.function?.name !== undefined) {
+				assembled.name += fragment.function.name;
+			}
+			if (fragment.function?.arguments !== undefined) {
+				assembled.argumentsJson += fragment.function.arguments;
+			}
+			toolCalls.byIndex.set(fragment.index, assembled);
+		}
 	}
 
 	/**
@@ -287,9 +501,11 @@ export class OpenaiApiClient {
 	 * on the answer stops the request rather than only stopping its own read.
 	 * @param usage Filled in with whatever `usage` and `finish_reason` fields each event carries,
 	 * as they arrive. Complete only once the returned stream has closed.
+	 * @param toolCalls Filled in with the tool call fragments each event carries, as they arrive.
+	 * Complete only once the returned stream has closed.
 	 * @returns A stream of the pieces of text the events carry, skipping events that carry none.
 	 */
-	private static textPiecesOf(body: ReadableStream<Uint8Array>, abortController: AbortController, usage: ChatCompletionStreamUsage): ReadableStream<string> {
+	private static textPiecesOf(body: ReadableStream<Uint8Array>, abortController: AbortController, usage: ChatCompletionStreamUsage, toolCalls: ChatCompletionStreamToolCalls): ReadableStream<string> {
 		const bodyReader = body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = '';
@@ -335,6 +551,7 @@ export class OpenaiApiClient {
 					if (typeof finishReason === 'string') {
 						usage.finishReason = finishReason;
 					}
+					OpenaiApiClient.collectToolCallFragments(chunk.choices?.[0]?.delta?.tool_calls, toolCalls);
 					const content = chunk.choices?.[0]?.delta?.content;
 					if (typeof content === 'string' && content !== '') {
 						controller.enqueue(content);
