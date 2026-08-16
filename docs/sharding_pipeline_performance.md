@@ -177,7 +177,9 @@ serialization_time = (4 × 8 × 1000) / (20 × 10^6)
                    ≈ 1.6 milliseconds
 ```
 
-The conclusion is that bandwidth is not the limit. The payload is small, the `serialization_time` is a rounding error next to the 35 milliseconds of `hop_latency`, and the sustained bit rate needed is only `payload_size / token_latency`, which is about 210 kilobits per second per stream. **The cost of sharding over WebRTC is latency, not bandwidth.**
+The conclusion is that bandwidth is not the limit. The payload is small, the `serialization_time` is a rounding error next to the 35 milliseconds of `hop_latency`, and the sustained bit rate needed is only `payload_size / token_latency`, which is about 210 kilobits per second per stream. **During decode, the cost of sharding over WebRTC is latency, not bandwidth.**
+
+Prefill is the opposite, and this document does not cover it. A prompt is processed in one pass, so the payload for one hop is `prompt_length × payload_size` rather than `payload_size`. For a `prompt_length` of 1000 that is 4 megabytes per hop, and a `serialization_time` of about 1.6 seconds on the same link — larger than every other term in this document put together. Assumption 6 excludes prefill; any estimate that includes it must treat bandwidth as the binding limit rather than latency.
 
 ### Assumptions
 
@@ -186,7 +188,7 @@ These estimates hold only while the following assumptions hold. Each one is stat
 1. **The shards are perfectly balanced.** Every shard takes `model_compute_time / shard_count`. If one machine is slower, the pipeline advances at the slowest shard, and the cluster throughput falls to `1 / max(shard_compute_time)`.
 2. **The machines are identical.** Personal computers in different homes are not identical in practice. One old machine sets the rate for everybody.
 3. **Communication and compute do not overlap.** A shard waits for the hidden state before it starts. Overlapping the transfer of one request with the compute of another would hide part of `hop_latency`, and is not modelled here.
-4. **The `hop_latency` is a constant, not a distribution.** It is not. Wi-Fi has a long tail, and the pipeline advances at the slowest hop of each token, so the behaviour is closer to the 95th percentile than to the median. A link with a median of 35 milliseconds and a 95th percentile of 120 milliseconds behaves much worse than this document predicts.
+4. **The `hop_latency` is a constant, not a distribution.** It is not: Wi-Fi has a long tail. Which way the assumption fails depends on how full the pipeline is. For a single stream it is optimistic, because every token waits on the slowest of its own hops, so the behaviour is closer to the 95th percentile than to the median — a link with a median of 35 milliseconds and a 95th percentile of 120 milliseconds behaves much worse than usage pattern 1 predicts. With enough requests in flight to keep a queue at every shard, the assumption is safe, because a late hop finds work already waiting and the jitter is absorbed instead of amplified.
 5. **The connection is direct, peer to peer.** When a strict router forces the traffic through a TURN relay server, every hop pays the relay detour.
 6. **Only the decode phase is counted.** Prefill, the key-value cache, and the sampling step are ignored.
 7. **The requests are independent.** Two requests in flight never wait on each other. This is true for separate conversations, and false inside one conversation.
