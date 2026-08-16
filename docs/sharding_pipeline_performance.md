@@ -18,7 +18,7 @@ It has three parts:
 | `model_compute_time` | compute time for one token on a single unsharded machine |
 | `shard_compute_time` | compute time for one token on one shard, equal to `model_compute_time / shard_count` when balanced |
 | `hop_latency` | one-way communication latency across one hop, from one machine to the next |
-| `hop_count` | number of hops per token, equal to `shard_count - 1` |
+| `hop_count` | number of hops per token, equal to `shard_count`, because the token returns from the last shard to the first |
 | `network_latency` | total communication latency per token, equal to `hop_count × hop_latency` |
 | `request_count` | number of independent requests in flight at the same time |
 | `single_machine_rate` | token rate of one unsharded machine, equal to `1 / model_compute_time` |
@@ -65,7 +65,9 @@ Ignoring communication, the latency of one token is unchanged, because the three
 
 ### Network latency
 
-Let `first_hop_latency` be the communication latency from machine 1 to machine 2, and `second_hop_latency` from machine 2 to machine 3. For one request, the latency of one token becomes:
+Decoding is a ring, not a line. The hidden state travels from machine 1 to machine 2, then to machine 3, and the token that machine 3 produces must travel **back to machine 1** before the next token can start. A pipeline of `shard_count` shards therefore pays `shard_count` hops per token, not `shard_count - 1`.
+
+Let `first_hop_latency` be the latency from machine 1 to machine 2, `second_hop_latency` from machine 2 to machine 3, and `return_hop_latency` from machine 3 back to machine 1. For one request, the latency of one token becomes:
 
 ```text
 token_latency = shard_compute_time
@@ -73,6 +75,7 @@ token_latency = shard_compute_time
               + shard_compute_time
               + second_hop_latency
               + shard_compute_time
+              + return_hop_latency
 ```
 
 So sharding increases **per-request latency**.
@@ -147,8 +150,8 @@ The values used through the rest of this document are the ordinary home case:
 
 ```text
 hop_latency     = 35 milliseconds
-hop_count       = shard_count - 1 = 2
-network_latency = hop_count × hop_latency = 70 milliseconds
+hop_count       = shard_count = 3
+network_latency = hop_count × hop_latency = 105 milliseconds
 ```
 
 ### How we estimate the throughput between two machines
@@ -174,7 +177,7 @@ serialization_time = (4 × 8 × 1000) / (20 × 10^6)
                    ≈ 1.6 milliseconds
 ```
 
-The conclusion is that bandwidth is not the limit. The payload is small, the `serialization_time` is a rounding error next to the 35 milliseconds of `hop_latency`, and the sustained bit rate needed is only `payload_size / token_latency`, which is about 270 kilobits per second per stream. **The cost of sharding over WebRTC is latency, not bandwidth.**
+The conclusion is that bandwidth is not the limit. The payload is small, the `serialization_time` is a rounding error next to the 35 milliseconds of `hop_latency`, and the sustained bit rate needed is only `payload_size / token_latency`, which is about 210 kilobits per second per stream. **The cost of sharding over WebRTC is latency, not bandwidth.**
 
 ### Assumptions
 
@@ -199,10 +202,12 @@ These estimates hold only while the following assumptions hold. Each one is stat
 The latency of one token, through the whole pipeline:
 
 ```text
-token_latency = model_compute_time + (shard_count - 1) × hop_latency
+token_latency = model_compute_time + shard_count × hop_latency
+              = 50 + 3 × 35
+              = 155 milliseconds
 ```
 
-With the numbers above, `50 + 70` = **120 milliseconds**, so one stream produces about **8.3 tokens per second**.
+so one stream produces about **6.5 tokens per second**, and spends 68 percent of its time on the network.
 
 The cluster throughput, for `request_count` independent requests in flight:
 
@@ -215,18 +220,18 @@ The pipeline is full, and the cluster throughput reaches its ceiling of `shard_c
 
 ```text
 request_count ≥ shard_count × token_latency / model_compute_time
-              = shard_count × (1 + (shard_count - 1) × hop_latency / model_compute_time)
+              = shard_count × (1 + shard_count × hop_latency / model_compute_time)
 ```
 
-With the numbers above, `3 × 120 / 50` = 7.2, so **8 requests in flight**. Without the network, the same formula gives `shard_count`, which is 3. The network raises the number of concurrent requests needed to fill the pipeline by the factor `token_latency / model_compute_time`, which is 2.4 here.
+With the numbers above, `3 × 155 / 50` = 9.3, so **10 requests in flight**. Without the network, the same formula gives `shard_count`, which is 3. The network raises the number of concurrent requests needed to fill the pipeline by the factor `token_latency / model_compute_time`, which is 3.1 here.
 
 The cluster beats one single unsharded machine on total throughput only when:
 
 ```text
-request_count > token_latency / model_compute_time = 2.4
+request_count > token_latency / model_compute_time = 3.1
 ```
 
-so from **3 requests in flight**.
+so from **4 requests in flight**.
 
 ### Usage pattern 1 — one consumer, one request after the other
 
@@ -234,50 +239,51 @@ Token generation is autoregressive: token `n + 1` cannot start before token `n` 
 
 ```text
 cluster_throughput = 1 / token_latency
-                   = 1 / 120 milliseconds
-                   ≈ 8.3 tokens per second
+                   = 1 / 155 milliseconds
+                   ≈ 6.5 tokens per second
 ```
 
-Against 20 tokens per second on one unsharded machine, the cluster is **2.4 times slower**. This usage pattern gains nothing from sharding and pays the whole network cost.
+Against 20 tokens per second on one unsharded machine, the cluster is **3.1 times slower**. This usage pattern gains nothing from sharding and pays the whole network cost.
 
 ### Usage pattern 2 — one consumer, several requests in parallel
 
-The requests are independent, so they can occupy different machines at the same time. Each individual request still runs at 8.3 tokens per second; what grows is the total.
+The requests are independent, so they can occupy different machines at the same time. Each individual request still runs at 6.5 tokens per second; what grows is the total.
 
 | `request_count` | `cluster_throughput` | Per-request rate |
 |---|---|---|
-| 1 | 8.3 tokens per second | 8.3 tokens per second |
-| 2 | 16.7 tokens per second | 8.3 tokens per second |
-| 3 | 25 tokens per second | 8.3 tokens per second |
-| 4 | 33 tokens per second | 8.3 tokens per second |
-| 8 | 60 tokens per second, the ceiling | 7.5 tokens per second |
+| 1 | 6.5 tokens per second | 6.5 tokens per second |
+| 2 | 12.9 tokens per second | 6.5 tokens per second |
+| 3 | 19.4 tokens per second | 6.5 tokens per second |
+| 4 | 25.8 tokens per second | 6.5 tokens per second |
+| 8 | 51.6 tokens per second | 6.5 tokens per second |
+| 10 | 60 tokens per second, the ceiling | 6.0 tokens per second |
 | 16 | 60 tokens per second, the ceiling | 3.8 tokens per second, plus queueing |
 
-The consumer reaches the full `shard_count × single_machine_rate` only when it is willing to run 8 requests at the same time, and only while accepting that every single one of them feels slower than a single unsharded machine.
+The consumer reaches the full `shard_count × single_machine_rate` only when it is willing to run 10 requests at the same time, and only while accepting that every single one of them feels slower than a single unsharded machine.
 
 ### Usage pattern 3 — `shard_count` consumers, one request each
 
-This is `request_count = shard_count = 3`, which is far short of the 8 requests needed to fill the pipeline.
+This is `request_count = shard_count = 3`, which is far short of the 10 requests needed to fill the pipeline.
 
 ```text
-cluster_throughput = 3 / 120 milliseconds
-                   = 25 tokens per second
+cluster_throughput = 3 / 155 milliseconds
+                   = 19.4 tokens per second
 ```
 
-Each consumer sees 8.3 tokens per second. The three machines together produce 25 tokens per second, against 20 tokens per second for one single unsharded machine — a gain of 25 percent for three times the hardware.
+Each consumer sees 6.5 tokens per second. The three machines together produce 19.4 tokens per second, against 20 tokens per second for one single unsharded machine — **three machines and three home internet links, to end up very slightly slower than one machine.**
 
-`shard_count` consumers do not fill a pipeline of `shard_count` shards once the network is counted. The number of consumers needed is `shard_count × token_latency / model_compute_time`, which is `shard_count × 2.4` here.
+`shard_count` consumers do not fill a pipeline of `shard_count` shards once the network is counted. The number of consumers needed is `shard_count × token_latency / model_compute_time`, which is `shard_count × 3.1`, so 10 here.
 
 ### Summary
 
 | Usage pattern | `request_count` | `cluster_throughput` | Per-request rate | Against one unsharded machine |
 |---|---|---|---|---|
-| One consumer, sequential | 1 | 8.3 tokens per second | 8.3 tokens per second | 2.4 times slower |
-| One consumer, 3 in parallel | 3 | 25 tokens per second | 8.3 tokens per second | 1.25 times faster in total |
-| One consumer, 8 in parallel | 8 | 60 tokens per second | 7.5 tokens per second | 3 times faster in total |
-| `shard_count` = 3 consumers | 3 | 25 tokens per second | 8.3 tokens per second | 1.25 times faster in total |
+| One consumer, sequential | 1 | 6.5 tokens per second | 6.5 tokens per second | 3.1 times slower |
+| One consumer, 3 in parallel | 3 | 19.4 tokens per second | 6.5 tokens per second | very slightly slower in total |
+| One consumer, 10 in parallel | 10 | 60 tokens per second | 6.0 tokens per second | 3 times faster in total |
+| `shard_count` = 3 consumers | 3 | 19.4 tokens per second | 6.5 tokens per second | very slightly slower in total |
 
-Sharding converts latency into throughput, and only under concurrent load. Over WebRTC between homes, `network_latency` is larger than `model_compute_time`, so the network and not the compute sets the token rate. No single stream is ever faster on the sharded cluster than on one machine that can hold the whole model.
+Sharding converts latency into throughput, and only under concurrent load. Over WebRTC between homes, `network_latency` is twice `model_compute_time`, so the network and not the compute sets the token rate. No single stream is ever faster on the sharded cluster than on one machine that can hold the whole model.
 
 ---
 

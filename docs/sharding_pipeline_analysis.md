@@ -1,6 +1,6 @@
 # Analysis of the Sharding Pipeline Performance Document
 
-This document reviews [sharding_pipeline_performance.md](sharding_pipeline_performance.md). It does not repeat that document's derivations. It records one arithmetic error, one framing that must be dropped, and four effects that dominate the real cluster and are missing.
+This document reviews [sharding_pipeline_performance.md](sharding_pipeline_performance.md). It does not repeat that document's derivations. It records one arithmetic error, since corrected in that document, one framing that must be dropped, and four effects that dominate the real cluster and are missing.
 
 ---
 
@@ -37,9 +37,9 @@ Together these make the figure of merit a single number: **the `cluster_throughp
 
 ---
 
-## Finding 1 — The hop count is wrong: `hop_count` equals `shard_count`, not `shard_count - 1`
+## Finding 1 — The hop count was wrong: `hop_count` equals `shard_count`, not `shard_count - 1`
 
-This is an arithmetic error, independent of the scope question.
+**This one is fixed. The performance document now carries the corrected arithmetic, and the numbers quoted in the rest of this analysis match it.** The finding is kept here as the record of what changed.
 
 Decoding is a ring, not a line. The last shard produces token `n`, and that token must travel back to the first shard before token `n + 1` can start. The loop closes, so a three-shard pipeline pays **three** hops per token, not two.
 
@@ -50,22 +50,24 @@ token_latency = model_compute_time + shard_count × hop_latency
               = 155 milliseconds
 ```
 
-not the 120 milliseconds the performance document gives. Consequences:
+not the 120 milliseconds the performance document originally gave. What the correction moved:
 
-| Quantity | Performance document | Corrected |
+| Quantity | Before the correction | After |
 |---|---|---|
+| `network_latency` | 70 milliseconds | 105 milliseconds |
 | `token_latency` | 120 milliseconds | 155 milliseconds |
 | Rate of a single stream | 8.3 tokens per second | 6.5 tokens per second |
 | `fill_request_count` | 8 | 10 |
 | Share of the token spent on the network | 58 percent | 68 percent |
+| Three consumers, one request each | 25 tokens per second, a gain over one machine | 19.4 tokens per second, a loss against one machine |
 
-Under batch load the change in the first two rows costs nothing that anyone feels. The change in `fill_request_count` is the one that matters, for the reason given in finding 3.
+Under batch load the first three rows cost nothing that anyone feels. The change in `fill_request_count` is the one that matters, for the reason given in finding 3.
 
 ---
 
 ## Finding 2 — The single-machine baseline must be removed, not corrected
 
-Because the model does not fit on one machine, a `single_machine_rate` of 20 tokens per second describes something that cannot be run. Every entry in the performance document's final column — "2.4 times slower", "1.25 times faster in total" — measures against a machine that does not exist. It reads as a verdict of failure on what is in fact the only working configuration.
+Because the model does not fit on one machine, a `single_machine_rate` of 20 tokens per second describes something that cannot be run. Every entry in the performance document's final column — "3.1 times slower", "very slightly slower in total" — measures against a machine that does not exist. It reads as a verdict of failure on what is in fact the only working configuration.
 
 The honest comparisons are:
 
@@ -78,7 +80,7 @@ Against the second, 6.5 tokens per second for an otherwise unrunnable model is a
 
 ## Finding 3 — The key-value cache caps the requests in flight, and this is the binding limit
 
-The performance document treats `request_count` as a free choice — "the consumer reaches the full rate only when it is willing to run 8 requests at the same time". Under batch load the queue is deep by assumption, so willingness is never the constraint. **Memory is.**
+The performance document treats `request_count` as a free choice — "the consumer reaches the full rate only when it is willing to run 10 requests at the same time". Under batch load the queue is deep by assumption, so willingness is never the constraint. **Memory is.**
 
 Sharding was forced by the weights not fitting. Whatever `free_memory` remains after the weights must then hold a key-value cache for every request in flight, on every shard, growing with `context_length`:
 
@@ -95,7 +97,7 @@ For a model of about 2 billion parameters with a `layer_count` of 28, the answer
 | Grouped-query attention, 4 key-value heads of 128 | 512 | 57 kilobytes | about 235 megabytes | about 78 megabytes |
 | Full multi-head attention | 2048 | 229 kilobytes | about 940 megabytes | about 313 megabytes |
 
-With a `free_memory` of 2 gigabytes on each machine, and a corrected `fill_request_count` of 10:
+With a `free_memory` of 2 gigabytes on each machine, and a `fill_request_count` of 10:
 
 ```text
 memory_request_count = free_memory / shard_cache_size
@@ -106,7 +108,7 @@ memory_request_count = free_memory / shard_cache_size
 
 The same cluster either reaches its ceiling or misses it by a third, decided entirely by the attention style and the `context_length`. At a `context_length` of 16384 the grouped-query attention case also falls to a `memory_request_count` of about 6.
 
-There is an unpleasant interaction with finding 1. A higher `hop_latency` raises `fill_request_count`, and those extra requests cost memory the cluster does not have. **Slow links and small memory fail together**, and the performance document, by undercounting `hop_count`, understates both halves.
+There is an unpleasant interaction with finding 1. A higher `hop_latency` raises `fill_request_count`, and those extra requests cost memory the cluster does not have. **Slow links and small memory fail together**, which is why the `hop_count` correction of finding 1 matters here and nowhere else.
 
 ---
 
@@ -158,7 +160,9 @@ The note worth keeping is that a cluster built for batch work must not be presen
 
 ---
 
-## Corrected results
+## Results under the batch scope
+
+These agree with the performance document now that finding 1 is applied there. What they add is the `memory_request_count` row, which the performance document does not model at all.
 
 With `shard_count` = 3, `shard_compute_time` = 16.7 milliseconds, `hop_latency` = 35 milliseconds, `hop_count` = 3, and a `batch_size` of 1:
 
@@ -169,7 +173,7 @@ With `shard_count` = 3, `shard_compute_time` = 16.7 milliseconds, `hop_latency` 
 | 10 | 60 tokens per second, the ceiling | grouped-query attention with a short `context_length` |
 | more than 10 | 60 tokens per second, plus queueing | no further gain without raising `batch_size` |
 
-For batch work the cluster is a reasonable machine: about 60 tokens per second on a model no single member could load at all. Reaching that needs a `request_count` of 10 rather than the 8 the performance document gives, and whether the memory holds 10 is decided by the attention style and the `context_length`. The network costs 105 of the 155 milliseconds of `token_latency`, which nobody feels directly, but which reappears as the memory needed to hide it.
+For batch work the cluster is a reasonable machine: about 60 tokens per second on a model no single member could load at all. Reaching that needs a `request_count` of 10, and whether the memory holds 10 is decided by the attention style and the `context_length`. The network costs 105 of the 155 milliseconds of `token_latency`, which nobody feels directly, but which reappears as the memory needed to hide it.
 
 ---
 
