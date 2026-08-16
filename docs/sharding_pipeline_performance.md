@@ -1,12 +1,12 @@
-# Cost of Model Sharding — Usage Patterns Over WebRTC
+# Cost of Model Sharding — Pipeline Performance
 
-This document continues [sharding_pipeline_throughput.md](sharding_pipeline_throughput.md). The other document derives the ideal aggregate throughput of a sharded model. This document asks a different question: what does a consumer actually get, when the machines are individual computers in private homes connected to each other with WebRTC?
+A model is split across several machines, one shard per machine, and the machines are personal computers in separate homes joined by WebRTC data channels. This document works out what that costs and what it buys.
 
-Three usage patterns are examined:
+It has three parts:
 
-- one consumer, sending one request after the other
-- one consumer, sending several requests in parallel
-- `S` consumers, each sending one request at a time
+- the ideal pipeline model, which ignores communication and gives the well-known result that `S` shards reach `S` times the throughput of one machine
+- the estimation of the real communication latency between two homes, and the assumptions behind it
+- what a consumer actually receives, for three usage patterns
 
 ---
 
@@ -22,32 +22,94 @@ Three usage patterns are examined:
 | `L_total` | total communication latency per token, equal to `H × L` |
 | `P` | number of independent requests in flight at the same time |
 | `T_single` | token rate of one unsharded machine, equal to `1 / C` |
+| `T_token` | latency of one token through the whole pipeline |
+| `T_aggregate` | token rate of the whole cluster, counting every request together |
 
 ---
 
-## How we estimate the compute time per token
+## Part 1 — The ideal pipeline model
 
-The compute time per token comes from a measurement, not from a model of the hardware. One machine runs the whole model and reports its token rate:
+### Setup
+
+A model runs on one machine at:
 
 \[
 T_{\text{single}} = 20 \text{ tokens per second}
-\qquad\Rightarrow\qquad
-C = \frac{1}{T_{\text{single}}} = 50 \text{ milliseconds per token}
 \]
 
-Sharding the model evenly across `S` machines divides that compute:
+so the compute time per token on that one machine is:
 
 \[
-C_i = \frac{C}{S}
-\qquad\Rightarrow\qquad
-C_i = \frac{50}{3} \approx 16.7 \text{ milliseconds per token}
+C = \frac{1}{T_{\text{single}}} = \frac{1}{20} = 50 \text{ milliseconds per token}
 \]
 
-This is the decode phase only, one token at a time. The prefill phase, which processes the whole prompt in one pass, is not covered here.
+Now shard the model evenly across `S` identical machines. For `S = 3`, if the compute is perfectly balanced:
+
+\[
+C_1 = C_2 = C_3 = \frac{C}{3} \approx 16.7 \text{ milliseconds}
+\]
+
+Ignoring communication, the latency of one token is unchanged, because the three shards run one after the other:
+
+\[
+C_1 + C_2 + C_3 = C = 50 \text{ milliseconds}
+\]
+
+### Network latency
+
+Let `L_12` be the communication latency from machine 1 to machine 2, and `L_23` from machine 2 to machine 3. For one request, the latency of one token becomes:
+
+\[
+T_{\text{latency}} = C_1 + L_{12} + C_2 + L_{23} + C_3
+\]
+
+So sharding increases **per-request latency**.
+
+### Full pipeline
+
+With enough independent requests in flight, the three machines can work at the same time:
+
+```text
+time →
+
+m1:  R1   R2   R3   R4   R5 ...
+      ↓    ↓    ↓    ↓
+m2:       R1   R2   R3   R4 ...
+           ↓    ↓    ↓
+m3:            R1   R2   R3 ...
+```
+
+Once the pipeline is full, the output rate is set by the slowest shard:
+
+\[
+T_{\text{aggregate}} \approx \frac{1}{\max(C_1, C_2, \ldots, C_S)}
+\]
+
+For perfectly balanced shards, `C_i = C / S`, therefore:
+
+\[
+T_{\text{aggregate}} \approx \frac{S}{C} = S \times T_{\text{single}}
+\]
+
+For `S = 3` and `T_single = 20` tokens per second, that is **60 tokens per second**.
+
+### The ideal result
+
+With balanced shards and enough concurrent requests to keep the pipeline full, the aggregate throughput is about `S` times the single-machine throughput: `S` sharded machines behave approximately like one machine that is `S` times faster. Against that, the per-request latency increases.
+
+Network latency can be hidden by pipeline concurrency — **as long as communication does not become the bottleneck itself**. The rest of this document measures how far from that condition a cluster of home machines actually sits.
 
 ---
 
-## How we estimate the latency between two machines
+## Part 2 — Estimating the real numbers
+
+### How we estimate the compute time per token
+
+The compute time per token comes from a measurement, not from a model of the hardware. One machine runs the whole model and reports its token rate, which gives `C = 50` milliseconds, and dividing by `S` gives `C_i ≈ 16.7` milliseconds.
+
+This is the decode phase only, one token at a time. The prefill phase, which processes the whole prompt in one pass, is not covered here.
+
+### How we estimate the latency between two machines
 
 The two machines are personal computers in two different homes, joined by a WebRTC data channel. The latency of one hop is the sum of several parts, and each part is estimated separately.
 
@@ -78,9 +140,7 @@ H = S - 1 = 2
 L_{\text{total}} = 70 \text{ milliseconds}
 \]
 
----
-
-## How we estimate the throughput between two machines
+### How we estimate the throughput between two machines
 
 What travels between two shards is the hidden state of a single token. Its size is:
 
@@ -102,9 +162,7 @@ On a home upload link of 20 megabits per second, the time to put those 4 kilobyt
 
 The conclusion is that bandwidth is not the limit. The payload is small, the serialization time is a rounding error next to the 35 milliseconds of latency, and the sustained bit rate needed is only `B / T_token`, which is about 270 kilobits per second per stream. **The cost of sharding over WebRTC is latency, not bandwidth.**
 
----
-
-## Assumptions
+### Assumptions
 
 These estimates hold only while the following assumptions hold. Each one is stated with what happens when it breaks.
 
@@ -120,7 +178,9 @@ These estimates hold only while the following assumptions hold. Each one is stat
 
 ---
 
-## The two formulas
+## Part 3 — What a consumer receives
+
+### The two formulas
 
 The latency of one token, through the whole pipeline:
 
@@ -153,9 +213,7 @@ P > \frac{T_{\text{token}}}{C} = 2.4
 
 so from **3 requests in flight**.
 
----
-
-## Usage pattern 1 — one consumer, one request after the other
+### Usage pattern 1 — one consumer, one request after the other
 
 Token generation is autoregressive: token `n + 1` cannot start before token `n` is finished. A single sequential request therefore never fills the pipeline. At any moment one machine computes and the other two wait.
 
@@ -165,9 +223,7 @@ T_{\text{aggregate}} = \frac{1}{T_{\text{token}}} = \frac{1}{120 \text{ ms}} \ap
 
 Against 20 tokens per second on one unsharded machine, the cluster is **2.4 times slower**. This usage pattern gains nothing from sharding and pays the whole network cost.
 
----
-
-## Usage pattern 2 — one consumer, several requests in parallel
+### Usage pattern 2 — one consumer, several requests in parallel
 
 The requests are independent, so they can occupy different machines at the same time. Each individual request still runs at 8.3 tokens per second; what grows is the total.
 
@@ -182,9 +238,7 @@ The requests are independent, so they can occupy different machines at the same 
 
 The consumer reaches the full `S × T_single` only when it is willing to run 8 requests at the same time, and only while accepting that every single one of them feels slower than a single unsharded machine.
 
----
-
-## Usage pattern 3 — `S` consumers, one request each
+### Usage pattern 3 — `S` consumers, one request each
 
 This is `P = S = 3`, which is far short of the 8 requests needed to fill the pipeline.
 
@@ -196,9 +250,7 @@ Each consumer sees 8.3 tokens per second. The three machines together produce 25
 
 `S` consumers do not fill an `S`-deep pipeline once the network is counted. The number of consumers needed is `S × T_token / C`, which is `S × 2.4` here.
 
----
-
-## Summary
+### Summary
 
 | Usage pattern | Requests in flight | Aggregate throughput | Per-request rate | Against one unsharded machine |
 |---|---|---|---|---|
