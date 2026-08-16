@@ -160,7 +160,9 @@ Before this, those runs returned HTTP 200 carrying an empty string, which a clie
 
 `parameters.temperature` now passes, where the 2026-08-15 run skipped it and a later 2026-08-16 run failed it. It stopped being skipped because [`5be8998`](https://github.com/webai-at-home/webai-at-home/commit/5be8998) added it to this task type's generation control contract, so it is attempted rather than refused; whether it then meets the runaway is luck.
 
-None of this makes the model able to answer a plain two-turn question. A consumer that knows to send `reasoning_effort: "none"` gets an answer; one that sends nothing gets a clear failure. Whether the cluster should keep offering a model on those terms is the question [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192) leaves open.
+None of this makes the model able to answer a plain two-turn question. A consumer that knows to send `reasoning_effort: "none"` gets an answer; one that sends nothing gets a clear failure.
+
+The cluster goes on offering `llm_qwen3_5_0_8b_full` on those terms, decided on [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192). A model that answers when asked properly and fails loudly when not is worth offering; it was the silent empty answer that was not, and that is gone. This is written down so the two ❌ rows above are not read as an oversight: they are a model's limitation, stated.
 
 ### Two gaps in LM Studio, which `consumer_openai` does not share
 
