@@ -131,7 +131,7 @@ A caller that hangs up mid-answer is told nothing, because the connection it wou
 
 ## The generation controls — `temperature`, `top_p`, `max_completion_tokens`, `stop`, `seed`, and `reasoning_effort`
 
-These six fields of a request are read and carried to the cluster, for whichever models honour them. `max_completion_tokens` is a budget for the whole answer rather than for one stage run, and its older spelling `max_tokens` is accepted too; a request that sends both means the newer one. `stop` is accepted as either one piece of text or a list of up to four, and is applied where the tokens are produced rather than by this server dropping pieces of the answer as it forwards them, since a stop sequence can straddle two pieces. `reasoning_effort` says how much of its output budget a model that thinks before it answers may spend on thinking, and is one of `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
+These six fields of a request are read and carried to the cluster, for whichever models honour them. `max_completion_tokens` is a budget for the whole answer rather than for one stage run, and its older spelling `max_tokens` is accepted too; a request that sends both means the newer one. `stop` is accepted as either one piece of text or a list of up to four, and is applied where the tokens are produced rather than by this server dropping pieces of the answer as it forwards them, since a stop sequence can straddle two pieces. `reasoning_effort` says how much of its output budget a model that thinks before it answers may spend on thinking, and is one of `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. A model that thinks and never stops thinking spends its whole budget without writing an answer; that is a 502 naming what happened, never an HTTP 200 carrying an empty answer.
 
 What each model honours was observed live, by the de-risk gates of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196) and [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192), rather than taken from what an engine documents:
 
@@ -183,7 +183,7 @@ Every failure is answered with the OpenAI error shape, `{ "error": { "message", 
 | The request names a model this server does not offer | 404 | `model_not_found` |
 | This server already has as many tasks in flight as it holds at once | 429 | `too_many_tasks_in_flight` |
 | The central gateway refused the submission because this server has reached its own task limit | 429 | `gateway_rate_limited` |
-| The cluster ran the task and the task failed | 502 | `task_failed` |
+| The cluster ran the task and the task failed, which includes a model that generated its whole output budget without writing any answer text | 502 | `task_failed` |
 | The task completed but its result carried no text | 502 | `answer_unreadable` |
 | No volunteer browser offered the work before the gateway's submission deadline | 503 | `no_volunteer_available` |
 | No connected worker runs the stages the chosen model needs, so the gateway refused the task at once | 503 | `model_has_no_connected_worker` |

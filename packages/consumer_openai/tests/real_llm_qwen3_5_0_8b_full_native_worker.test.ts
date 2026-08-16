@@ -144,6 +144,34 @@ NodeTest.test('answers a history that otherwise runs away, once the consumer ask
 	Assert.notEqual(completion.choices[0]?.finish_reason, 'length');
 });
 
+NodeTest.test('says the answer never began, rather than answering with an empty string, when nothing is asked for', {
+	timeout: 900_000,
+}, async () => {
+	const client = new OpenAI({
+		baseURL: `${realTestHelper.openaiUrl}/v1`,
+		apiKey: 'no-key-required',
+		maxRetries: 0,
+		timeout: 900_000,
+	});
+	// The same history, with no thinking budget asked for, is the runaway this issue opened with.
+	// Before milestone 2 this returned HTTP 200 with `content: ""`, which a caller cannot tell apart
+	// from a model that genuinely had nothing to say. It now fails and says what happened.
+	//
+	// This run generates the model's whole output budget before it can fail, so it is slow by
+	// nature: the local server took about a minute to reach 8153 tokens when this was measured.
+	await Assert.rejects(
+		async () => await client.chat.completions.create({
+			model: 'llm_qwen3_5_0_8b_full',
+			messages: runawayHistory,
+		}),
+		(error: unknown) => {
+			const message = (error as Error).message;
+			Assert.match(message, /without writing any answer text/);
+			return true;
+		},
+	);
+});
+
 NodeTest.test('refuses a thinking budget for a model that never thinks, rather than accepting it and dropping it', {
 	timeout: 300_000,
 }, async () => {

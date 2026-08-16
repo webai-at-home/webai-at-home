@@ -242,6 +242,7 @@ export class LocalServerGeneration {
 			if (toolCalls.length > 0) {
 				return StagePayloadFactory.llmToolCalls(toolCalls, this.usageOf(state.usage));
 			}
+			this.refuseAnswerThatRanOutBeforeItBegan(state);
 			return StagePayloadFactory.llmDone(state.text, undefined, this.usageOf(state.usage));
 		} finally {
 			if (leavesAnswerOpen === false) {
@@ -467,6 +468,47 @@ export class LocalServerGeneration {
 	 * @throws If a tool call's arguments are not a JSON object, since a call that could not be read
 	 * is a failed stage rather than a call passed on half-formed.
 	 */
+	/**
+	 * Fails the stage when the local server reached its output limit without ever writing any answer
+	 * text, rather than reporting the empty answer as a finished one.
+	 *
+	 * A consumer receiving HTTP 200 with an empty answer cannot tell that apart from a model that
+	 * genuinely had nothing to say. This is the one case where the two can be told apart from the
+	 * outside: the model was still generating when its budget ran out, so it had more to say and no
+	 * room to say it, and calling that a finished answer is the fault
+	 * `generation_control_support.ts` calls the worst of the three — an answer produced some other
+	 * way, reported as though nothing went wrong.
+	 *
+	 * What produces it in practice is a model that thinks before it answers and never stops
+	 * thinking. Qwen3.5-0.8B spent all 8153 tokens of an 8192-token context reasoning about a plain
+	 * two-turn question and wrote no answer at all, and raising the context window to 32768 only
+	 * bought 32731 reasoning tokens and the same empty answer. See
+	 * https://github.com/webai-at-home/webai-at-home/issues/192. The cause is upstream of this
+	 * project, and the silence was not: this method is what ends the silence.
+	 *
+	 * An empty answer that ended any other way is left alone. A model that stopped of its own accord
+	 * having written nothing has said what it had to say, and a run that ends with a tool call
+	 * writes no answer text by design — that one never reaches here, being returned before this is
+	 * called.
+	 *
+	 * @param state The answer this run has finished reading.
+	 * @throws If the answer holds no text and the local server reported it stopped at its output
+	 * limit.
+	 */
+	private refuseAnswerThatRanOutBeforeItBegan(state: TaskGenerationState): void {
+		if (state.text !== '') {
+			return;
+		}
+		if (state.usage?.finishReason !== 'length') {
+			return;
+		}
+		const completionTokenCount = state.usage.completionTokenCount;
+		const generated = completionTokenCount === undefined
+			? 'every token it was allowed'
+			: `all ${completionTokenCount} tokens it was allowed`;
+		throw new Error(`The model generated ${generated} without writing any answer text, and stopped because it ran out of room rather than because it had finished. A model that thinks before it answers can do this by never finishing thinking; asking for reasoning_effort "none" stops it.`);
+	}
+
 	private toolCallsOf(toolCalls: ChatCompletionStreamToolCalls | undefined): ToolCall[] {
 		if (toolCalls === undefined) {
 			return [];

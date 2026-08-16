@@ -422,6 +422,46 @@ Test('translates a "length" finish reason into "max_new_tokens", and reports no 
 	Assert.deepEqual(unknownResult, { text: 'hi', done: true });
 });
 
+Test('fails the stage when the local server ran out of room before writing any answer text', async () => {
+	// The defect of [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192), as the
+	// local server reports it: no text at all, and `finish_reason: length` because the model was
+	// still generating when its budget ran out. Qwen3.5-0.8B does this by thinking about a plain
+	// two-turn question until all 8153 tokens of an 8192-token context are gone.
+	const { client } = fakeChatClient([], { promptTokenCount: 37, completionTokenCount: 8153, finishReason: 'length' });
+	await Assert.rejects(
+		async () => await StageHelperLlmQwen3_5_0_8bFull.compute(
+			'task-empty-length', 'assignment-empty-length', { text: 'What is my name?' }, undefined, client, 'qwen_qwen3.5-0.8b',
+		),
+		(error: unknown) => {
+			// The message says how many tokens went nowhere and what to ask for instead, because a
+			// consumer reading it has no other way to find out either.
+			Assert.match((error as Error).message, /all 8153 tokens/);
+			Assert.match((error as Error).message, /reasoning_effort "none"/);
+			return true;
+		},
+	);
+});
+
+Test('still reports an empty answer the model ended of its own accord, which says something an interrupted one does not', async () => {
+	// `finish_reason: stop` with no text is a model that had nothing to say, which is an answer.
+	// Only running out of room mid-generation says the model had more to say and no room to say it.
+	const { client } = fakeChatClient([], { promptTokenCount: 12, completionTokenCount: 0, finishReason: 'stop' });
+	const result = await StageHelperLlmQwen3_5_0_8bFull.compute(
+		'task-empty-stop', 'assignment-empty-stop', { text: 'Say nothing at all.' }, undefined, client, 'qwen_qwen3.5-0.8b',
+	);
+	Assert.deepEqual(result, { text: '', done: true, promptTokenCount: 12, completionTokenCount: 0, stopReason: 'end_of_sequence' });
+});
+
+Test('still reports an answer that ran out of room after writing something, since that answer is real as far as it goes', async () => {
+	// `max_completion_tokens: 1` ends a perfectly good answer at its limit. Only an answer that
+	// never began is refused.
+	const { client } = fakeChatClient(['In'], { promptTokenCount: 12, completionTokenCount: 1, finishReason: 'length' });
+	const result = await StageHelperLlmQwen3_5_0_8bFull.compute(
+		'task-short-length', 'assignment-short-length', { text: 'Write a long story.' }, undefined, client, 'qwen_qwen3.5-0.8b',
+	);
+	Assert.deepEqual(result, { text: 'In', done: true, promptTokenCount: 12, completionTokenCount: 1, stopReason: 'max_new_tokens' });
+});
+
 Test('reads one piece per run, and joins them across a continuation, when asked for pieces', async () => {
 	const { client } = fakeChatClient(['Paris', ' is', ' the capital.']);
 	const first = await StageHelperLlmLlama3_2_1bFull.compute(
