@@ -31,7 +31,11 @@ A refusal is never a failure. An endpoint that says "I cannot do this" is behavi
 
 ## What was measured
 
-Four targets, all on 2026-08-15, with the `full` profile. Two later runs are folded in, and both are on 2026-08-16. `consumer_openai` running `llm_qwen3_5_0_8b_full` was measured again in full after [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190) was fixed, and its column carries that later run. Then the two `structured_output` rows of both `consumer_openai` columns were measured again after [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191) was fixed, with the `structured_output` profile. The two LM Studio columns are the 2026-08-15 run throughout, so a row that changed in a re-measured column is no longer a same-day comparison with the LM Studio control beside it.
+Four targets, first measured on 2026-08-15 with the `full` profile. Later runs are folded in, all on 2026-08-16.
+
+The two qwen columns were both measured again in full on 2026-08-16, after [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192) was worked through, so those two are a same-day pair and the comparison between them holds. The two llama columns are the 2026-08-15 run, except for the two `structured_output` rows of `consumer_openai` llama, measured again on 2026-08-16 with the `structured_output` profile after [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191) was fixed. So a qwen column is no longer a same-day comparison with the llama column beside it.
+
+Both LM Studio columns were served by LM Studio 0.4.20 throughout, so no row moved because that server changed.
 
 - `consumer_openai` running `llm_llama3_2_1b_full`, served by a `worker_openai` forwarding to LM Studio.
 - `consumer_openai` running `llm_qwen3_5_0_8b_full`, served the same way.
@@ -42,11 +46,11 @@ The two LM Studio columns are the control. When a test passes there and fails th
 
 | | `consumer_openai` llama | `consumer_openai` qwen | LM Studio llama | LM Studio qwen |
 | --- | --- | --- | --- | --- |
-| Passed | 18 | 24 | 25 | 24 |
-| Failed | 0 | 3 | 2 | 7 |
+| Passed | 18 | 24 | 25 | 26 |
+| Failed | 0 | 3 | 2 | 5 |
 | Skipped | 14 | 5 | 1 | 1 |
 | Warned | 0 | 0 | 4 | 0 |
-| Compatibility | 100.0% | 88.9% | 80.6% | 77.4% |
+| Compatibility | 100.0% | 88.9% | 80.6% | 83.9% |
 
 Per test:
 
@@ -55,10 +59,10 @@ Per test:
 | `models.list` | ✅ | ✅ | ✅ | ✅ |
 | `chat.basic` | ✅ | ✅ | ✅ | ✅ |
 | `chat.system_message` | ✅ | ✅ | ✅ | ✅ |
-| `chat.multi_turn` | ✅ | ✅ | ✅ | ❌ |
+| `chat.multi_turn` | ✅ | ❌ | ✅ | ✅ |
 | `usage.present` | ✅ | ✅ | ✅ | ✅ |
 | `usage.total_is_sum` | ✅ | ✅ | ✅ | ✅ |
-| `errors.unknown_model` | ✅ | ✅ | ❌ | ❌ |
+| `errors.unknown_model` | ✅ | ✅ | ❌ | ✅ |
 | `errors.malformed_json` | ✅ | ✅ | ✅ | ✅ |
 | `errors.missing_messages` | ✅ | ✅ | ❌ | ❌ |
 | `streaming.headers` | ✅ | ✅ | ✅ | ✅ |
@@ -73,13 +77,13 @@ Per test:
 | `tools.chooses_among_several_tools` | ⊘ | ✅ | ⚠️ | ✅ |
 | `tools.reads_a_tool_result_back` | ⊘ | ✅ | ✅ | ✅ |
 | `tools.answers_without_a_call_when_none_is_needed` | ⊘ | ✅ | ✅ | ✅ |
-| `parameters.temperature` | ⊘ | ❌ | ✅ | ✅ |
+| `parameters.temperature` | ⊘ | ✅ | ✅ | ❌ |
 | `parameters.top_p` | ⊘ | ⊘ | ✅ | ✅ |
 | `parameters.max_completion_tokens` | ⊘ | ❌ | ✅ | ❌ |
 | `parameters.stop` | ⊘ | ❌ | ✅ | ❌ |
 | `parameters.seed` | ⊘ | ⊘ | ✅ | ❌ |
 | `structured_output.json_object` | ⊘ | ⊘ | ⊘ | ⊘ |
-| `structured_output.json_schema` | ⊘ | ⊘ | ✅ | ❌ |
+| `structured_output.json_schema` | ⊘ | ⊘ | ✅ | ✅ |
 | `sdk.node.models_list` | ✅ | ✅ | ✅ | ✅ |
 | `sdk.node.basic` | ✅ | ✅ | ✅ | ✅ |
 | `sdk.node.streaming` | ✅ | ✅ | ✅ | ✅ |
@@ -124,30 +128,44 @@ An ignored field also fails at random, which is what made it hard to notice by h
 
 Both `structured_output` rows in both `consumer_openai` columns are therefore ⊘ rather than ❌ or ⚠️, re-measured on 2026-08-16, and they are steady rather than changing from run to run. `@webai/protocol`'s `StructuredOutputSupport` is what a shape has to be entered into for that to change.
 
-### `llm_qwen3_5_0_8b_full` answers plain questions with nothing at all
+### `llm_qwen3_5_0_8b_full` thinks until its budget is gone, and never begins an answer
 
-`chat.multi_turn` failed on this model on 2026-08-15 both through `consumer_openai` and against LM Studio directly, so the cause is upstream of this project. The mechanism is visible in one request:
+This model thinks before it answers, and on some questions it never stops thinking. One request against LM Studio directly, no cluster involved:
 
 ```
 finish_reason: length
 usage: prompt_tokens 37, completion_tokens 8153, total_tokens 8190
 completion_tokens_details: reasoning_tokens 8153
 content: ''
-reasoning_content: 29935 characters
 ```
 
-Every one of the 8153 generated tokens is a reasoning token. The model thinks until the 8192-token context is exhausted and never reaches an answer, so `content` arrives empty with `finish_reason: length`. The same runaway explains this model's failures on `parameters.max_completion_tokens`, `parameters.stop`, `parameters.seed`, and `structured_output.json_schema`.
+Every one of the 8153 generated tokens is a reasoning token. The thinking is stripped out of `content`, and what is left is empty. The cause is upstream of this project: it reproduces against LM Studio directly, and it reproduced again in a browser tab on a different engine, where the model ran to a 2048-token cap in 63.8 seconds without ever closing its thinking block. See [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
 
-The root cause is the model and its context window rather than any code here, but the cluster offers this model, and a client asking it a two-turn question receives an empty answer.
+It is a runaway rather than a certainty, so which tests it takes down moves between runs. `chat.multi_turn` failed on both qwen targets on 2026-08-15; on 2026-08-16 it failed through `consumer_openai` and passed against LM Studio, same model, same question, same day.
 
-It is a runaway rather than a certainty, so which tests it takes down varies between runs. On the 2026-08-16 re-measurement of the `consumer_openai` qwen column, `chat.multi_turn` passed.
+Two ways out were tried on 2026-08-16 and both failed, so neither is an open option any more:
 
-That same column now fails `parameters.temperature`, `parameters.max_completion_tokens`, and `parameters.stop` with "the endpoint returned no answer text", where the 2026-08-15 run skipped all five `parameters` tests. Those three stopped being skipped because [`5be8998`](https://github.com/webai-at-home/webai-at-home/commit/5be8998) added them to this task type's generation control contract, so they are now attempted rather than refused — and what they run into is this same runaway. They were measured against a `worker_openai` built from the commit before [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190) was fixed as well as after, and failed identically both times, so they belong to the runaway and not to that fix.
+- **Raising the context window does not work.** Reloaded at 32768 tokens, the same question produced 32731 reasoning tokens and the same empty answer. The thinking expands to fill whatever room it is given.
+- **`chat_template_kwargs` is dropped by LM Studio.** The model's own chat template does read `enable_thinking`, but sending `true`, sending `false`, and sending nothing all produced the same behaviour.
+
+What does work is `reasoning_effort`, which LM Studio does read: `"none"` takes the reasoning token count to zero and returns a finished answer in 42 tokens, while `"low"` and `"medium"` both still run away. It is now a consumer-set control carried from a request through to the local server, which is why the refusals in the `consumer_openai` qwen column for `parameters.top_p` and `parameters.seed` now name it among the controls this model honours.
+
+**The remaining failures are the runaway, and they are now stated rather than hidden.** `chat.multi_turn` and `parameters.max_completion_tokens` fail in the `consumer_openai` qwen column with an explicit HTTP 502:
+
+> The cluster could not finish this task: The model generated all 8149 tokens it was allowed without writing any answer text, and stopped because it ran out of room rather than because it had finished. A model that thinks before it answers can do this by never finishing thinking; asking for reasoning_effort "none" stops it.
+
+Before this, those runs returned HTTP 200 carrying an empty string, which a client cannot tell apart from a model that genuinely had nothing to say. A ❌ that says what happened is not the same defect as a ❌ that says nothing — and the four LM Studio `parameters` failures beside it, still reported as "the endpoint returned no answer text", are what the old behaviour looks like from the outside.
+
+`parameters.stop` is the one qwen failure in that column that is not this. It returns an empty answer having ended on its stop sequence rather than at its limit, and a model that stopped of its own accord is reported as it stands rather than failed.
+
+`parameters.temperature` now passes, where the 2026-08-15 run skipped it and a later 2026-08-16 run failed it. It stopped being skipped because [`5be8998`](https://github.com/webai-at-home/webai-at-home/commit/5be8998) added it to this task type's generation control contract, so it is attempted rather than refused; whether it then meets the runaway is luck.
+
+None of this makes the model able to answer a plain two-turn question. A consumer that knows to send `reasoning_effort: "none"` gets an answer; one that sends nothing gets a clear failure. Whether the cluster should keep offering a model on those terms is the question [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192) leaves open.
 
 ### Two gaps in LM Studio, which `consumer_openai` does not share
 
-- `errors.unknown_model`: LM Studio answers HTTP 200 for a model it was never told about, instead of refusing.
-- `errors.missing_messages`: it returns HTTP 400 with `{"error":"'messages' field is required"}` — a bare string where the OpenAI protocol puts an object with `message`, `type`, `param`, and `code`.
+- `errors.unknown_model`: LM Studio answered HTTP 200 for a model it was never told about, instead of refusing. Both LM Studio columns recorded that on 2026-08-15, and the 2026-08-16 qwen run passed it, on the same LM Studio 0.4.20. Nothing observed here explains the difference, so nothing is claimed about it.
+- `errors.missing_messages`: it returns HTTP 400 with `{"error":"'messages' field is required"}` — a bare string where the OpenAI protocol puts an object with `message`, `type`, `param`, and `code`. Unchanged in every LM Studio run.
 
 `consumer_openai` passes both. These belong to LM Studio and are recorded here only because the comparison would otherwise look like this project's doing.
 
