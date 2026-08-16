@@ -4,26 +4,31 @@ A model is split across several machines, one shard per machine, and the machine
 
 It has three parts:
 
-- the ideal pipeline model, which ignores communication and gives the well-known result that `S` shards reach `S` times the throughput of one machine
+- the ideal pipeline model, which ignores communication and gives the well-known result that `shard_count` shards reach `shard_count` times the throughput of one machine
 - the estimation of the real communication latency between two homes, and the assumptions behind it
 - what a consumer actually receives, for three usage patterns
 
 ---
 
-## Symbols
+## Variables
 
-| Symbol | Meaning |
+| Variable | Meaning |
 |---|---|
-| `S` | number of shards, one shard per machine |
-| `C` | compute time for one token on a single unsharded machine |
-| `C_i` | compute time for one token on shard `i`, equal to `C / S` when balanced |
-| `L` | one-way communication latency across one hop, from one machine to the next |
-| `H` | number of hops per token, equal to `S - 1` |
-| `L_total` | total communication latency per token, equal to `H × L` |
-| `P` | number of independent requests in flight at the same time |
-| `T_single` | token rate of one unsharded machine, equal to `1 / C` |
-| `T_token` | latency of one token through the whole pipeline |
-| `T_aggregate` | token rate of the whole cluster, counting every request together |
+| `shard_count` | number of shards, one shard per machine |
+| `model_compute_time` | compute time for one token on a single unsharded machine |
+| `shard_compute_time` | compute time for one token on one shard, equal to `model_compute_time / shard_count` when balanced |
+| `hop_latency` | one-way communication latency across one hop, from one machine to the next |
+| `hop_count` | number of hops per token, equal to `shard_count - 1` |
+| `network_latency` | total communication latency per token, equal to `hop_count × hop_latency` |
+| `request_count` | number of independent requests in flight at the same time |
+| `single_machine_rate` | token rate of one unsharded machine, equal to `1 / model_compute_time` |
+| `token_latency` | latency of one token through the whole pipeline |
+| `cluster_throughput` | token rate of the whole cluster, counting every request together |
+| `payload_size` | bytes of hidden state sent between two shards, for one token |
+| `hidden_dimension` | width of the hidden state of the model |
+| `element_size` | bytes per element of the hidden state |
+| `upload_bandwidth` | upload speed of a home internet link |
+| `serialization_time` | time to put one payload on the wire |
 
 ---
 
@@ -33,35 +38,42 @@ It has three parts:
 
 A model runs on one machine at:
 
-\[
-T_{\text{single}} = 20 \text{ tokens per second}
-\]
+```text
+single_machine_rate = 20 tokens per second
+```
 
 so the compute time per token on that one machine is:
 
-\[
-C = \frac{1}{T_{\text{single}}} = \frac{1}{20} = 50 \text{ milliseconds per token}
-\]
+```text
+model_compute_time = 1 / single_machine_rate
+                   = 1 / 20
+                   = 50 milliseconds per token
+```
 
-Now shard the model evenly across `S` identical machines. For `S = 3`, if the compute is perfectly balanced:
+Now shard the model evenly across `shard_count` identical machines. For `shard_count = 3`, if the compute is perfectly balanced:
 
-\[
-C_1 = C_2 = C_3 = \frac{C}{3} \approx 16.7 \text{ milliseconds}
-\]
+```text
+shard_compute_time = model_compute_time / 3
+                   = 16.7 milliseconds
+```
 
 Ignoring communication, the latency of one token is unchanged, because the three shards run one after the other:
 
-\[
-C_1 + C_2 + C_3 = C = 50 \text{ milliseconds}
-\]
+```text
+3 × shard_compute_time = model_compute_time = 50 milliseconds
+```
 
 ### Network latency
 
-Let `L_12` be the communication latency from machine 1 to machine 2, and `L_23` from machine 2 to machine 3. For one request, the latency of one token becomes:
+Let `first_hop_latency` be the communication latency from machine 1 to machine 2, and `second_hop_latency` from machine 2 to machine 3. For one request, the latency of one token becomes:
 
-\[
-T_{\text{latency}} = C_1 + L_{12} + C_2 + L_{23} + C_3
-\]
+```text
+token_latency = shard_compute_time
+              + first_hop_latency
+              + shard_compute_time
+              + second_hop_latency
+              + shard_compute_time
+```
 
 So sharding increases **per-request latency**.
 
@@ -81,21 +93,22 @@ m3:            R1   R2   R3 ...
 
 Once the pipeline is full, the output rate is set by the slowest shard:
 
-\[
-T_{\text{aggregate}} \approx \frac{1}{\max(C_1, C_2, \ldots, C_S)}
-\]
+```text
+cluster_throughput ≈ 1 / max(shard_compute_time over every shard)
+```
 
-For perfectly balanced shards, `C_i = C / S`, therefore:
+For perfectly balanced shards, `shard_compute_time = model_compute_time / shard_count`, therefore:
 
-\[
-T_{\text{aggregate}} \approx \frac{S}{C} = S \times T_{\text{single}}
-\]
+```text
+cluster_throughput ≈ shard_count / model_compute_time
+                   = shard_count × single_machine_rate
+```
 
-For `S = 3` and `T_single = 20` tokens per second, that is **60 tokens per second**.
+For `shard_count = 3` and `single_machine_rate = 20` tokens per second, that is **60 tokens per second**.
 
 ### The ideal result
 
-With balanced shards and enough concurrent requests to keep the pipeline full, the aggregate throughput is about `S` times the single-machine throughput: `S` sharded machines behave approximately like one machine that is `S` times faster. Against that, the per-request latency increases.
+With balanced shards and enough concurrent requests to keep the pipeline full, the cluster throughput is about `shard_count` times the single-machine rate: `shard_count` sharded machines behave approximately like one machine that is `shard_count` times faster. Against that, the per-request latency increases.
 
 Network latency can be hidden by pipeline concurrency — **as long as communication does not become the bottleneck itself**. The rest of this document measures how far from that condition a cluster of home machines actually sits.
 
@@ -105,13 +118,13 @@ Network latency can be hidden by pipeline concurrency — **as long as communica
 
 ### How we estimate the compute time per token
 
-The compute time per token comes from a measurement, not from a model of the hardware. One machine runs the whole model and reports its token rate, which gives `C = 50` milliseconds, and dividing by `S` gives `C_i ≈ 16.7` milliseconds.
+The compute time per token comes from a measurement, not from a model of the hardware. One machine runs the whole model and reports its token rate, which gives `model_compute_time = 50` milliseconds, and dividing by `shard_count` gives `shard_compute_time ≈ 16.7` milliseconds.
 
 This is the decode phase only, one token at a time. The prefill phase, which processes the whole prompt in one pass, is not covered here.
 
 ### How we estimate the latency between two machines
 
-The two machines are personal computers in two different homes, joined by a WebRTC data channel. The latency of one hop is the sum of several parts, and each part is estimated separately.
+The two machines are personal computers in two different homes, joined by a WebRTC data channel. The `hop_latency` of one hop is the sum of several parts, and each part is estimated separately.
 
 | Part of the path | Typical one-way cost | Comment |
 |---|---|---|
@@ -119,57 +132,58 @@ The two machines are personal computers in two different homes, joined by a WebR
 | Wi-Fi, when the machine is not connected with a cable | 3 to 20 milliseconds | also the largest source of jitter |
 | Internet path between the two homes, same country | 5 to 20 milliseconds | |
 | Datagram Transport Layer Security and Stream Control Transmission Protocol, plus browser scheduling | 2 to 5 milliseconds | packetization and the delay before the event loop runs |
-| Serialization of the payload | 1 to 2 milliseconds | see the next section |
+| `serialization_time` of the payload | 1 to 2 milliseconds | see the next section |
 
 Adding the parts gives these one-way totals:
 
-| Situation | One-way latency `L` |
+| Situation | `hop_latency` |
 |---|---|
 | Both machines connected with a cable, same city, direct peer-to-peer connection | 15 to 25 milliseconds |
 | Both machines on Wi-Fi, same country | 30 to 45 milliseconds |
 | The two machines on different continents | 90 to 150 milliseconds |
 | The connection forced through a TURN (Traversal Using Relays around NAT) relay server | add 20 to 60 milliseconds, because the traffic travels from one machine to the relay server and then to the other machine |
 
-The value used through the rest of this document is the ordinary home case:
+The values used through the rest of this document are the ordinary home case:
 
-\[
-L = 35 \text{ milliseconds}
-\qquad
-H = S - 1 = 2
-\qquad
-L_{\text{total}} = 70 \text{ milliseconds}
-\]
+```text
+hop_latency     = 35 milliseconds
+hop_count       = shard_count - 1 = 2
+network_latency = hop_count × hop_latency = 70 milliseconds
+```
 
 ### How we estimate the throughput between two machines
 
 What travels between two shards is the hidden state of a single token. Its size is:
 
-\[
-B = \text{hidden dimension} \times \text{bytes per element}
-\]
+```text
+payload_size = hidden_dimension × element_size
+```
 
-For a model of about 2 billion parameters, the hidden dimension is about 2048, and float16 uses 2 bytes per element:
+For a model of about 2 billion parameters, `hidden_dimension` is about 2048, and float16 gives an `element_size` of 2 bytes:
 
-\[
-B = 2048 \times 2 = 4096 \text{ bytes} = 4 \text{ kilobytes}
-\]
+```text
+payload_size = 2048 × 2
+             = 4096 bytes
+             = 4 kilobytes
+```
 
-On a home upload link of 20 megabits per second, the time to put those 4 kilobytes on the wire is:
+On a home link with an `upload_bandwidth` of 20 megabits per second, the time to put those 4 kilobytes on the wire is:
 
-\[
-\frac{4 \times 8 \times 1000}{20 \times 10^{6}} \approx 1.6 \text{ milliseconds}
-\]
+```text
+serialization_time = (4 × 8 × 1000) / (20 × 10^6)
+                   ≈ 1.6 milliseconds
+```
 
-The conclusion is that bandwidth is not the limit. The payload is small, the serialization time is a rounding error next to the 35 milliseconds of latency, and the sustained bit rate needed is only `B / T_token`, which is about 270 kilobits per second per stream. **The cost of sharding over WebRTC is latency, not bandwidth.**
+The conclusion is that bandwidth is not the limit. The payload is small, the `serialization_time` is a rounding error next to the 35 milliseconds of `hop_latency`, and the sustained bit rate needed is only `payload_size / token_latency`, which is about 270 kilobits per second per stream. **The cost of sharding over WebRTC is latency, not bandwidth.**
 
 ### Assumptions
 
 These estimates hold only while the following assumptions hold. Each one is stated with what happens when it breaks.
 
-1. **The shards are perfectly balanced.** Every shard takes `C / S`. If one machine is slower, the pipeline advances at the slowest shard, and the aggregate throughput falls to `1 / max(C_i)`.
+1. **The shards are perfectly balanced.** Every shard takes `model_compute_time / shard_count`. If one machine is slower, the pipeline advances at the slowest shard, and the cluster throughput falls to `1 / max(shard_compute_time)`.
 2. **The machines are identical.** Personal computers in different homes are not identical in practice. One old machine sets the rate for everybody.
-3. **Communication and compute do not overlap.** A shard waits for the hidden state before it starts. Overlapping the transfer of one request with the compute of another would hide part of `L`, and is not modelled here.
-4. **The latency is a constant `L`, not a distribution.** It is not. Wi-Fi has a long tail, and the pipeline advances at the slowest hop of each token, so the behaviour is closer to the 95th percentile than to the median. A link with a median of 35 milliseconds and a 95th percentile of 120 milliseconds behaves much worse than this document predicts.
+3. **Communication and compute do not overlap.** A shard waits for the hidden state before it starts. Overlapping the transfer of one request with the compute of another would hide part of `hop_latency`, and is not modelled here.
+4. **The `hop_latency` is a constant, not a distribution.** It is not. Wi-Fi has a long tail, and the pipeline advances at the slowest hop of each token, so the behaviour is closer to the 95th percentile than to the median. A link with a median of 35 milliseconds and a 95th percentile of 120 milliseconds behaves much worse than this document predicts.
 5. **The connection is direct, peer to peer.** When a strict router forces the traffic through a TURN relay server, every hop pays the relay detour.
 6. **Only the decode phase is counted.** Prefill, the key-value cache, and the sampling step are ignored.
 7. **The requests are independent.** Two requests in flight never wait on each other. This is true for separate conversations, and false inside one conversation.
@@ -184,32 +198,33 @@ These estimates hold only while the following assumptions hold. Each one is stat
 
 The latency of one token, through the whole pipeline:
 
-\[
-T_{\text{token}} = C + (S - 1) \times L
-\]
+```text
+token_latency = model_compute_time + (shard_count - 1) × hop_latency
+```
 
-With the numbers above: `50 + 70` = **120 milliseconds**, so one stream produces about **8.3 tokens per second**.
+With the numbers above, `50 + 70` = **120 milliseconds**, so one stream produces about **8.3 tokens per second**.
 
-The aggregate throughput, for `P` independent requests in flight:
+The cluster throughput, for `request_count` independent requests in flight:
 
-\[
-T_{\text{aggregate}} = \min\left(\frac{P}{T_{\text{token}}}, \ \frac{S}{C}\right)
-\]
+```text
+cluster_throughput = min(request_count / token_latency,
+                         shard_count / model_compute_time)
+```
 
-The pipeline is full, and the aggregate throughput reaches its ceiling of `S / C`, when:
+The pipeline is full, and the cluster throughput reaches its ceiling of `shard_count / model_compute_time`, when:
 
-\[
-P \ge \frac{S \times T_{\text{token}}}{C}
-= S \times \left(1 + \frac{(S-1) L}{C}\right)
-\]
+```text
+request_count ≥ shard_count × token_latency / model_compute_time
+              = shard_count × (1 + (shard_count - 1) × hop_latency / model_compute_time)
+```
 
-With the numbers above: `3 × 120 / 50` = 7.2, so **8 requests in flight**. Without the network, the same formula gives `S = 3`. The network raises the number of concurrent requests needed to fill the pipeline by the factor `T_token / C`, which is 2.4 here.
+With the numbers above, `3 × 120 / 50` = 7.2, so **8 requests in flight**. Without the network, the same formula gives `shard_count`, which is 3. The network raises the number of concurrent requests needed to fill the pipeline by the factor `token_latency / model_compute_time`, which is 2.4 here.
 
 The cluster beats one single unsharded machine on total throughput only when:
 
-\[
-P > \frac{T_{\text{token}}}{C} = 2.4
-\]
+```text
+request_count > token_latency / model_compute_time = 2.4
+```
 
 so from **3 requests in flight**.
 
@@ -217,9 +232,11 @@ so from **3 requests in flight**.
 
 Token generation is autoregressive: token `n + 1` cannot start before token `n` is finished. A single sequential request therefore never fills the pipeline. At any moment one machine computes and the other two wait.
 
-\[
-T_{\text{aggregate}} = \frac{1}{T_{\text{token}}} = \frac{1}{120 \text{ ms}} \approx 8.3 \text{ tokens per second}
-\]
+```text
+cluster_throughput = 1 / token_latency
+                   = 1 / 120 milliseconds
+                   ≈ 8.3 tokens per second
+```
 
 Against 20 tokens per second on one unsharded machine, the cluster is **2.4 times slower**. This usage pattern gains nothing from sharding and pays the whole network cost.
 
@@ -227,7 +244,7 @@ Against 20 tokens per second on one unsharded machine, the cluster is **2.4 time
 
 The requests are independent, so they can occupy different machines at the same time. Each individual request still runs at 8.3 tokens per second; what grows is the total.
 
-| Requests in flight `P` | Aggregate throughput | Per-request rate |
+| `request_count` | `cluster_throughput` | Per-request rate |
 |---|---|---|
 | 1 | 8.3 tokens per second | 8.3 tokens per second |
 | 2 | 16.7 tokens per second | 8.3 tokens per second |
@@ -236,30 +253,31 @@ The requests are independent, so they can occupy different machines at the same 
 | 8 | 60 tokens per second, the ceiling | 7.5 tokens per second |
 | 16 | 60 tokens per second, the ceiling | 3.8 tokens per second, plus queueing |
 
-The consumer reaches the full `S × T_single` only when it is willing to run 8 requests at the same time, and only while accepting that every single one of them feels slower than a single unsharded machine.
+The consumer reaches the full `shard_count × single_machine_rate` only when it is willing to run 8 requests at the same time, and only while accepting that every single one of them feels slower than a single unsharded machine.
 
-### Usage pattern 3 — `S` consumers, one request each
+### Usage pattern 3 — `shard_count` consumers, one request each
 
-This is `P = S = 3`, which is far short of the 8 requests needed to fill the pipeline.
+This is `request_count = shard_count = 3`, which is far short of the 8 requests needed to fill the pipeline.
 
-\[
-T_{\text{aggregate}} = \frac{3}{120 \text{ ms}} = 25 \text{ tokens per second}
-\]
+```text
+cluster_throughput = 3 / 120 milliseconds
+                   = 25 tokens per second
+```
 
 Each consumer sees 8.3 tokens per second. The three machines together produce 25 tokens per second, against 20 tokens per second for one single unsharded machine — a gain of 25 percent for three times the hardware.
 
-`S` consumers do not fill an `S`-deep pipeline once the network is counted. The number of consumers needed is `S × T_token / C`, which is `S × 2.4` here.
+`shard_count` consumers do not fill a pipeline of `shard_count` shards once the network is counted. The number of consumers needed is `shard_count × token_latency / model_compute_time`, which is `shard_count × 2.4` here.
 
 ### Summary
 
-| Usage pattern | Requests in flight | Aggregate throughput | Per-request rate | Against one unsharded machine |
+| Usage pattern | `request_count` | `cluster_throughput` | Per-request rate | Against one unsharded machine |
 |---|---|---|---|---|
 | One consumer, sequential | 1 | 8.3 tokens per second | 8.3 tokens per second | 2.4 times slower |
 | One consumer, 3 in parallel | 3 | 25 tokens per second | 8.3 tokens per second | 1.25 times faster in total |
 | One consumer, 8 in parallel | 8 | 60 tokens per second | 7.5 tokens per second | 3 times faster in total |
-| `S` = 3 consumers | 3 | 25 tokens per second | 8.3 tokens per second | 1.25 times faster in total |
+| `shard_count` = 3 consumers | 3 | 25 tokens per second | 8.3 tokens per second | 1.25 times faster in total |
 
-Sharding converts latency into throughput, and only under concurrent load. Over WebRTC between homes, `L_total` is larger than `C`, so the network and not the compute sets the token rate. No single stream is ever faster on the sharded cluster than on one machine that can hold the whole model.
+Sharding converts latency into throughput, and only under concurrent load. Over WebRTC between homes, `network_latency` is larger than `model_compute_time`, so the network and not the compute sets the token rate. No single stream is ever faster on the sharded cluster than on one machine that can hold the whole model.
 
 ---
 
@@ -267,7 +285,7 @@ Sharding converts latency into throughput, and only under concurrent load. Over 
 
 Every number above is an estimate. These four measurements replace the estimates with facts:
 
-1. The one-way latency of the WebRTC data channel between each pair of machines, as a distribution, not a mean — report the median and the 95th percentile.
-2. The real size in bytes of the hidden state sent per token, taken from the running code, not from the hidden dimension of the model card.
-3. The real per-shard compute time per token on each machine, which shows whether the shards are balanced.
-4. The token rate of one machine running the whole model, when the model fits — the baseline that every comparison here depends on.
+1. The `hop_latency` of the WebRTC data channel between each pair of machines, as a distribution, not a mean — report the median and the 95th percentile.
+2. The real `payload_size` in bytes sent per token, taken from the running code, not from the `hidden_dimension` of the model card.
+3. The real `shard_compute_time` on each machine, which shows whether the shards are balanced.
+4. The `single_machine_rate` of one machine running the whole model, when the model fits — the baseline that every comparison here depends on.
