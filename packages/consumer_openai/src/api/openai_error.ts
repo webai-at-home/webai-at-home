@@ -156,6 +156,37 @@ export class OpenaiError extends Error {
 	}
 
 	/**
+	 * The request asked for a `response_format` the model cannot produce.
+	 *
+	 * Refused for the same reason an unhonourable generation control is, and with more at stake than
+	 * for a control that only tunes an answer: a client that asked for `json_object` and received
+	 * prose is not given a slightly different answer, it is given one it cannot read at all, and it
+	 * calls `JSON.parse` on an English sentence. A `response_format` of `text` is never refused,
+	 * because it is this interface's own default and asks for nothing unusual. See
+	 * [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
+	 *
+	 * @param requestedType The response format type the request asked for, such as `json_schema`.
+	 * @param modelId The model the request asked for.
+	 * @param honouredTypes The response format types that model does produce, so the sender learns
+	 * what it may ask for instead of only what it may not.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static unhonourableResponseFormat(requestedType: string, modelId: string, honouredTypes: readonly string[]): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			`The model ${modelId} cannot produce a response_format of ${requestedType}, and this server refuses a ` +
+				'request it would have to ignore rather than answering it in prose as though no shape had been asked ' +
+				`for. The response_format types ${modelId} produces are ` +
+				`${honouredTypes.length === 0 ? 'text only' : honouredTypes.join(', ')}. Send the request again with ` +
+				'response_format "text" or without the field, or send it to a model that produces the shape you asked ' +
+				'for.',
+			'response_format',
+			'unhonourable_response_format',
+		);
+	}
+
+	/**
 	 * The request declared tools to a model that cannot read them.
 	 *
 	 * Refused for the same reason an unhonourable generation control is: accepting the declarations

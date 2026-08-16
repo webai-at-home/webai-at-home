@@ -13,6 +13,7 @@ Everything specific to the shape of the OpenAI Chat Completions interface: the r
 - `generation_settings_builder.ts`: turning a chat completion request's controls into task generation settings.
 - `finish_reason_translator.ts`: turning a worker's own stop reason into an OpenAI value.
 - `tool_translator.ts`: carrying tools between the OpenAI spelling and this project's own.
+- `response_format_reader.ts`: reading a request's `response_format`, and refusing a shape the chosen task type cannot produce.
 
 ## Rules
 
@@ -21,6 +22,9 @@ Everything specific to the shape of the OpenAI Chat Completions interface: the r
 - `finish_reason_translator.ts` refuses to answer a reason with no OpenAI value — `interrupted` — rather than inventing one, and answers `stop_sequence` as `stop`, never as `length`, because an answer that ended on a stop sequence the consumer asked for is a finished answer.
 - `generation_settings_builder.ts` never drops a generation control it cannot honour; refusing it is `../http/openai_routes.ts`'s job, not this folder's.
 
+- `response_format_reader.ts` reads `@webai/protocol`'s `StructuredOutputSupport` rather than keeping a list of its own, so a task type starts producing a shape by gaining an entry there and nothing here changes.
+
 ## Background
 
+- `response_format_reader.ts` comes from [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
 - The finish reason and generation settings rules come from [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150) and [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).

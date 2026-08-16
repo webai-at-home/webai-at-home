@@ -22,6 +22,7 @@ import { ModelCatalog } from '../api/model_catalog.js';
 import { OpenaiError } from '../api/openai_error.js';
 import { FinishReasonTranslator } from '../api/finish_reason_translator.js';
 import { PromptFlattener } from '../api/prompt_flattener.js';
+import { ResponseFormatReader } from '../api/response_format_reader.js';
 import { ToolTranslator } from '../api/tool_translator.js';
 import {
 	ChatCompletionRequestSchema,
@@ -270,6 +271,12 @@ export class OpenaiRoutes {
 		// `none` is honoured by declaring nothing, which is the one way this server can enforce it:
 		// a model told about no tool cannot ask for one.
 		const toolsToDeclare = body.tool_choice === 'none' ? undefined : declaredTools;
+
+		// A response format the chosen task type cannot produce is refused rather than dropped, on
+		// the same rule the generation controls follow. The value read back is not carried anywhere
+		// yet, because no task type honours any shape today and so nothing can be carried; what the
+		// call does here is refuse.
+		ResponseFormatReader.read(body, taskTypeName);
 
 		// A task type whose worker can hand a message list to its own chat template is sent the
 		// history as it was written, each message keeping its own role. Every other task type
