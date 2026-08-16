@@ -114,6 +114,22 @@ export const GenerationSettingsSchema = z.object({
 	 * the same worker with the same model, and nothing here says two different workers agree.
 	 */
 	randomSeed: z.number().int().optional(),
+	/**
+	 * How much of its output budget a model that thinks before it answers may spend on thinking,
+	 * from `none` for not thinking at all to `xhigh` for thinking as much as it wants to.
+	 *
+	 * The six levels are the ones LM Studio 0.4.20 names in its own refusal of a seventh, so they
+	 * are the set a local OpenAI-compatible server actually reads rather than a set chosen here.
+	 * Only a model that thinks has anything to do with this, and a model that never thought is
+	 * unaffected by any level: `reasoning_effort: "none"` sent to `llama-3.2-1b-instruct` was
+	 * accepted, ignored, and answered correctly.
+	 *
+	 * A task type may honour this control more coarsely than the six levels suggest. The worker
+	 * browser tab can only turn the model's thinking on or off, so it reads `none` as off and every
+	 * other level as on. That is acting on the control rather than dropping it, but it is not
+	 * telling `low` from `high`. See [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
+	 */
+	reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
 }).strict();
 /** What a consumer asks for about how its answer is generated. */
 export type GenerationSettings = z.infer<typeof GenerationSettingsSchema>;

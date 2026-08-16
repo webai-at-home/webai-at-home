@@ -355,12 +355,14 @@ Test('sends every generation control the consumer asked for to the local server,
 		maximumOutputTokenCount: 20,
 		stopSequences: ['\nUser:'],
 		randomSeed: 42,
+		reasoningEffort: 'none',
 	});
 	Assert.equal(body.temperature, 0);
 	Assert.equal(body.top_p, 0.9);
 	Assert.equal(body.max_tokens, 20);
 	Assert.deepEqual(body.stop, ['\nUser:']);
 	Assert.equal(body.seed, 42);
+	Assert.equal(body.reasoning_effort, 'none');
 	// `isStreaming` is not a generation control the local server is told about: it decides how
 	// many stage runs read the answer, and this client always reads the answer as a stream.
 	Assert.equal(body.stream, true);
@@ -370,13 +372,27 @@ Test('sends no generation control field at all when the consumer asked for none,
 	const askedForNothing = await requestBodyOf(undefined);
 	Assert.deepEqual(Object.keys(askedForNothing).sort(), ['messages', 'model', 'stream', 'stream_options']);
 	// A control left out of the settings block is left out of the body, rather than sent as
-	// `null`, one control at a time as well as all five at once.
+	// `null`, one control at a time as well as all six at once.
 	const askedForOne = await requestBodyOf({ temperature: 0 });
 	Assert.equal(askedForOne.temperature, 0);
 	Assert.equal('top_p' in askedForOne, false);
 	Assert.equal('max_tokens' in askedForOne, false);
 	Assert.equal('stop' in askedForOne, false);
 	Assert.equal('seed' in askedForOne, false);
+	// This one matters beyond the pattern: a request that says nothing about thinking must reach the
+	// local server exactly as it did before this field existed, so that the server's own default is
+	// what applies and no default is changed on the consumer's behalf. See
+	// [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
+	Assert.equal('reasoning_effort' in askedForOne, false);
+});
+
+Test('sends every reasoning_effort level through untouched, including the ones only a thinking model reads', async () => {
+	// The six levels are the ones LM Studio 0.4.20 names itself when it refuses a seventh. This
+	// worker translates none of them: what a level means is the local server's business.
+	for (const level of ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const) {
+		const body = await requestBodyOf({ reasoningEffort: level });
+		Assert.equal(body.reasoning_effort, level);
+	}
 });
 
 Test('sends an Authorization header carrying the API key it was constructed with, and none at all when it was constructed with none', async () => {

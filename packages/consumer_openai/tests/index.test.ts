@@ -202,6 +202,43 @@ Test('still refuses the two controls the model cannot honour, while honouring th
 	}
 });
 
+Test('carries reasoning_effort for the one model that thinks, and refuses it for the one that does not', () => {
+	// `llm_qwen3_5_0_8b_full` is the only model here that thinks before it answers on both of its
+	// workers, and the only one that honours this control. Both seams were proved live by the gates
+	// of [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192): `reasoning_effort`
+	// on the request to LM Studio 0.4.20, and `enable_thinking` on the chat template in a real
+	// browser tab.
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'none' }, 'llm_qwen3_5_0_8b_full'),
+		{
+			reasoningEffort: 'none',
+		},
+	);
+	// Every level is carried untranslated, including the ones the worker browser tab can only read
+	// as "think at all". Reading a level coarsely is that stage helper's business, not this one's.
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'xhigh' }, 'llm_qwen3_5_0_8b_full'),
+		{
+			reasoningEffort: 'xhigh',
+		},
+	);
+	// `llama-3.2-1b-instruct` never thought, so there is no thinking to budget, and asking for one
+	// is refused rather than accepted and dropped.
+	const refusal = refusalOf({ model: 'llm_llama3_2_1b_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'none' }, 'llm_llama3_2_1b_full');
+	Assert.equal(refusal.status, 400);
+	Assert.equal(refusal.code, 'unhonourable_generation_control');
+	Assert.equal(refusal.param, 'reasoning_effort');
+});
+
+Test('reads reasoning_effort as something asked for at every level, having no default of its own', () => {
+	// `temperature: 1` and `top_p: 1` are this interface's own defaults and ask for nothing.
+	// `reasoning_effort` has no such default, so `"none"` is a request not to think rather than a way
+	// of saying nothing, and a model that cannot honour it is refused for it.
+	Assert.equal(refusalOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'none' }, 'llm_gemma_nano_chrome_full').param, 'reasoning_effort');
+	// `null` still says the client holds no value, exactly as it does for the other five.
+	Assert.equal(generationSettingsOf({ model: 'llm_gemma_nano_chrome_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: null }, 'llm_gemma_nano_chrome_full'), undefined);
+});
+
 Test('carries all five controls for the one model that honours all five', () => {
 	// `llm_qwen3_0_6b_sharded` is the only model here whose sampler is written by hand, and the only
 	// one whose `top_p` and `seed` do anything. Proved live in a real browser tab by the de-risk gate

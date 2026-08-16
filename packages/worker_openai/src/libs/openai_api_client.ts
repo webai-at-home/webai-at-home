@@ -159,7 +159,7 @@ type OutgoingMessage = {
  * The generation controls of one request to the local server, each spelled the way the OpenAI
  * Chat Completions interface spells it on the connection.
  *
- * These four spellings and `temperature` are part of the format the local server reads, so they
+ * These five spellings and `temperature` are part of the format the local server reads, so they
  * are not renamed to match this repository's own naming rules, and every field is left out
  * entirely rather than sent as `null` when the consumer asked for nothing, so that a server's own
  * default is what applies.
@@ -170,6 +170,7 @@ type OutgoingGenerationControls = {
 	max_tokens?: number;
 	stop?: string[];
 	seed?: number;
+	reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 };
 
 /**
@@ -315,7 +316,7 @@ export class OpenaiApiClient {
 	/**
 	 * Builds the generation controls of the request body, from what the consumer asked for.
 	 *
-	 * Every one of the five is a field of the request this local server already reads, so this
+	 * Every one of the six is a field of the request this local server already reads, so this
 	 * worker can forward whichever of them reaches it. Milestone 0's de-risk gate for
 	 * https://github.com/webai-at-home/webai-at-home/issues/151 proved all five live against
 	 * LM Studio 0.4.20 serving `llama-3.2-3b-instruct`, one at a time: `temperature: 0` repeated one
@@ -332,9 +333,17 @@ export class OpenaiApiClient {
 	 * Only the controls the task type's own contract names ever arrive here. A task type's
 	 * contract is the intersection of what all of its workers can honour, so a control this
 	 * native worker could honour but the worker browser tab running the same task type cannot is
-	 * refused by `packages/consumer_openai` at submission and never reaches this method. The five
-	 * branches below therefore stay written out in full while fewer than five are reachable. See
+	 * refused by `packages/consumer_openai` at submission and never reaches this method. The six
+	 * branches below therefore stay written out in full while fewer than six are reachable. See
 	 * step 1 of https://github.com/webai-at-home/webai-at-home/issues/196.
+	 *
+	 * `reasoning_effort` was proved live against LM Studio 0.4.20 serving `qwen_qwen3.5-0.8b` for
+	 * https://github.com/webai-at-home/webai-at-home/issues/192. A two-turn question that spent all
+	 * 8153 of its tokens thinking and returned an empty answer was answered in 42 tokens with 0
+	 * reasoning tokens once `"none"` was sent; `"low"` and `"medium"` both still ran to the context
+	 * limit. The six levels are the ones that server names itself when it refuses a seventh. Sending
+	 * the field to a model that does not think is harmless: `llama-3.2-1b-instruct` accepted it,
+	 * ignored it, and answered correctly.
 	 *
 	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
 	 * nothing.
@@ -359,6 +368,9 @@ export class OpenaiApiClient {
 		}
 		if (generationSettings.randomSeed !== undefined) {
 			controls.seed = generationSettings.randomSeed;
+		}
+		if (generationSettings.reasoningEffort !== undefined) {
+			controls.reasoning_effort = generationSettings.reasoningEffort;
 		}
 		return controls;
 	}

@@ -12,6 +12,7 @@ import {
 	HistoryInputSchema,
 	DiagnosticsBatchSchema,
 	GeneratedText,
+	GenerationControlSupport,
 	PipelineSpecificationSchema,
 	PipelineStageSchema,
 	StageName,
@@ -287,11 +288,39 @@ Test('validates every inbound client message shape', () => {
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { maximumOutputTokenCount: 0 } } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { stopSequences: [] } } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_nano_chrome_full', input: 'hello', generationSettings: { isStreaming: 'yes' } } }).success, false);
+	// Protocol version 9 added `reasoningEffort`, whose six levels are the ones LM Studio 0.4.20
+	// names itself when it refuses a seventh. A level outside that set is refused here rather than
+	// sent to a worker that would have to decide what to do with it. See issue #192.
+	for (const level of ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']) {
+		Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello', generationSettings: { reasoningEffort: level } } }).success, true);
+	}
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello', generationSettings: { reasoningEffort: 'exhaustive' } } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', input: { taskType: 'task_type_dev_formula', input: 5 } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'stage.result', taskId: 'task-1', stage: 'stage_dev_formula_multiply', value: 10 }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'deviceRegister', role: 'consumer', name: 'consumer', unexpected: true }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.history', taskId: 'task-1' }).success, true);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.history' }).success, false);
+});
+
+Test('names reasoning_effort as honoured only by the task type whose model thinks on both of its workers', () => {
+	// A task type's contract is the intersection of what all of its workers honour, so this control
+	// could only be entered here once both workers of `task_type_llm_qwen3_5_0_8b_full` were gated
+	// live: `reasoning_effort` on the request to LM Studio 0.4.20, and `enable_thinking` on the chat
+	// template in a real browser tab. See [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
+	Assert.equal(GenerationControlSupport.honours('task_type_llm_qwen3_5_0_8b_full', 'reasoningEffort'), true);
+	// Llama 3.2 1B never thought, so there is no thinking to budget.
+	Assert.equal(GenerationControlSupport.honours('task_type_llm_llama3_2_1b_full', 'reasoningEffort'), false);
+	// Qwen3-0.6B does think, but its sharded stage helper builds its prompt and drives its own
+	// sampler rather than going through either gated seam, so whether it could honour this control
+	// is unmeasured — and an unmeasured entry is the one thing this table must never hold.
+	Assert.equal(GenerationControlSupport.honours('task_type_llm_qwen3_0_6b_sharded', 'reasoningEffort'), false);
+	Assert.equal(GenerationControlSupport.honours('task_type_llm_gemma_nano_chrome_full', 'reasoningEffort'), false);
+	Assert.equal(GenerationControlSupport.honours('task_type_dev_formula', 'reasoningEffort'), false);
+	// Adding this control took nothing away from the three that task type already honoured.
+	Assert.deepEqual(
+		GenerationControlSupport.honouredControls('task_type_llm_qwen3_5_0_8b_full'),
+		['temperature', 'maximumOutputTokenCount', 'stopSequences', 'reasoningEffort'],
+	);
 });
 
 Test('keeps task inputs and stage values in the log, since only credentials are redacted', () => {

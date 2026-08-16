@@ -11,7 +11,7 @@ import type { TaskType } from './task_types.js';
  * `GenerationSettingsSchema` names it.
  *
  * `isStreaming` is not one of them. Every task type answers in pieces when it is asked to, so
- * there is nothing for a consumer to be told about it, while each of the five below is honoured
+ * there is nothing for a consumer to be told about it, while each of the six below is honoured
  * by some task types and not by others.
  */
 export type GenerationControlName =
@@ -19,7 +19,8 @@ export type GenerationControlName =
 	| 'topP'
 	| 'maximumOutputTokenCount'
 	| 'stopSequences'
-	| 'randomSeed';
+	| 'randomSeed'
+	| 'reasoningEffort';
 
 /**
  * The generation controls each task type honours, and by omission the ones it cannot.
@@ -66,12 +67,34 @@ export type GenerationControlName =
  * `task_type_llm_llama3_2_3b_full` is retired; it was, for as long as it existed, the only task
  * type in this project to honour any of the five, proved live against LM Studio 0.4.20 serving
  * `llama-3.2-3b-instruct`. See [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154).
+ *
+ * `reasoningEffort` is the sixth control, and `task_type_llm_qwen3_5_0_8b_full` is the only task
+ * type that honours it, because it is the only one whose model thinks before it answers on both of
+ * its workers. Both workers were gated live for [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192):
+ *
+ * - The native worker forwarding to LM Studio 0.4.20 reads `reasoning_effort` on the request.
+ *   `"none"` took a question that had spent all 8153 of its tokens thinking down to 0 reasoning
+ *   tokens and a finished answer, while `"low"` and `"medium"` both still ran to the context limit
+ *   and returned an empty answer.
+ * - The worker browser tab reads `enable_thinking` on the chat template, which
+ *   `@huggingface/transformers` genuinely passes through: the two settings render different prompts,
+ *   43 tokens against 41. LM Studio, by contrast, drops `chat_template_kwargs` entirely, which is
+ *   why the native worker uses the request field and not the template option.
+ *
+ * The worker browser tab can only turn thinking on or off, so it reads `none` as off and every
+ * other level as on. A task type's contract says which controls a worker acts on, not how finely,
+ * and a control acted on coarsely is not a control dropped.
+ *
+ * `task_type_llm_qwen3_0_6b_sharded` is not entered here even though Qwen3-0.6B also thinks. Its
+ * stage helper builds its prompt and drives its own sampler rather than going through either seam
+ * above, so whether it can honour this control is unmeasured, and an unmeasured entry is the one
+ * thing this table must never hold.
  */
 const controlsByTaskType: Record<TaskType, readonly GenerationControlName[]> = {
 	task_type_dev_formula: [],
 	task_type_llm_qwen3_0_6b_sharded: ['temperature', 'topP', 'maximumOutputTokenCount', 'stopSequences', 'randomSeed'],
 	task_type_llm_gemma_nano_chrome_full: [],
-	task_type_llm_qwen3_5_0_8b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences'],
+	task_type_llm_qwen3_5_0_8b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences', 'reasoningEffort'],
 	task_type_llm_llama3_2_1b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences'],
 };
 

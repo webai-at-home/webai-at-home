@@ -129,16 +129,17 @@ curl -N http://localhost:8788/v1/chat/completions -H 'Content-Type: application/
 
 A caller that hangs up mid-answer is told nothing, because the connection it would have been told on is the one it closed. The cluster still learns the task was cancelled — that path already works, through this server cancelling the task — but a cancelled answer reports no usage to anybody.
 
-## The generation controls — `temperature`, `top_p`, `max_completion_tokens`, `stop`, and `seed`
+## The generation controls — `temperature`, `top_p`, `max_completion_tokens`, `stop`, `seed`, and `reasoning_effort`
 
-These five fields of a request are read and carried to the cluster, for whichever models honour them. `max_completion_tokens` is a budget for the whole answer rather than for one stage run, and its older spelling `max_tokens` is accepted too; a request that sends both means the newer one. `stop` is accepted as either one piece of text or a list of up to four, and is applied where the tokens are produced rather than by this server dropping pieces of the answer as it forwards them, since a stop sequence can straddle two pieces.
+These six fields of a request are read and carried to the cluster, for whichever models honour them. `max_completion_tokens` is a budget for the whole answer rather than for one stage run, and its older spelling `max_tokens` is accepted too; a request that sends both means the newer one. `stop` is accepted as either one piece of text or a list of up to four, and is applied where the tokens are produced rather than by this server dropping pieces of the answer as it forwards them, since a stop sequence can straddle two pieces. `reasoning_effort` says how much of its output budget a model that thinks before it answers may spend on thinking, and is one of `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
 
-What each model honours was observed live in a real browser tab, by the de-risk gate of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196), rather than taken from what an engine documents:
+What each model honours was observed live, by the de-risk gates of [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196) and [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192), rather than taken from what an engine documents:
 
 | Model | Honours |
 | --- | --- |
-| `llm_llama3_2_1b_full`, `llm_qwen3_5_0_8b_full` | `temperature`, `max_completion_tokens`, and `stop`. Not `top_p` and not `seed`: `@huggingface/transformers`, the engine both run on, acts on neither. |
-| `llm_qwen3_0_6b_sharded` | All five, more than any other model here, because its sampler is written by hand over the logits rather than taken from a library: nothing there refuses a `top_p`, and a seeded source of random numbers can be built where a library offers none. It is the only model whose `top_p` and `seed` do anything. |
+| `llm_llama3_2_1b_full` | `temperature`, `max_completion_tokens`, and `stop`. Not `top_p` and not `seed`: `@huggingface/transformers`, the engine it runs on, acts on neither. Not `reasoning_effort` either — this model never thought, so there is no thinking to budget. |
+| `llm_qwen3_5_0_8b_full` | Those same three, and `reasoning_effort` besides. It is the only model here that thinks before it answers on both of its workers, and both seams were gated live: `reasoning_effort` on the request to LM Studio, and `enable_thinking` on the chat template in a real browser tab. The worker browser tab can only turn thinking on or off, so it reads `none` as off and every other level as on. |
+| `llm_qwen3_0_6b_sharded` | All five sampling controls, more than any other model here, because its sampler is written by hand over the logits rather than taken from a library: nothing there refuses a `top_p`, and a seeded source of random numbers can be built where a library offers none. It is the only model whose `top_p` and `seed` do anything. Not `reasoning_effort`: this model thinks too, but its stage helper builds its prompt and drives its own sampler rather than going through either gated seam, so whether it could honour the control is unmeasured. |
 | `llm_gemma_nano_chrome_full` | None. It is the one model the gate could not reach: the Chrome that ran the gate answered `unavailable` for its built-in language model and refused to create a session, so nothing about that engine is claimed here rather than observed. |
 | `dev_formula` | None — it answers with one number and generates no text. |
 
@@ -165,7 +166,7 @@ Rule 3: a value the OpenAI Chat Completions interface has no field for travels i
 
 This is a first version. It serves the two endpoints above rather than the whole OpenAI completion interface, and the following are left out on purpose rather than by oversight:
 
-- **It ignores every field of a request outside `stream`, `stream_options`, and the five generation controls above.** `n`, `tools`, `logprobs`, `presence_penalty`, `frequency_penalty`, and the rest are accepted in the body and then ignored. Every answer also generates under the worker browser tab's own limits, which a request cannot raise: 160 tokens for the sharded Qwen3-0.6B task, and 400 pieces of an answer for the Chrome built-in task. A `max_completion_tokens` above such a limit lowers nothing, and the answer stops at the limit.
+- **It ignores every field of a request outside `stream`, `stream_options`, and the six generation controls above.** `n`, `tools`, `logprobs`, `presence_penalty`, `frequency_penalty`, and the rest are accepted in the body and then ignored. Every answer also generates under the worker browser tab's own limits, which a request cannot raise: 160 tokens for the sharded Qwen3-0.6B task, and 400 pieces of an answer for the Chrome built-in task. A `max_completion_tokens` above such a limit lowers nothing, and the answer stops at the limit.
 - **It refuses a message whose content is a list of parts**, which is what a request carrying an image or audio sends, rather than joining the parts together. It also refuses the `tool` role, because it ignores the tool settings of a request and so could not continue a history containing the answer of a tool.
 - **It keeps no history state.** One request is one cluster task, and the whole history is sent with every request.
 
@@ -288,7 +289,7 @@ The tests cover reading a request, the models on offer, the failure mapping, the
 - [`src/libs/cluster_task_runner.ts`](./src/libs/cluster_task_runner.ts) — the one gateway connection, and one promise per submitted task.
 - [`src/api/model_catalog.ts`](./src/api/model_catalog.ts) — the models on offer, and the task type behind each one.
 - [`src/api/prompt_flattener.ts`](./src/api/prompt_flattener.ts) — turning a history into the single piece of text a task carries.
-- [`src/api/generation_settings_builder.ts`](./src/api/generation_settings_builder.ts) — the five generation controls of a request, turned into the settings a task carries, or refused.
+- [`src/api/generation_settings_builder.ts`](./src/api/generation_settings_builder.ts) — the six generation controls of a request, turned into the settings a task carries, or refused.
 - [`src/api/openai_error.ts`](./src/api/openai_error.ts) — every way a request can fail, with its status and its body.
 - [`src/api/openai_types.ts`](./src/api/openai_types.ts) — the request bodies accepted and the response bodies returned.
 - [`src/http/curl_style_transaction_logger.ts`](./src/http/curl_style_transaction_logger.ts) — records every chat completion request to the transaction log described above.

@@ -97,11 +97,19 @@ import type { GatewayMessage } from './gateway_message.js';
  * generated some other way and is told nothing went wrong — which is the exact fault
  * `generation_control_support.ts` exists to prevent, and it cannot be caught anywhere except here,
  * because no field is added for a consumer to notice the absence of.
+ *
+ * Version 9 let a consumer say how much of its output budget a model that thinks before it answers
+ * may spend on thinking. `GenerationSettingsSchema` now carries `reasoningEffort`, and
+ * `task_type_llm_qwen3_5_0_8b_full` honours it. See
+ * [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192). Every earlier version is
+ * refused because `GenerationSettingsSchema` is `.strict()`: a gateway or a worker built before this
+ * version refuses the whole settings block outright once it carries the new field, so a consumer
+ * that asked for a thinking budget would lose every other control it asked for in the same block.
  */
-export const protocolVersion = 8;
+export const protocolVersion = 9;
 
 /** The protocol versions the gateway accepts. No earlier version is accepted. */
-export const supportedProtocolVersions: number[] = [8];
+export const supportedProtocolVersions: number[] = [9];
 
 /**
  * The wrapper around every frame sent in either direction.

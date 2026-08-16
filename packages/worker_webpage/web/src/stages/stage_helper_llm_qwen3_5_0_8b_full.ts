@@ -282,9 +282,9 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	 * @param generationSettings What the consumer asked for. `isStreaming` decides how the answer
 	 * is returned: set, one run returns one piece and leaves the answer open for the run that
 	 * follows; absent, one run returns the whole answer. `temperature`, `maximumOutputTokenCount`,
-	 * and `stopSequences` decide how it is generated, and are the three controls this task type's
-	 * contract names in `generation_control_support.ts`. `topP` and `randomSeed` are refused before
-	 * a task is ever submitted, because this engine honours neither.
+	 * `stopSequences`, and `reasoningEffort` decide how it is generated, and are the four controls
+	 * this task type's contract names in `generation_control_support.ts`. `topP` and `randomSeed`
+	 * are refused before a task is ever submitted, because this engine honours neither.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
 	 * @throws If the model cannot be loaded, if the run is asked to carry on an answer this
 	 * browser is not holding, if the answer is abandoned before or while it is being read, or if
@@ -556,7 +556,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 		).apply_chat_template(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrHistory), {
 			tokenize: true,
 			add_generation_prompt: true,
-			enable_thinking: false,
+			enable_thinking: StageHelperLlmQwen3_5_0_8bFull.isThinkingEnabled(generationSettings),
 			return_dict: false,
 			...StageHelperLlmQwen3_5_0_8bFull.toolTemplateOption(state.declaredTools),
 		});
@@ -680,11 +680,11 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 				// declared no tool still goes through the message list, exactly as it always has.
 				const input = state.declaredTools.length === 0
 					? StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrHistory)
-					: StageHelperLlmQwen3_5_0_8bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools);
+					: StageHelperLlmQwen3_5_0_8bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools, generationSettings);
 				generator(input, {
 					...generationControls,
 					return_full_text: false,
-					tokenizer_encode_kwargs: { enable_thinking: false },
+					tokenizer_encode_kwargs: { enable_thinking: StageHelperLlmQwen3_5_0_8bFull.isThinkingEnabled(generationSettings) },
 					stopping_criteria: criteria,
 					streamer,
 				}).then(() => {
@@ -773,6 +773,35 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			controls.temperature = generationSettings.temperature;
 		}
 		return controls;
+	}
+
+	/**
+	 * Decides whether this model is allowed to think before it answers, from what the consumer asked
+	 * for.
+	 *
+	 * This model thinks, and this engine really does act on `enable_thinking`: the gate for
+	 * [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192) rendered the same
+	 * history both ways in a browser tab and got two different prompts, 43 tokens against 41, where
+	 * `false` closes the thinking block in the prompt and `true` leaves it open.
+	 *
+	 * Thinking on or off is all this engine can express, so every level above `none` reads the same
+	 * here. A consumer asking for `xhigh` is not being refused and is not being ignored; it is being
+	 * told, by this task type's contract, that the control is honoured, and this is how coarsely.
+	 *
+	 * An answer that asked for nothing does not think, which is what this stage did before any of
+	 * this was settable, so such a request is generated exactly as it is today. That gate also
+	 * showed why the default is worth keeping: with thinking on, this model ran to a 2048-token cap
+	 * in 63.8 seconds without ever closing its thinking block, and never began an answer.
+	 *
+	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
+	 * nothing.
+	 * @returns `true` when the model may think before it answers.
+	 */
+	private static isThinkingEnabled(generationSettings: GenerationSettings | undefined): boolean {
+		if (generationSettings?.reasoningEffort === undefined) {
+			return false;
+		}
+		return generationSettings.reasoningEffort !== 'none';
 	}
 
 	/**
@@ -875,12 +904,15 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 	 * @param generator The loaded text-generation pipeline, read for its tokenizer's chat template.
 	 * @param promptOrHistory The prompt or history submitted with the task.
 	 * @param declaredTools The tools the history declared.
+	 * @param generationSettings What the consumer asked for, read here for whether the model may
+	 * think before it answers.
 	 * @returns The prompt text to generate from.
 	 */
 	private static renderedPrompt(
 		generator: TextGenerationPipeline,
 		promptOrHistory: string | HistoryInput,
 		declaredTools: readonly ToolDeclaration[],
+		generationSettings: GenerationSettings | undefined,
 	): string {
 		return (
 			generator.tokenizer as unknown as {
@@ -889,7 +921,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 		).apply_chat_template(StageHelperLlmQwen3_5_0_8bFull.messagesOf(promptOrHistory), {
 			tokenize: false,
 			add_generation_prompt: true,
-			enable_thinking: false,
+			enable_thinking: StageHelperLlmQwen3_5_0_8bFull.isThinkingEnabled(generationSettings),
 			...StageHelperLlmQwen3_5_0_8bFull.toolTemplateOption(declaredTools),
 		});
 	}

@@ -18,6 +18,7 @@ A worker that runs a model by forwarding its assigned stage to a locally running
 - `GatewayWorkerClient` speaks the protocol over exactly one connection, so anything outliving one connection belongs in `GatewayConnectionSupervisor`, which builds a new socket and a new client per attempt.
 - A stage reports the exact token counts and stop reason the local server sends, and leaves a `finish_reason` it does not recognise untranslated rather than guessing.
 - A task type's contract cannot depend on which of its possible workers is assigned a task, so `task_type_llm_llama3_2_1b_full` is registered in `controlsByTaskType` as honouring the three a worker browser tab was proved to honour — `temperature`, `maximumOutputTokenCount`, and `stopSequences` — and not the `topP` and `randomSeed` only this worker could forward.
+- `reasoningEffort` is forwarded as `reasoning_effort` and is never given a default here. A request that asks for no thinking budget reaches the local server exactly as it did before the field existed, so the server's own default applies and no default is decided on a consumer's behalf.
 
 ## Background
 

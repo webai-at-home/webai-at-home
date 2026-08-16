@@ -28,6 +28,7 @@
 		"test:real:llm_qwen3_5_0_8b_full": "npx tsx --test tests/real_llm_qwen3_5_0_8b_full.test.ts",
 		"test:real:llm_qwen3_5_0_8b_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_qwen3_5_0_8b_full.test.ts",
 		"test:real:llm_llama3_2_1b_full_native_worker": "npx tsx --test tests/real_llm_llama3_2_1b_full_native_worker.test.ts",
+		"test:real:llm_qwen3_5_0_8b_full_native_worker": "npx tsx --test tests/real_llm_qwen3_5_0_8b_full_native_worker.test.ts",
 		"test:real:llm_llama3_2_1b_full": "npx tsx --test tests/real_llm_llama3_2_1b_full.test.ts",
 		"test:real:llm_llama3_2_1b_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_llama3_2_1b_full.test.ts"
 	},

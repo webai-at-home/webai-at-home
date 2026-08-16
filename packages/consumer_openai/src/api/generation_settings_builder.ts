@@ -15,9 +15,10 @@ import type { ChatCompletionRequest } from './openai_types.js';
  * control inside the cluster.
  *
  * Both names are written out because neither can be derived from the other: `top_p` is `topP`,
- * `max_completion_tokens` is `maximumOutputTokenCount`, and `seed` is `randomSeed`. The order is
- * the order the OpenAI Chat Completions interface documents the fields in, which is also the
- * order a refusal lists them back to the sender.
+ * `max_completion_tokens` is `maximumOutputTokenCount`, `seed` is `randomSeed`, and
+ * `reasoning_effort` is `reasoningEffort`. The order is the order the OpenAI Chat Completions
+ * interface documents the fields in, which is also the order a refusal lists them back to the
+ * sender.
  */
 const requestFieldByControlName: Record<GenerationControlName, string> = {
 	temperature: 'temperature',
@@ -25,10 +26,11 @@ const requestFieldByControlName: Record<GenerationControlName, string> = {
 	maximumOutputTokenCount: 'max_completion_tokens',
 	stopSequences: 'stop',
 	randomSeed: 'seed',
+	reasoningEffort: 'reasoning_effort',
 };
 
 /** Every generation control this server reads, in the order a refusal lists them. */
-const controlNames: readonly GenerationControlName[] = ['temperature', 'topP', 'maximumOutputTokenCount', 'stopSequences', 'randomSeed'];
+const controlNames: readonly GenerationControlName[] = ['temperature', 'topP', 'maximumOutputTokenCount', 'stopSequences', 'randomSeed', 'reasoningEffort'];
 
 /**
  * Turns the generation controls of one chat completion request into the generation settings a
@@ -39,11 +41,9 @@ const controlNames: readonly GenerationControlName[] = ['temperature', 'topP', '
  * controls, and a client sends one request to one interface without knowing which engine will
  * answer it. So a control has three possible fates, and this class decides between them exactly
  * as milestone 4 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151)
- * proposes. No task type honours any of the five today — `task_type_llm_llama3_2_3b_full`, the
- * only one that ever did, was retired by [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154)
- * — so today every control that is not this interface's own default is refused; the three-way
- * decision below is what lets a task type start honouring a control again without this class
- * changing.
+ * proposes. Which task type honours which control is read from `GenerationControlSupport` on every
+ * request rather than written down here, so a task type may start or stop honouring one without
+ * this class changing.
  *
  * - The model honours the control: it is carried to the cluster as the client asked for it,
  *   untranslated, because what a value means to an engine is that engine's stage helper's
@@ -97,13 +97,18 @@ export class GenerationSettingsBuilder {
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
-	 * Reads the five generation controls of a request, leaving out every one the request asked
+	 * Reads the six generation controls of a request, leaving out every one the request asked
 	 * nothing for.
 	 *
 	 * A control asks for nothing when its field is absent, when it is `null`, and when it holds
 	 * this interface's own default: `temperature` and `top_p` both default to `1`, and the other
-	 * three default to not being applied at all, so any value of theirs is something asked for. An
+	 * four default to not being applied at all, so any value of theirs is something asked for. An
 	 * empty `stop` list asks for nothing either, since it names no text to stop at.
+	 *
+	 * `reasoning_effort` has no default on this interface, so every level a request names is
+	 * something asked for, `"none"` included. A client that sends `"none"` is asking the model not
+	 * to think, which is a request a task type either honours or is refused for — not a way of
+	 * saying nothing.
 	 *
 	 * @param body The chat completion request, already read by `ChatCompletionRequestSchema`.
 	 * @returns The controls the request asked for, named as the cluster names them, with a control
@@ -129,6 +134,9 @@ export class GenerationSettingsBuilder {
 		}
 		if (body.seed !== undefined && body.seed !== null) {
 			askedFor.randomSeed = body.seed;
+		}
+		if (body.reasoning_effort !== undefined && body.reasoning_effort !== null) {
+			askedFor.reasoningEffort = body.reasoning_effort;
 		}
 		return askedFor;
 	}

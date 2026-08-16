@@ -106,10 +106,11 @@ export type ChatCompletionMessage = z.infer<typeof ChatCompletionMessageSchema>;
 /**
  * The body of a request to `POST /v1/chat/completions`.
  *
- * The five generation controls — `temperature`, `top_p`, `max_completion_tokens` and its older
- * spelling `max_tokens`, `stop`, and `seed` — are read here and carried to the cluster as
- * generation settings, for whichever task types honour them. See
- * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+ * The six generation controls — `temperature`, `top_p`, `max_completion_tokens` and its older
+ * spelling `max_tokens`, `stop`, `seed`, and `reasoning_effort` — are read here and carried to the
+ * cluster as generation settings, for whichever task types honour them. See
+ * [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151), and
+ * [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192) for `reasoning_effort`.
  *
  * `tools` and `tool_choice` are read too, since
  * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115), and carried to the
@@ -140,6 +141,7 @@ export const ChatCompletionRequestSchema = z.object({
 	max_completion_tokens: z.number().int().positive().nullish(),
 	stop: z.union([z.string(), z.array(z.string()).max(4)]).nullish(),
 	seed: z.number().int().nullish(),
+	reasoning_effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).nullish(),
 	response_format: ChatCompletionResponseFormatSchema.nullish(),
 	tools: z.array(ChatCompletionToolSchema).nullish(),
 	tool_choice: z.union([
