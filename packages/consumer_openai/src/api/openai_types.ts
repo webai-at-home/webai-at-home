@@ -50,6 +50,35 @@ export const ChatCompletionToolSchema = z.object({
 export type ChatCompletionTool = z.infer<typeof ChatCompletionToolSchema>;
 
 /**
+ * The shape a request asks its answer to be written in, as this interface spells it.
+ *
+ * The three values are the three that interface defines: `text`, which is its own default and asks
+ * for nothing unusual, `json_object`, which asks for any JSON object, and `json_schema`, which asks
+ * for an object matching a schema the request carries.
+ *
+ * The field is read rather than accepted and dropped, since
+ * [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191). It belongs with `tools`
+ * and not with `n`: `n` tunes an answer, while this changes an answer's shape, and a client that
+ * asked for JSON and received prose has no way to know its request was dropped before it calls
+ * `JSON.parse` on an English sentence.
+ */
+export const ChatCompletionResponseFormatSchema = z.union([
+	z.object({ type: z.literal('text') }),
+	z.object({ type: z.literal('json_object') }),
+	z.object({
+		type: z.literal('json_schema'),
+		json_schema: z.object({
+			name: z.string().min(1),
+			description: z.string().optional(),
+			schema: z.record(z.string(), z.unknown()).optional(),
+			strict: z.boolean().nullish(),
+		}),
+	}),
+]);
+/** The shape a request asks its answer to be written in. */
+export type ChatCompletionResponseFormat = z.infer<typeof ChatCompletionResponseFormatSchema>;
+
+/**
  * One message of a history, as a chat completion request carries it.
  *
  * The content must be a single piece of text. The OpenAI completion interface also allows a
@@ -87,6 +116,11 @@ export type ChatCompletionMessage = z.infer<typeof ChatCompletionMessageSchema>;
  * cluster for whichever task types can act on them. A request declaring tools to a model that
  * cannot read them is refused rather than answered as though it had declared none.
  *
+ * `response_format` is read too, since
+ * [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191), and for the same reason
+ * as `tools`: it changes the shape of an answer rather than tuning it. A request asking a task type
+ * for a shape it cannot produce is refused rather than answered in prose.
+ *
  * Every other field an OpenAI client may send — `n`, `logprobs`, `presence_penalty`,
  * `frequency_penalty`, and the rest — is still accepted and then ignored, so the schema
  * deliberately does not refuse unknown fields.
@@ -106,6 +140,7 @@ export const ChatCompletionRequestSchema = z.object({
 	max_completion_tokens: z.number().int().positive().nullish(),
 	stop: z.union([z.string(), z.array(z.string()).max(4)]).nullish(),
 	seed: z.number().int().nullish(),
+	response_format: ChatCompletionResponseFormatSchema.nullish(),
 	tools: z.array(ChatCompletionToolSchema).nullish(),
 	tool_choice: z.union([
 		z.enum(['auto', 'none', 'required']),
