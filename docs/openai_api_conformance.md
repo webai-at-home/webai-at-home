@@ -31,7 +31,7 @@ A refusal is never a failure. An endpoint that says "I cannot do this" is behavi
 
 ## What was measured
 
-Four targets, all on 2026-08-15, with the `full` profile. One of the four, `consumer_openai` running `llm_qwen3_5_0_8b_full`, was measured again on 2026-08-16 after [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190) was fixed, and its column carries that later run. The other three columns are the 2026-08-15 run, so a row that changed in the re-measured column is no longer a same-day comparison with the LM Studio control beside it.
+Four targets, all on 2026-08-15, with the `full` profile. Two later runs are folded in, and both are on 2026-08-16. `consumer_openai` running `llm_qwen3_5_0_8b_full` was measured again in full after [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190) was fixed, and its column carries that later run. Then the two `structured_output` rows of both `consumer_openai` columns were measured again after [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191) was fixed, with the `structured_output` profile. The two LM Studio columns are the 2026-08-15 run throughout, so a row that changed in a re-measured column is no longer a same-day comparison with the LM Studio control beside it.
 
 - `consumer_openai` running `llm_llama3_2_1b_full`, served by a `worker_openai` forwarding to LM Studio.
 - `consumer_openai` running `llm_qwen3_5_0_8b_full`, served the same way.
@@ -42,11 +42,11 @@ The two LM Studio columns are the control. When a test passes there and fails th
 
 | | `consumer_openai` llama | `consumer_openai` qwen | LM Studio llama | LM Studio qwen |
 | --- | --- | --- | --- | --- |
-| Passed | 18 | 25 | 25 | 24 |
-| Failed | 1 | 4 | 2 | 7 |
-| Skipped | 12 | 3 | 1 | 1 |
-| Warned | 1 | 0 | 4 | 0 |
-| Compatibility | 90.0% | 86.2% | 80.6% | 77.4% |
+| Passed | 18 | 24 | 25 | 24 |
+| Failed | 0 | 3 | 2 | 7 |
+| Skipped | 14 | 5 | 1 | 1 |
+| Warned | 0 | 0 | 4 | 0 |
+| Compatibility | 100.0% | 88.9% | 80.6% | 77.4% |
 
 Per test:
 
@@ -78,8 +78,8 @@ Per test:
 | `parameters.max_completion_tokens` | ⊘ | ❌ | ✅ | ❌ |
 | `parameters.stop` | ⊘ | ❌ | ✅ | ❌ |
 | `parameters.seed` | ⊘ | ⊘ | ✅ | ❌ |
-| `structured_output.json_object` | ⚠️ | ✅ | ⊘ | ⊘ |
-| `structured_output.json_schema` | ❌ | ❌ | ✅ | ❌ |
+| `structured_output.json_object` | ⊘ | ⊘ | ⊘ | ⊘ |
+| `structured_output.json_schema` | ⊘ | ⊘ | ✅ | ❌ |
 | `sdk.node.models_list` | ✅ | ✅ | ✅ | ✅ |
 | `sdk.node.basic` | ✅ | ✅ | ✅ | ✅ |
 | `sdk.node.streaming` | ✅ | ✅ | ✅ | ✅ |
@@ -87,7 +87,7 @@ Per test:
 
 ## What the numbers do not say
 
-The percentages above rank `consumer_openai` running llama highest, at 90.0%. That is not the same as saying it is the most capable of the four. It refuses a great deal — twelve of its thirty-two tests are skipped — and a refusal is left out of the percentage. LM Studio serving llama scores lower at 80.6% precisely because it attempts more, and can therefore be caught getting something wrong.
+The percentages above rank `consumer_openai` running llama highest, at 100.0%. That is not the same as saying it is the most capable of the four, and the number went up when a defect was fixed by refusing something rather than by doing it. It refuses a great deal — fourteen of its thirty-two tests are skipped — and a refusal is left out of the percentage. LM Studio serving llama scores lower at 80.6% precisely because it attempts more, and can therefore be caught getting something wrong.
 
 This is why the report prints a status for each capability and not only one number. A single percentage rewards a server for declining to do things.
 
@@ -112,13 +112,17 @@ The declaration was being dropped by `worker_openai` rather than by `consumer_op
 
 `tools.generates_a_call`, `tools.fills_in_the_arguments`, `tools.chooses_among_several_tools`, and `sdk.node.tools` all pass on the re-measured column. `tools.generates_a_call_when_forced` is skipped rather than failed, because `consumer_openai` refuses a `tool_choice: "required"` it cannot enforce: enforcing it means constraining generation, which the chat templates this cluster drives cannot express. That refusal is the decision [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) settled.
 
-### `response_format` is accepted and ignored
+### `response_format` was accepted and ignored — fixed on 2026-08-16
 
-`consumer_openai` never reads `response_format`. The field appears nowhere in `packages/consumer_openai/src/`, so both `json_object` and `json_schema` fall into the bucket of fields that are, by the schema's own comment, "accepted and then ignored" alongside `n` and `logprobs`.
+The 2026-08-15 run found that `consumer_openai` never read `response_format`. The field appeared nowhere in `packages/consumer_openai/src/`, so both `json_object` and `json_schema` fell into the bucket of fields that were, by the schema's own comment, "accepted and then ignored" alongside `n` and `logprobs`.
 
-Those fields tune an answer. `response_format` changes its shape, the way `tools` does — and `tools` is refused rather than ignored. The control run shows the cost: LM Studio serving llama honours `json_schema` and passes, while `consumer_openai` in front of that same LM Studio serving that same model fails, answering with prose.
+Those fields tune an answer. `response_format` changes its shape, the way `tools` does — and `tools` was refused rather than ignored. The control run showed the cost: LM Studio serving llama honours `json_schema` and passes, while `consumer_openai` in front of that same LM Studio serving that same model failed, answering with prose.
 
-An ignored field also fails at random, which is what makes it hard to notice by hand. Across two runs of the same test against the same endpoint, `structured_output.json_object` passed once and warned once — the model happened to answer with bare JSON the first time and JSON in a code fence the second. Nothing about the endpoint changed between them.
+An ignored field also fails at random, which is what made it hard to notice by hand. Across two runs of the same test against the same endpoint, `structured_output.json_object` passed once and warned once — the model happened to answer with bare JSON the first time and JSON in a code fence the second. Nothing about the endpoint changed between them.
+
+`consumer_openai` now reads the field and refuses a shape the chosen task type cannot produce, with HTTP 400 and code `unhonourable_response_format`, on the same rule its generation controls follow. No task type produces a shape today: the de-risk gate of [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191) measured that the one engine in reach honouring `json_schema` is a local server behind `worker_openai`, while the worker browser tab that can serve the same task type generates through `@huggingface/transformers`, which offers no way to ask for a schema at all. A task type's contract is the intersection of what all of its workers honour, so both shapes are refused for every model this server offers.
+
+Both `structured_output` rows in both `consumer_openai` columns are therefore ⊘ rather than ❌ or ⚠️, re-measured on 2026-08-16, and they are steady rather than changing from run to run. `@webai/protocol`'s `StructuredOutputSupport` is what a shape has to be entered into for that to change.
 
 ### `llm_qwen3_5_0_8b_full` answers plain questions with nothing at all
 

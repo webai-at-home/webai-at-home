@@ -16,6 +16,7 @@ import { GenerationSettingsBuilder } from '../src/api/generation_settings_builde
 import { ChatCompletionRequestSchema, type ChatCompletionResponse } from '../src/api/openai_types.js';
 import { FinishReasonTranslator } from '../src/api/finish_reason_translator.js';
 import { PromptFlattener } from '../src/api/prompt_flattener.js';
+import { ResponseFormatReader } from '../src/api/response_format_reader.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -978,6 +979,84 @@ Test('refuses a tool_choice it cannot enforce, which is the failure that closed 
 		const body = await response.json() as { error: { code: string; param: string } };
 		Assert.equal(body.error.code, 'unenforceable_tool_choice');
 		Assert.equal(body.error.param, 'tool_choice');
+	} finally {
+		server.close();
+	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The Response Format Of A Request
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+// No task type produces a shape today, measured by the milestone 0 gate of
+// [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191): the one engine in reach
+// that honours `json_schema` is a local server behind `@webai/worker-openai`, and the worker browser
+// tab that can serve the same task type generates through `@huggingface/transformers`, which offers
+// no way to ask for a schema at all. A task type's contract is the intersection of what all of its
+// workers honour, so every entry of `StructuredOutputSupport` is empty and every shape is refused.
+
+Test('reads the three response_format values this interface defines, and refuses a shape it does not', () => {
+	const messages = [{ role: 'user', content: 'hello' }];
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages, response_format: { type: 'text' } }).success, true);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages, response_format: { type: 'json_object' } }).success, true);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({
+		model: 'dev_formula',
+		messages,
+		response_format: { type: 'json_schema', json_schema: { name: 'greeting_object', strict: true, schema: { type: 'object', properties: { greeting: { type: 'string' } } } } },
+	}).success, true);
+	// A client holding no value for the field commonly sends it as `null` rather than leaving it
+	// out, and both mean the same thing.
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages, response_format: null }).success, true);
+	// A type this interface does not define is refused by the schema, and so is a `json_schema`
+	// carrying no schema block at all.
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages, response_format: { type: 'yaml' } }).success, false);
+	Assert.equal(ChatCompletionRequestSchema.safeParse({ model: 'dev_formula', messages, response_format: { type: 'json_schema' } }).success, false);
+});
+
+Test('asks for nothing when the request asks for this interface own default shape', () => {
+	const messages = [{ role: 'user', content: 'hello' }];
+	// All three of an absent field, a `null` field, and `text` mean the same thing: nothing unusual
+	// was asked for. A client that always sends `response_format: { "type": "text" }` must be
+	// answered, not refused.
+	for (const body of [
+		{ model: 'llm_llama3_2_1b_full', messages },
+		{ model: 'llm_llama3_2_1b_full', messages, response_format: null },
+		{ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } },
+	]) {
+		Assert.equal(ResponseFormatReader.read(ChatCompletionRequestSchema.parse(body), 'llm_llama3_2_1b_full'), undefined);
+	}
+});
+
+Test('refuses a response_format the model cannot produce, rather than answering it in prose', async () => {
+	const server = await listeningServer();
+	try {
+		// This is the defect issue #191 records: the field was accepted, dropped, and answered with
+		// ordinary prose, so a caller that asked for JSON called `JSON.parse` on an English
+		// sentence and was told nothing had gone wrong.
+		for (const responseFormat of [
+			{ type: 'json_object' },
+			{ type: 'json_schema', json_schema: { name: 'greeting_object', strict: true, schema: { type: 'object', properties: { greeting: { type: 'string' } }, required: ['greeting'], additionalProperties: false } } },
+		]) {
+			const response = await fetch(`${server.url}/v1/chat/completions`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					model: 'llm_llama3_2_1b_full',
+					messages: [{ role: 'user', content: 'Reply with a greeting object whose greeting is "hello".' }],
+					response_format: responseFormat,
+				}),
+			});
+			Assert.equal(response.status, 400);
+			const body = await response.json() as { error: { code: string; param: string; message: string } };
+			Assert.equal(body.error.code, 'unhonourable_response_format');
+			Assert.equal(body.error.param, 'response_format');
+			// The refusal names the shape that was asked for and what this model does produce, so
+			// the sender learns what to send instead rather than only what not to send.
+			Assert.match(body.error.message, new RegExp(responseFormat.type));
+			Assert.match(body.error.message, /text only/);
+		}
 	} finally {
 		server.close();
 	}
