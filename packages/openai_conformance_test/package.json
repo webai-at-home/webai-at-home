@@ -17,6 +17,8 @@
 		"report:ollama:llama3.2:3b": "npm run core -- --model llama3.2:3b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_llama3_2_3b.md",
 		"report:ollama:llama3.1:8b": "npm run core -- --model llama3.1:latest --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_llama3_1_8b.md",
 		"report:lmstudio:qwen3.5-2b": "npm run core -- --model qwen3.5-2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/reports/lmstudio_qwen3_5_2b.md",
+		"report:lmstudio:gemma-4-e2b": "npm run core -- --model google/gemma-4-e2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/reports/lmstudio_gemma_4_e2b.md",
+		"report:ollama:gemma4:e2b": "npm run core -- --model gemma4:e2b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_gemma4_e2b.md",
 		"ollama:log:stream": "tail -f ~/.ollama/logs/server.log",
 		"lmstudio:log:stream": "lms log stream --source model --stats",
 		"lmstudio:server:status": "lms server status",
