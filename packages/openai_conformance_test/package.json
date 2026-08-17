@@ -23,11 +23,13 @@
 		"report:ollama:gemma4:e4b": "npm run core -- --model gemma4:e4b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_gemma4_e4b.md",
 		"report:openai:gpt-4.1-mini": "npm run core -- --model gpt-4.1-mini --base_url https://api.openai.com/v1 --profile full --format markdown --output data/reports/openai_gpt_4_1_mini.md",
 		"report:openai:gpt-4o-mini": "npm run core -- --model gpt-4o-mini --base_url https://api.openai.com/v1 --profile full --format markdown --output data/reports/openai_gpt_4o_mini.md",
-		"lmstudio:log:stream": "lms log stream --source model --stats",
 		"lmstudio:server:status": "lms server status",
 		"lmstudio:server:start": "lms server start",
+		"lmstudio:server:stop": "lms server stop",
+		"lmstudio:log:stream": "lms log stream --source model --stats",
 		"ollama:server:status": "ollama ps",
 		"ollama:server:start": "OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 ollama serve",
+		"ollama:server:stop": "pkill -f 'ollama serve' || true",
 		"ollama:log:stream": "tail -f ~/.ollama/logs/server.log"
 	},
 	"dependencies": {
