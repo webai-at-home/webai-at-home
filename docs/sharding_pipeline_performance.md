@@ -24,7 +24,7 @@ It has three parts:
 | `single_machine_rate` | token rate of one unsharded machine, equal to `1 / model_compute_time` |
 | `token_latency` | latency of one token through the whole pipeline |
 | `cluster_throughput` | token rate of the whole cluster, counting every request together |
-| `payload_size` | bytes of hidden state sent between two shards, for one token |
+| `payload_size` | bytes of hidden state sent from one shard to the next one, for one token, on a forward hop |
 | `hidden_dimension` | width of the hidden state of the model |
 | `element_size` | bytes per element of the hidden state |
 | `upload_bandwidth` | upload speed of a home internet link |
@@ -127,12 +127,12 @@ This is the decode phase only, one token at a time. The prefill phase, which pro
 
 ### How we estimate the latency between two machines
 
-The two machines are personal computers in two different homes, joined by a WebRTC data channel. The `hop_latency` of one hop is the sum of several parts, and each part is estimated separately.
+The two machines are personal computers in two different homes, joined by a WebRTC data channel. The `hop_latency` of one hop is the sum of several parts, and each part is estimated separately. One hop crosses two homes, because the payload leaves the sending home over that home's access link and enters the receiving home over the other home's access link, so the parts that belong to a home are paid at both ends and the figures below cover both ends together.
 
 | Part of the path | Typical one-way cost | Comment |
 |---|---|---|
-| Home access link, first hop | 5 to 15 milliseconds | fibre at the low end, cable or digital subscriber line at the high end |
-| Wi-Fi, when the machine is not connected with a cable | 3 to 20 milliseconds | also the largest source of jitter |
+| Home access link, crossed at the sending home and again at the receiving home | 5 to 15 milliseconds for the two access links together | fibre at the low end, cable or digital subscriber line at the high end |
+| Wi-Fi, crossed at each home where the machine is not connected with a cable | 3 to 20 milliseconds for the two Wi-Fi links together | half of that when only one of the two machines is on Wi-Fi; also the largest source of jitter |
 | Internet path between the two homes, same country | 5 to 20 milliseconds | |
 | Datagram Transport Layer Security and Stream Control Transmission Protocol, plus browser scheduling | 2 to 5 milliseconds | packetization and the delay before the event loop runs |
 | `serialization_time` of the payload | 1 to 2 milliseconds | see the next section |
@@ -156,7 +156,7 @@ network_latency = hop_count × hop_latency = 105 milliseconds
 
 ### How we estimate the throughput between two machines
 
-What travels between two shards is the hidden state of a single token. Its size is:
+The `hop_count` hops of one token do not all carry the same thing. The `shard_count - 1` forward hops each carry the hidden state of a single token, and the return hop from the last shard to the first carries only the identifier of the sampled token, which is a few bytes. `payload_size` below is the size of the hidden state, so it is the size of a forward hop, and the return hop is smaller by three orders of magnitude. The size of the hidden state is:
 
 ```text
 payload_size = hidden_dimension × element_size
@@ -177,7 +177,7 @@ serialization_time = (4 × 8 × 1000) / (20 × 10^6)
                    ≈ 1.6 milliseconds
 ```
 
-The conclusion is that bandwidth is not the limit. The payload is small, the `serialization_time` is a rounding error next to the 35 milliseconds of `hop_latency`, and the sustained bit rate needed is only `payload_size / token_latency`, which is about 210 kilobits per second per stream. **During decode, the cost of sharding over WebRTC is latency, not bandwidth.**
+The conclusion is that bandwidth is not the limit. The payload is small, the `serialization_time` is a rounding error next to the 35 milliseconds of `hop_latency`, and the sustained bit rate needed on a forward link is only `payload_size / token_latency`, which is about 210 kilobits per second per stream. **During decode, the cost of sharding over WebRTC is latency, not bandwidth.**
 
 Prefill is the opposite, and this document does not cover it. A prompt is processed in one pass, so the payload for one hop is `prompt_length × payload_size` rather than `payload_size`. For a `prompt_length` of 1000 that is 4 megabytes per hop, and a `serialization_time` of about 1.6 seconds on the same link — larger than every other term in this document put together. Assumption 6 excludes prefill; any estimate that includes it must treat bandwidth as the binding limit rather than latency.
 
