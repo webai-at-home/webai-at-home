@@ -22,7 +22,6 @@
 	},
 	"include": [
 		"src/**/*.ts",
-		"tests/**/*.ts",
-		"milestone_zero/**/*.ts"
+		"tests/**/*.ts"
 	]
 }

@@ -1,8 +1,8 @@
 // local imports
 import type { OpenaiPackageClient } from './clients/openai_package_client.js';
 import type { RawHttpClient } from './clients/raw_http_client.js';
-import type { GenerationControlProbeCache } from './generation_control_probe_cache.js';
-import type { ToolCallProbeCache } from './tool_call_probe_cache.js';
+import type { GenerationControlProbeCache } from './probes/generation_control_probe_cache.js';
+import type { ToolCallProbeCache } from './probes/tool_call_probe_cache.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

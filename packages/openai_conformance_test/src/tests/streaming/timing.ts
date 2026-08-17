@@ -1,5 +1,5 @@
 // local imports
-import { SseEventReader } from '../../sse_event_reader.js';
+import { SseEventReader } from '../../readers/sse_event_reader.js';
 import type { ConformanceTest, TestContext, TestResult } from '../../types.js';
 
 ///////////////////////////////////////////////////////////////////////////////

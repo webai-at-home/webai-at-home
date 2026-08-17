@@ -1,5 +1,5 @@
 // local imports
-import { ToolCallVerdict } from '../../tool_call_verdict.js';
+import { ToolCallVerdict } from '../../probes/tool_call_verdict.js';
 import type { ConformanceTest, TestContext, TestResult } from '../../types.js';
 
 ///////////////////////////////////////////////////////////////////////////////

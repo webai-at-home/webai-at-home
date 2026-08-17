@@ -2,26 +2,23 @@
 
 ## Purpose
 
-One file per named profile, each an ordered list of the `ConformanceTest` objects it runs, as section 5 of issue #181 defines them.
+One file per named profile, each composing the groups declared in `src/tests/*/group.ts` into the ordered list a run executes, as section 5 of issue #181 defines them.
 
 ## Key Exports & Entry Points
 
-- `core.ts`: `coreProfile`, model discovery, basic chat completions, usage, and errors.
-- `streaming.ts`: `streamingProfile`, the server-sent event transport, chunk format, incremental content, `finish_reason`, `[DONE]`, and whether the answer was genuinely streamed.
-- `tools.ts`: `toolsProfile`, the six separate tool call abilities, with the negative control last.
-- `parameters.ts`: `parametersProfile`, the five generation controls, measured rather than merely accepted.
-- `structured_output.ts`: `structuredOutputProfile`, `json_object` and `json_schema`, reported separately.
-- `sdk.ts`: `sdkProfile`, the same requests through the official `openai` Node.js package, deliberately repeating what the raw groups already asked, because the second transport is the point.
-- `agent.ts`: `agentProfile`, the subset an agent framework depends on, selected from the profiles above.
+- `core.ts`: `coreProfile`, model discovery, basic chat completions, usage, and errors — the `models`, `chat`, `usage`, and `errors` groups, and the only capability profile built from more than one group.
+- `streaming.ts`, `tools.ts`, `parameters.ts`, `structured_output.ts`, `sdk.ts`: one group each, re-exported under the profile name the command line uses.
+- `agent.ts`: `agentProfile`, the subset an agent framework depends on. The one hand-picked selection, and the only file here that names individual tests.
 - `full.ts`: `fullProfile`, every profile above spread into one list.
 
 ## Rules
 
-- A profile file holds a list only, never test logic. A test's own behaviour lives in `src/tests/`, never here.
-- A profile is a plain array of the tests already defined in `src/tests/`, in the order they are run and printed; it declares no new test of its own.
+- A profile file holds a list only, never test logic, and never a test's membership of its own group. Which tests a group holds, and in which order, is declared in that group's `src/tests/<group>/group.ts`; a profile composes groups.
+- `agent.ts` is the sole exception and names tests directly, because it is a selection across groups rather than a whole group. It never imports a test `full.ts` cannot reach, so the two lists can never disagree about which tests exist.
 - A test added anywhere reaches `full.ts`, either through a base profile it spreads or on its own; `tests/index.test.ts` asserts this, so `full` cannot silently fall behind.
-- `agent.ts` selects from the other profiles and never imports a test `full.ts` cannot reach, so the two lists can never disagree about which tests exist.
+- A profile declares no new test of its own.
 
 ## Background
 
 - The profile names, and which capability each one covers, come from section 5 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181).
+- The membership lists moved into `src/tests/*/group.ts` so that adding a test file and forgetting to list it is caught by a test that reads the folder from disk, rather than leaving the test written and never run.

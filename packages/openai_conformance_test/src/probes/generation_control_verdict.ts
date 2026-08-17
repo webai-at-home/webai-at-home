@@ -1,6 +1,6 @@
 // local imports
 import type { GenerationControlField, GenerationControlOutcome } from '@webai/openai-api-tool/completion_types';
-import type { TestResult } from './types.js';
+import type { TestResult } from '../types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

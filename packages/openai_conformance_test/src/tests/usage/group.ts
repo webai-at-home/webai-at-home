@@ -1,0 +1,16 @@
+// local imports
+import type { ConformanceTest } from '../../types.js';
+import { usagePresentTest } from './present.js';
+import { usageTotalIsSumTest } from './total_is_sum.js';
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	usageGroup — whether the usage object is present and internally consistent
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** Every test in the `usage` folder, in the order they are run and printed. */
+export const usageGroup: readonly ConformanceTest[] = [
+	usagePresentTest,
+	usageTotalIsSumTest,
+];

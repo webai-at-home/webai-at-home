@@ -1,6 +1,6 @@
 // local imports
-import { JsonResponseReader } from '../../json_response_reader.js';
-import { SseEventReader } from '../../sse_event_reader.js';
+import { JsonResponseReader } from '../../readers/json_response_reader.js';
+import { SseEventReader } from '../../readers/sse_event_reader.js';
 import type { ConformanceTest, TestContext, TestResult } from '../../types.js';
 
 ///////////////////////////////////////////////////////////////////////////////

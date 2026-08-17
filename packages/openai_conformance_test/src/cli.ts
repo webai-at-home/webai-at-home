@@ -11,7 +11,7 @@ import { Command } from 'commander';
 import { SharedOptions, type RawSharedOptions } from '@webai/openai-api-tool/shared_options';
 import { OpenaiPackageClient } from './clients/openai_package_client.js';
 import { RawHttpClient } from './clients/raw_http_client.js';
-import { GenerationControlProbeCache } from './generation_control_probe_cache.js';
+import { GenerationControlProbeCache } from './probes/generation_control_probe_cache.js';
 import { agentProfile } from './profiles/agent.js';
 import { coreProfile } from './profiles/core.js';
 import { fullProfile } from './profiles/full.js';
@@ -26,7 +26,7 @@ import { MarkdownReporter } from './reporter/markdown.js';
 import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
 import { Runner, type TestRunRecord } from './runner.js';
-import { ToolCallProbeCache } from './tool_call_probe_cache.js';
+import { ToolCallProbeCache } from './probes/tool_call_probe_cache.js';
 import type { ConformanceTest, TestContext } from './types.js';
 
 ///////////////////////////////////////////////////////////////////////////////

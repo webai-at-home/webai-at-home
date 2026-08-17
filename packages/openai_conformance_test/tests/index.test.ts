@@ -1,14 +1,16 @@
 // node imports
 import Assert from 'node:assert/strict';
+import Fs from 'node:fs';
 import Http from 'node:http';
+import Path from 'node:path';
 import Test from 'node:test';
 
 // local imports
 import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
 import { RawHttpClient } from '../src/clients/raw_http_client.js';
-import { GenerationControlProbeCache } from '../src/generation_control_probe_cache.js';
-import { GenerationControlVerdict } from '../src/generation_control_verdict.js';
-import { JsonContentExtractor } from '../src/json_content_extractor.js';
+import { GenerationControlProbeCache } from '../src/probes/generation_control_probe_cache.js';
+import { GenerationControlVerdict } from '../src/probes/generation_control_verdict.js';
+import { JsonContentExtractor } from '../src/readers/json_content_extractor.js';
 import { agentProfile } from '../src/profiles/agent.js';
 import { coreProfile } from '../src/profiles/core.js';
 import { fullProfile } from '../src/profiles/full.js';
@@ -23,8 +25,8 @@ import { MarkdownReporter } from '../src/reporter/markdown.js';
 import { ReportSummary } from '../src/reporter/report_summary.js';
 import { TerminalReporter } from '../src/reporter/terminal.js';
 import { Runner, type TestRunRecord } from '../src/runner.js';
-import { SseEventReader } from '../src/sse_event_reader.js';
-import { ToolCallProbeCache } from '../src/tool_call_probe_cache.js';
+import { SseEventReader } from '../src/readers/sse_event_reader.js';
+import { ToolCallProbeCache } from '../src/probes/tool_call_probe_cache.js';
 import { chatBasicTest } from '../src/tests/chat/basic.js';
 import { errorsUnknownModelTest } from '../src/tests/errors/unknown_model.js';
 import { streamingDoneTest } from '../src/tests/streaming/done.js';
@@ -34,8 +36,10 @@ import { structuredOutputJsonObjectTest } from '../src/tests/structured_output/j
 import { structuredOutputJsonSchemaTest } from '../src/tests/structured_output/json_schema.js';
 import { sdkToolsTest } from '../src/tests/sdk/tools.js';
 import { usageTotalIsSumTest } from '../src/tests/usage/total_is_sum.js';
-import { ToolCallVerdict } from '../src/tool_call_verdict.js';
+import { ToolCallVerdict } from '../src/probes/tool_call_verdict.js';
 import type { ConformanceTest, TestContext, Verdict } from '../src/types.js';
+
+const __dirname = import.meta.dirname;
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -857,6 +861,37 @@ void Test('the full profile holds every test every other profile can reach, so i
 		.filter((test) => fullProfile.includes(test) === false)
 		.map((test) => test.id);
 	Assert.deepEqual([...new Set(missing)], []);
+});
+
+void Test('every test file in a group folder is listed in that folder\'s group.ts, so a written test cannot go unrun', async () => {
+	const testsDirectory = Path.join(__dirname, '..', 'src', 'tests');
+	const groupFolderNames = Fs.readdirSync(testsDirectory, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name);
+	Assert.ok(groupFolderNames.length > 0, 'no group folders found under src/tests');
+
+	const unlisted: string[] = [];
+	for (const groupFolderName of groupFolderNames) {
+		const groupFolderPath = Path.join(testsDirectory, groupFolderName);
+		const groupModule = (await import(Path.join(groupFolderPath, 'group.js'))) as Record<string, unknown>;
+		const groupList = Object.values(groupModule).find((value) => Array.isArray(value)) as ConformanceTest[] | undefined;
+		Assert.ok(groupList !== undefined, `${groupFolderName}/group.ts exports no array of tests`);
+
+		const testFileNames = Fs.readdirSync(groupFolderPath).filter((fileName) => fileName.endsWith('.ts') && fileName !== 'group.ts');
+		for (const testFileName of testFileNames) {
+			const testModule = (await import(Path.join(groupFolderPath, testFileName.replace(/\.ts$/, '.js')))) as Record<string, unknown>;
+			for (const exported of Object.values(testModule)) {
+				const conformanceTest = exported as ConformanceTest;
+				if (typeof conformanceTest?.id !== 'string') {
+					continue;
+				}
+				if (groupList.includes(conformanceTest) === false) {
+					unlisted.push(`${groupFolderName}/${testFileName} exports ${conformanceTest.id}, absent from ${groupFolderName}/group.ts`);
+				}
+			}
+		}
+	}
+	Assert.deepEqual(unlisted, []);
 });
 
 void Test('every test identifier is unique, and every identifier begins with its own group name', () => {

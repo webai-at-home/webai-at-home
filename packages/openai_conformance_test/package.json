@@ -13,8 +13,7 @@
 		"precore": "npm run build:dependencies",
 		"core": "tsx src/cli.ts",
 		"pretest": "npm run build:dependencies",
-		"test": "npx tsx --test tests/index.test.ts",
-		"milestone_zero": "tsx milestone_zero/gate.ts"
+		"test": "npx tsx --test tests/index.test.ts"
 	},
 	"dependencies": {
 		"@webai/openai-api-tool": "0.1.0",

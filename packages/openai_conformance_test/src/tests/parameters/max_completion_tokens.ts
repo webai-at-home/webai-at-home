@@ -1,5 +1,5 @@
 // local imports
-import { GenerationControlVerdict } from '../../generation_control_verdict.js';
+import { GenerationControlVerdict } from '../../probes/generation_control_verdict.js';
 import type { ConformanceTest, TestContext, TestResult } from '../../types.js';
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -1,6 +1,6 @@
 // local imports
-import { JsonContentExtractor } from '../../json_content_extractor.js';
-import { JsonResponseReader } from '../../json_response_reader.js';
+import { JsonContentExtractor } from '../../readers/json_content_extractor.js';
+import { JsonResponseReader } from '../../readers/json_response_reader.js';
 import type { ConformanceTest, TestContext, TestResult } from '../../types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
