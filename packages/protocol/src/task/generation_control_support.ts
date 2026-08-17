@@ -54,14 +54,17 @@ export type GenerationControlName =
  *   a library: nothing there refuses a `topP`, and a seeded source of random numbers can be built
  *   where a library offers none. It is the only task type whose `randomSeed` and `topP` do
  *   anything.
- * - `task_type_llm_gemma_nano_chrome_full` honours none of the five, and is the one task type the
- *   gate could not reach. On Chrome/151.0.7922.138, the only Chrome installed on the machine that
- *   ran the gate, `LanguageModel.availability()` answered `unavailable` and `LanguageModel.create()`
- *   threw `NotSupportedError: Unable to create a text session because the service is not running` —
- *   headless, headed, and again with the performance requirement bypassed, unchanged over ten
- *   minutes of asking. Nothing about that engine is written here, because nothing about it was
- *   observed. The entry stays empty until a machine whose Chrome offers its built-in model runs the
- *   gate; step 7 of issue #196 says what to try then.
+ * - `task_type_llm_gemma_nano_chrome_full` honours none of the five, and that is now a measured
+ *   result rather than an unreachable machine. Its own gate is
+ *   [issue #205](https://github.com/webai-at-home/webai-at-home/issues/205), run on Chrome/151.0.7922.138
+ *   once `LanguageModel.availability()` on that machine answered `available`. `LanguageModel.create()`
+ *   accepts a `temperature`, both with a `topK` beside it and without one, and acting on it is what
+ *   it does not do: `temperature: 0` and `temperature: 1.6` each gave three different answers out of
+ *   three runs, with `topK: 40` and again with `topK: 1`, which is the strongest determinism this
+ *   engine can be asked for. The engine offers no `topP`, no maximum output length, no stop
+ *   sequences, and no seed at all, so `temperature` was the only one of the five it could ever have
+ *   honoured. A control accepted and acted on by nothing is exactly what this table exists to keep
+ *   out of a consumer's hands, so the entry stays empty.
  * - `task_type_dev_formula` generates no text at all, so no control applies to it.
  *
  * `task_type_llm_llama3_2_3b_full` is retired; it was, for as long as it existed, the only task
