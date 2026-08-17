@@ -303,7 +303,7 @@ Every value sent to a stage or returned by one is built by `StagePayloadFactory`
 ## Where these definitions live
 
 - Task types and task inputs: `TaskType` and `TaskInput` in [`packages/protocol/src/index.ts`](../packages/protocol/src/index.ts).
-- Pipeline and stage specifications, including the three built-in pipelines: [`packages/gateway/src/task/pipeline_registry.ts`](../packages/gateway/src/task/pipeline_registry.ts).
+- Pipeline and stage specifications, including the five built-in pipelines: [`packages/gateway/src/task/pipeline_registry.ts`](../packages/gateway/src/task/pipeline_registry.ts).
 - The rule that decides which stage comes next, including the repeating case: `TaskStore.nextStage` in [`packages/gateway/src/task/task_store.ts`](../packages/gateway/src/task/task_store.ts).
 - Stage assignment, worker selection, leases, and retries: [`packages/gateway/src/cli.ts`](../packages/gateway/src/cli.ts).
 - The formula computations: [`packages/worker_webpage/web/src/stages/stage_helper_dev_formula.ts`](../packages/worker_webpage/web/src/stages/stage_helper_dev_formula.ts).

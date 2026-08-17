@@ -122,7 +122,7 @@ The page shows the account identifier and what it holds, and refreshes the figur
 
 ### A server or a command line program
 
-`consumer_cli`, the OpenAI-compatible server, and the Node.js worker each read a key file and prove that account as they connect. All three take the same option saying where to look, `-c, --config_dir <path>`, and read `default.account_key.json` inside it; each carries on with no account when there is no key pair in that directory. Each defaults to its own directory under `data/` in this checkout of the repository, listed in "Where a key pair is kept" above.
+`consumer_cli`, the OpenAI-compatible server, and the Node.js worker each read a key file and prove that account as they connect. All three take the same option saying where to look, `-c, --config_dir <path>`, and read `default.account_key.json` inside it; each carries on with no account when there is no key pair in that directory. Each defaults to its own directory under `~/.webai-at-home/`, listed in "Where a key pair is kept" above.
 
 One deployment of the OpenAI-compatible server is one account. It is that server's account and not the account of whichever program called its OpenAI-compatible endpoint, because the server is what the gateway sees.
 
@@ -136,9 +136,7 @@ The page shows balances, not history: an account's own entries stay readable onl
 
 ### A person at a terminal
 
-Five [`consumer_cli`](../packages/consumer_cli/README.md) commands, described in full in that package's README:
-
-`submit` spends from the account in that key file too, and says which account it is submitting as, or that it is submitting as nobody.
+Five [`consumer_cli`](../packages/consumer_cli/README.md) account commands, described in full in that package's README:
 
 | Command | What it does |
 | --- | --- |
@@ -149,6 +147,8 @@ Five [`consumer_cli`](../packages/consumer_cli/README.md) commands, described in
 | `account_history` | Prints the entries newest first, with `--direction earned`, `spent`, or `both`. |
 
 `account_history --direction earned` is the list of completed stages and `--direction spent` is the list of consumed stages, which is why neither has a command of its own.
+
+`submit` is not one of the five, and is the one command that spends an account rather than reading it: it spends from the account in that same key file, and says which account it is submitting as, or that it is submitting as nobody.
 
 ## The gateway's options
 
