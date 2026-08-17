@@ -23,6 +23,7 @@ import { toolsProfile } from './profiles/tools.js';
 import { JsonReporter } from './reporter/json.js';
 import { JunitReporter } from './reporter/junit.js';
 import { MarkdownReporter } from './reporter/markdown.js';
+import { ReportParameters } from './reporter/report_parameters.js';
 import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
 import { Runner, type TestRunRecord } from './runner.js';
@@ -124,7 +125,7 @@ export class Cli {
 		program.option('-f, --format <format>', `output format: ${knownFormats.join(', ')}`, 'text');
 
 		program.action(async (rawOptions: RawCliOptions) => {
-			await Cli._runProfile(rawOptions);
+			await Cli._runProfile(rawOptions, args, invokedName);
 		});
 
 		try {
@@ -146,11 +147,14 @@ export class Cli {
 	 * Validates `rawOptions`, runs the chosen tests, writes the report, and sets the exit code.
 	 *
 	 * @param rawOptions The command line options, exactly as commander parsed them.
+	 * @param args The command line arguments as they were typed, reproduced in a markdown report so
+	 * a reader can run the same measurement again.
+	 * @param invokedName The name this program was invoked under, used to write that same line.
 	 * @returns Nothing, once the report has been written.
 	 * @throws {Error} If the command line is unusable: a missing `-m/--model`, an unknown
 	 * `-p/--profile` or `-f/--format`, or a `-g/--group` or `-t/--test` matching no test at all.
 	 */
-	private static async _runProfile(rawOptions: RawCliOptions): Promise<void> {
+	private static async _runProfile(rawOptions: RawCliOptions, args: readonly string[], invokedName: string): Promise<void> {
 		if (rawOptions.model === undefined || rawOptions.model.trim() === '') {
 			throw new Error('-m/--model is required, or set the OPENAI_MODEL environment variable');
 		}
@@ -175,7 +179,7 @@ export class Cli {
 		};
 
 		const records = await Runner.run(tests, context);
-		Cli._writeReport(Cli._renderReport(records, rawOptions, target.baseUrl), rawOptions.output);
+		Cli._writeReport(Cli._renderReport(records, rawOptions, target.baseUrl, args, invokedName), rawOptions.output);
 		Cli._setExitCode(records);
 	}
 
@@ -210,18 +214,30 @@ export class Cli {
 	/**
 	 * Renders the report in the requested format.
 	 *
+	 * The generation date, the parameter list, and the command line go to the markdown format only.
+	 * That format is the one written to a file and read again days later, where a report that does
+	 * not say when it was measured or what it was measured with says very little; the other three
+	 * are read by a program or by the person who just typed the command.
+	 *
 	 * @param records Every test's outcome.
 	 * @param rawOptions The command line options.
 	 * @param endpoint The endpoint that was tested.
+	 * @param args The command line arguments as they were typed.
+	 * @param invokedName The name this program was invoked under.
 	 * @returns The report, ready to write.
 	 */
-	private static _renderReport(records: readonly TestRunRecord[], rawOptions: RawCliOptions, endpoint: string): string {
+	private static _renderReport(records: readonly TestRunRecord[], rawOptions: RawCliOptions, endpoint: string, args: readonly string[], invokedName: string): string {
 		const options = { endpoint, modelId: rawOptions.model };
 		switch (rawOptions.format) {
 			case 'json':
 				return JsonReporter.render(records, options);
 			case 'markdown':
-				return MarkdownReporter.render(records, options);
+				return MarkdownReporter.render(records, {
+					...options,
+					generatedAt: new Date(),
+					parameters: ReportParameters.of(rawOptions),
+					commandLine: ReportParameters.commandLine(args, invokedName),
+				});
 			case 'junit':
 				return JunitReporter.render(records, options);
 			default:

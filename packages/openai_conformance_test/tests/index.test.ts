@@ -22,6 +22,7 @@ import { toolsProfile } from '../src/profiles/tools.js';
 import { JsonReporter } from '../src/reporter/json.js';
 import { JunitReporter } from '../src/reporter/junit.js';
 import { MarkdownReporter } from '../src/reporter/markdown.js';
+import { ReportParameters, placeholderApiKey, redactedApiKey } from '../src/reporter/report_parameters.js';
 import { ReportSummary } from '../src/reporter/report_summary.js';
 import { TerminalReporter } from '../src/reporter/terminal.js';
 import { Runner, type TestRunRecord } from '../src/runner.js';
@@ -955,6 +956,95 @@ void Test('the markdown reporter escapes a vertical bar and a newline, which wou
 	const markdown = MarkdownReporter.render(records, { endpoint: 'http://example.test/v1', modelId: 'a-model' });
 	const row = markdown.split('\n').find((line) => line.includes('chat.basic'));
 	Assert.equal(row?.includes('broke \\| badly on two lines'), true, `row was ${String(row)}`);
+});
+
+void Test('the markdown reporter puts the summary above every group table, so the one number is read before the rows that produced it', () => {
+	const records = [
+		ReporterFixtures.record('models.list', 'models', 'PASS'),
+		ReporterFixtures.record('chat.basic', 'chat', 'FAIL', 'no answer'),
+	];
+	const markdown = MarkdownReporter.render(records, { endpoint: 'http://example.test/v1', modelId: 'a-model' });
+	Assert.equal(markdown.indexOf('## Summary') < markdown.indexOf('## Models'), true, markdown);
+	Assert.equal(markdown.indexOf('## Summary') < markdown.indexOf('## Chat Completions'), true, markdown);
+	// The counts appear once, at the head, rather than at both ends of the document.
+	Assert.equal(markdown.split('- Passed: 1').length - 1, 1, markdown);
+});
+
+void Test('the markdown reporter writes the generation date, the command line, and every parameter the run was given', () => {
+	const records = [ReporterFixtures.record('chat.basic', 'chat', 'PASS')];
+	const markdown = MarkdownReporter.render(records, {
+		endpoint: 'http://example.test/v1',
+		modelId: 'a-model',
+		generatedAt: new Date('2026-08-17T09:30:00.000Z'),
+		commandLine: 'openai_conformance_test --model a-model --profile full',
+		parameters: [
+			{
+				name: '--model',
+				value: 'a-model',
+			},
+			{
+				name: '--profile',
+				value: 'full',
+			},
+		],
+	});
+	Assert.match(markdown, /- Generated: 2026-08-17T09:30:00\.000Z/);
+	Assert.match(markdown, /openai_conformance_test --model a-model --profile full/);
+	Assert.match(markdown, /\| `--profile` \| full \|/);
+});
+
+void Test('the markdown reporter stamps the moment it rendered when the caller offers no generation date', () => {
+	const before = new Date();
+	const markdown = MarkdownReporter.render([ReporterFixtures.record('chat.basic', 'chat', 'PASS')], { endpoint: 'http://example.test/v1', modelId: 'a-model' });
+	const stamped = /- Generated: (\S+)/.exec(markdown)?.[1];
+	Assert.notEqual(stamped, undefined, markdown);
+	Assert.equal(new Date(String(stamped)).getTime() >= before.getTime(), true, `stamped ${String(stamped)}`);
+});
+
+void Test('the report parameters list every option including the defaults, and never the bearer token', () => {
+	const parameters = ReportParameters.of({
+		model: 'a-model',
+		profile: 'full',
+		repeats: '3',
+		base_url: 'https://api.openai.test/v1',
+		api_key: 'sk-a-real-secret-key',
+		timeout_ms: '600000',
+		format: 'markdown',
+	});
+	const valueOf = (name: string): string | undefined => parameters.find((parameter) => parameter.name === name)?.value;
+	// A default nobody typed is still listed, because two reports are only comparable when both say
+	// how many repeats they ran.
+	Assert.equal(valueOf('--repeats'), '3');
+	Assert.equal(valueOf('--api_key'), redactedApiKey);
+	// An option that was never given is absent rather than named with an empty value.
+	Assert.equal(valueOf('--group'), undefined);
+	Assert.equal(valueOf('--verbose'), undefined);
+	Assert.equal(parameters.some((parameter) => parameter.value.includes('sk-a-real-secret-key')), false);
+});
+
+void Test('the report parameters show the placeholder bearer token as it stands, since it is not a secret', () => {
+	const parameters = ReportParameters.of({
+		model: 'a-model',
+		profile: 'core',
+		repeats: '3',
+		base_url: 'http://localhost:1234/v1',
+		api_key: placeholderApiKey,
+		timeout_ms: '600000',
+		format: 'markdown',
+	});
+	Assert.equal(parameters.find((parameter) => parameter.name === '--api_key')?.value, placeholderApiKey);
+});
+
+void Test('the reproducible command line redacts the bearer token in both spellings commander accepts', () => {
+	const separate = ReportParameters.commandLine(['--model', 'gpt-4o-mini', '-k', 'sk-a-real-secret-key', '--profile', 'full'], 'openai_conformance_test');
+	Assert.equal(separate, 'openai_conformance_test --model gpt-4o-mini -k <redacted> --profile full');
+
+	const joined = ReportParameters.commandLine(['--model', 'gpt-4o-mini', '--api_key=sk-a-real-secret-key'], 'openai_conformance_test');
+	Assert.equal(joined, 'openai_conformance_test --model gpt-4o-mini --api_key=<redacted>');
+
+	// A key that arrived through OPENAI_API_KEY was never typed, so it cannot appear on this line.
+	const fromEnvironment = ReportParameters.commandLine(['--model', 'gpt-4o-mini'], 'openai_conformance_test');
+	Assert.equal(fromEnvironment, 'openai_conformance_test --model gpt-4o-mini');
 });
 
 void Test('the junit reporter escapes the characters XML reserves, and writes WARN as a passing case', () => {
