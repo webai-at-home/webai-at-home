@@ -7,7 +7,7 @@ import OpenAI from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_streamed_llm_qwen3_0_6b_sharded --workspace @webai/consumer-openai
+//   npm run example:chat_completion_streamed_llm_qwen3_0_6b_sharded --workspace @webai/openai-test
 //
 // The model `llm_qwen3_0_6b_sharded` is the Qwen3-0.6B language model split into three
 // consecutive shards, each held and run by a different worker browser tab. The three stages

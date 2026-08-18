@@ -8,11 +8,13 @@ The one command line tool that tests, measures, and talks to a server speaking t
 
 - `src/cli.ts`: the `openai_test` program and its subcommands.
 - `src/`: every source folder — see [its own CONTEXT.md](src/CONTEXT.md).
+- `examples/`: one runnable program per task type and per calling style, written against the official `openai` package on npm — see [its own CONTEXT.md](examples/CONTEXT.md).
 - `tests/index.test.ts`: this package's own automated test suite, which starts its own local HTTP server and so needs neither a cluster nor a local model server.
 - Command to run this folder: `npx tsx src/cli.ts conformance --base_url http://localhost:1234/v1 --model <name> --profile full`
 
 ## Rules
 
+- Nothing in `examples/` is part of the program `src/cli.ts` runs, and no source file imports an example.
 - This package imports nothing from this repository. Its only dependencies are `chalk`, `commander`, `openai`, and `@types/node`, so `npx tsx src/cli.ts` runs from a clean checkout with no workspace build first. Other packages may import this one; the arrow points one way only.
 - Every request checks that the model identifier the endpoint named in its answer answers for the one that was requested, and fails the run when it does not. An endpoint answering as the wrong model is not always an error the endpoint reports.
 - Never grade whether an answer is a good answer. A prompt built so that the behaviour under test is visible in the answer is a measurement; an opinion about whether the answer was helpful is not, and never appears.

@@ -7,7 +7,7 @@ import OpenAI from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_streamed_llm_llama3_2_1b_full --workspace @webai/consumer-openai
+//   npm run example:chat_completion_streamed_llm_llama3_2_1b_full --workspace @webai/openai-test
 //
 // The model `llm_llama3_2_1b_full` is the complete Llama 3.2 1B Instruct language model,
 // downloaded directly from Hugging Face and held entirely by one worker browser tab.

@@ -71,10 +71,10 @@ A model identifier is the cluster's task type name without the leading `task_typ
 
 ## Try it
 
-The examples that use the official `openai` package on npm against this server live in [`@webai/openai-api-tool`](../openai_api_tool/), in [`packages/openai_api_tool/examples/`](../openai_api_tool/examples), each one runnable on its own. Start with the development formula example, which needs no model download:
+The examples that use the official `openai` package on npm against this server live in [`@webai/openai-test`](../openai_test/), in [`packages/openai_test/examples/`](../openai_test/examples), each one runnable on its own. Start with the development formula example, which needs no model download:
 
 ```sh
-npm run example:chat_completion_dev_formula --workspace @webai/openai-api-tool
+npm run example:chat_completion_dev_formula --workspace @webai/openai-test
 ```
 
 Each example file says at the top what the cluster has to have running for it to work, and every example reads `OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set. The sweep that sends one prompt to every model in one run, and the one that checks a two-turn history across the models accepting a history, live in the same package as the `completion` and `history` subcommands. The examples remain the ones to read first: each is a short, single-purpose file explaining one model in one mode.

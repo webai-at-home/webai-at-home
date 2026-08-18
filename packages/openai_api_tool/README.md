@@ -233,15 +233,7 @@ The streamed mode passing matters on its own. The plan on issue #78 said its who
 
 ## The examples
 
-Beside the six subcommands, [`examples/`](./examples) holds one short runnable program per task type and per calling style, each one written against the official `openai` package on npm rather than against this package's own sender, and each one runnable on its own. They came here from `@webai/consumer-openai` so that every program sending a chat completion request from this repository lives in one package. Start with the development formula example, which needs no model download:
-
-```sh
-npm run example:chat_completion_dev_formula --workspace @webai/openai-api-tool
-```
-
-The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
-
-The two `history` examples are the ones to run to see a real history reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole history rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
+The examples moved to [`packages/openai_test/examples/`](../openai_test/examples), together with their `example:*` scripts, and are described in [that package's README.md](../openai_test/README.md#the-examples). They were never part of this package's own program, and this package is frozen.
 
 ## Test it
 

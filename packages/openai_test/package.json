@@ -25,7 +25,20 @@
 		"report:benchmark:openai:gpt-4.1-mini": "npm run benchmark -- --base_url https://api.openai.com/v1 --model gpt-4.1-mini --format markdown --output data/benchmark_reports/openai_gpt_4_1_mini.md",
 		"lmstudio:server:status": "lms server status",
 		"lmstudio:server:start": "lms server start",
-		"lmstudio:server:stop": "lms server stop"
+		"lmstudio:server:stop": "lms server stop",
+		"example:list_models": "tsx examples/list_models.ts",
+		"example:chat_completion_dev_formula": "tsx examples/chat_completion_dev_formula.ts",
+		"example:chat_completion_system_message": "tsx examples/chat_completion_system_message.ts",
+		"example:chat_completion_nostream_llm_gemma_nano_chrome_full": "tsx examples/chat_completion_nostream_llm_gemma_nano_chrome_full.ts",
+		"example:chat_completion_streamed_llm_gemma_nano_chrome_full": "tsx examples/chat_completion_streamed_llm_gemma_nano_chrome_full.ts",
+		"example:chat_completion_nostream_llm_qwen3_0_6b_sharded": "tsx examples/chat_completion_nostream_llm_qwen3_0_6b_sharded.ts",
+		"example:chat_completion_streamed_llm_qwen3_0_6b_sharded": "tsx examples/chat_completion_streamed_llm_qwen3_0_6b_sharded.ts",
+		"example:chat_completion_nostream_llm_qwen3_5_0_8b_full": "tsx examples/chat_completion_nostream_llm_qwen3_5_0_8b_full.ts",
+		"example:chat_completion_streamed_llm_qwen3_5_0_8b_full": "tsx examples/chat_completion_streamed_llm_qwen3_5_0_8b_full.ts",
+		"example:chat_completion_history_llm_qwen3_5_0_8b_full": "tsx examples/chat_completion_history_llm_qwen3_5_0_8b_full.ts",
+		"example:chat_completion_nostream_llm_llama3_2_1b_full": "tsx examples/chat_completion_nostream_llm_llama3_2_1b_full.ts",
+		"example:chat_completion_streamed_llm_llama3_2_1b_full": "tsx examples/chat_completion_streamed_llm_llama3_2_1b_full.ts",
+		"example:chat_completion_history_llm_llama3_2_1b_full": "tsx examples/chat_completion_history_llm_llama3_2_1b_full.ts"
 	},
 	"dependencies": {
 		"chalk": "^5.3.0",

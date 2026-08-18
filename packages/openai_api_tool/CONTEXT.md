@@ -11,7 +11,6 @@ The command line tool that exercises and measures a server speaking the OpenAI-c
 - `src/benchmark_runner.ts`: the warm-up and measured requests of one run, and their aggregation.
 - `src/generation_control_prober.ts`, `src/tool_call_prober.ts`: the probes behind `generation_controls` and `tool_calls`, each with its own renderer.
 - `src/shared_options.ts`: every option all six subcommands accept, reused by [`packages/openai_conformance_test`](../openai_conformance_test/) through the `./shared_options` subpath export.
-- `examples/`: one runnable example per task type and per calling style.
 
 ## Rules
 

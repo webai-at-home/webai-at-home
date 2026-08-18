@@ -81,6 +81,18 @@ Exit code `0` when nothing failed, `1` when a test failed or a model asked for c
 
 The `report:*` scripts of `package.json` write markdown reports into [`data/conformance_reports/`](data/conformance_reports/) and [`data/benchmark_reports/`](data/benchmark_reports/).
 
+## The examples
+
+Beside the three subcommands, [`examples/`](./examples) holds one short runnable program per task type and per calling style, each one written against the official `openai` package on npm rather than against this package's own client, and each one runnable on its own. They came here from [`packages/openai_api_tool`](../openai_api_tool/) when that package was frozen, so that every program sending a chat completion request from this repository lives in one package. Start with the development formula example, which needs no model download:
+
+```sh
+npm run example:chat_completion_dev_formula --workspace @webai/openai-test
+```
+
+The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, and `example:chat_completion_history_llm_llama3_2_1b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
+
+The two `history` examples are the ones to run to see a real history reach a worker: `llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the only two models whose task type accepts a whole history rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
+
 ## Its own tests
 
 ```sh

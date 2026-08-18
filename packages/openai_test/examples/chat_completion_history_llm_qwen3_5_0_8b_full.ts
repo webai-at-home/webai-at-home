@@ -2,16 +2,16 @@ import OpenAI, { APIError } from 'openai';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Carries a real history across two turns, with the complete Llama 3.2 1B Instruct model
+//	Carries a real history across two turns, with the complete Qwen3.5-0.8B model
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_history_llm_llama3_2_1b_full --workspace @webai/consumer-openai
+//   npm run example:chat_completion_history_llm_qwen3_5_0_8b_full --workspace @webai/openai-test
 //
-// The model `llm_llama3_2_1b_full` is one of the two models whose task type accepts a whole
-// history rather than only one prompt (`llm_qwen3_5_0_8b_full` is the other; see
-// `examples/chat_completion_history_llm_qwen3_5_0_8b_full.ts`). Sending several messages here does
+// The model `llm_qwen3_5_0_8b_full` is one of the two models whose task type accepts a whole
+// history rather than only one prompt (`llm_llama3_2_1b_full` is the other; see
+// `examples/chat_completion_history_llm_llama3_2_1b_full.ts`). Sending several messages here does
 // not flatten them into lines of `role: content` text the way `llm_gemma_nano_chrome_full` and
 // `llm_qwen3_0_6b_sharded` still do — this server submits the messages as they are, and
 // `@huggingface/transformers` applies the model's own chat template to real turns.
@@ -24,9 +24,9 @@ import OpenAI, { APIError } from 'openai';
 //
 // It needs the gateway running and one worker browser tab open in a browser with WebGPU and
 // 16-bit float shader support, for example the page
-// http://localhost:8787/debug_iframe_llm_llama3_2_1b_full. The first request on a fresh browser
-// profile downloads about 1050 MB of model files; later requests, including the second one below,
-// reuse the browser's cache.
+// http://localhost:8787/debug_iframe_llm_qwen3_5_0_8b_full. The first request on a fresh browser
+// profile downloads about 600 MB of model files, which took about 163 seconds in testing; later
+// requests, including the second one below, reuse the browser's cache.
 
 const client = new OpenAI({
 	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
@@ -35,7 +35,7 @@ const client = new OpenAI({
 	timeout: 600_000,
 });
 
-const model = 'llm_llama3_2_1b_full';
+const model = 'llm_qwen3_5_0_8b_full';
 
 try {
 	const firstQuestion = 'My name is Ada and my favorite programming language is Lisp. Please just say hello back.';
