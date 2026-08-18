@@ -41,6 +41,17 @@ export type ConformanceRun = {
 	readonly records: readonly TestRunRecord[];
 };
 
+/**
+ * Told when each test starts and when each test finishes, so a caller can show a run as it happens
+ * rather than only once every test is over. `Runner` itself never prints.
+ */
+export type RunnerProgressListener = {
+	/** Called just before `test` starts running. */
+	readonly onTestStarted: (test: ConformanceTest) => void;
+	/** Called once `record.test` has finished, whatever verdict it reached. */
+	readonly onTestFinished: (record: TestRunRecord) => void;
+};
+
 /** One model a sweep left out, and why. */
 export type SkippedModel = {
 	/** The model identifier that was left out. */
@@ -58,12 +69,24 @@ export class Runner {
 	 *
 	 * @param tests The tests to run, in the order to run and report them.
 	 * @param context The endpoint, the model, and both clients every test runs against.
+	 * @param progressListener Told when each test starts and finishes, when one is given.
 	 * @returns One record per test, in the same order as `tests`.
 	 */
-	static async run(tests: readonly ConformanceTest[], context: TestContext): Promise<TestRunRecord[]> {
+	static async run(
+		tests: readonly ConformanceTest[],
+		context: TestContext,
+		progressListener?: RunnerProgressListener,
+	): Promise<TestRunRecord[]> {
 		const records: TestRunRecord[] = [];
 		for (const test of tests) {
-			records.push(await Runner._runOne(test, context));
+			if (progressListener !== undefined) {
+				progressListener.onTestStarted(test);
+			}
+			const record = await Runner._runOne(test, context);
+			if (progressListener !== undefined) {
+				progressListener.onTestFinished(record);
+			}
+			records.push(record);
 		}
 		return records;
 	}

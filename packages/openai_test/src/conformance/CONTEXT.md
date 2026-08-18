@@ -2,14 +2,14 @@
 
 ## Purpose
 
-The `conformance` subcommand: it points at a server speaking the OpenAI-compatible Chat Completions API and reports which parts of the protocol that server honours, and what the model behind it can do.
+The `conformance` subcommand: it reports which parts of the OpenAI-compatible Chat Completions API a server honours, and what the model behind it can do.
 
 ## Key Exports & Entry Points
 
-- `conformance_command.ts`: `ConformanceCommand`, which validates the options, runs the chosen tests, writes the report, and sets the exit code.
-- `types.ts`: the shapes every test, client, and report share, including the `TestContext` a test is handed.
-- `runner.ts`: runs the chosen tests in order, turning a thrown error into `FAIL` rather than stopping the run.
-- `conformance_tests/`: one file per test, grouped by the part of the protocol it checks — see [its own CONTEXT.md](conformance_tests/CONTEXT.md).
+- `conformance_command.ts`: `ConformanceCommand`, which validates the options, runs the tests, writes the report, and sets the exit code.
+- `types.ts`: the shapes every test, client, and report share, including the `TestContext`.
+- `runner.ts`: runs the tests in order, turning a thrown error into `FAIL` rather than stopping the run.
+- `conformance_tests/`: one file per test, grouped by protocol part — see [its own CONTEXT.md](conformance_tests/CONTEXT.md).
 - `profiles/`: the named lists of tests a run can ask for — see [its own CONTEXT.md](profiles/CONTEXT.md).
 - `probes/`: runs each prober of `../probers/` once and turns its statuses into verdicts — see [its own CONTEXT.md](probes/CONTEXT.md).
 - `reporter/`: one file per output format — see [its own CONTEXT.md](reporter/CONTEXT.md).
@@ -17,14 +17,16 @@ The `conformance` subcommand: it points at a server speaking the OpenAI-compatib
 
 ## Rules
 
-- A test result is `PASS`, `FAIL`, `SKIP`, or `WARN`, per section 32 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181). `SKIP` is a declared-unsupported refusal; `WARN` is correct behaviour that may still break a client, such as a buffered stream. Neither is ever `FAIL`. A run counts as failed on its verdicts alone, never on `--ci`.
-- **Never grade whether an answer is a good answer. Behaviour proved by construction is allowed.** A test may read an answer's words when the prompt was built so the behaviour under test is visible in them and in nothing else: `history.recalled` states a fact its question can be answered from nowhere else, and `parameters/` and `tools/` compare repeated answers. It may never say an answer was helpful or well written. The general form is in [../../CONTEXT.md](../../CONTEXT.md).
-- What the endpoint did and what the model did are separate tests, never one: `history.accepted` says the history was carried, `history.recalled` says the model read it.
-- `conformance_command.ts` is the only file here that prints or sets an exit code, and it writes a file only through `../report_writer.ts`.
+- A test result is `PASS`, `FAIL`, `SKIP`, or `WARN`, per section 32 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181). `SKIP` is a declared-unsupported refusal and `WARN` is correct behaviour that may still break a client; neither is ever `FAIL`, and a run counts as failed on its verdicts alone, never on `--ci`.
+- **Never grade whether an answer is a good answer. Behaviour proved by construction is allowed.** A test may read an answer's words only when the prompt was built so the behaviour under test is visible in them: `history.recalled` states a fact answerable from nowhere else, and `parameters/` and `tools/` compare repeated answers. The general form is in [../../CONTEXT.md](../../CONTEXT.md).
+- What the endpoint did and what the model did are separate tests: `history.accepted` says the history was carried, `history.recalled` says the model read it.
+- `conformance_command.ts` is the only file here that prints, writes a file (through `../report_writer.ts`), or sets an exit code.
 - A test reaches an endpoint through `../clients/` only.
-- A second request mode reruns the tests of `parameters` and `tools` alone, the groups a probe cache backs; every other test's request shape is fixed.
-- `conformance_tests/` holds the shipped program; `tests/` at the package root holds this package's automated test suite. Neither imports the other.
+- One `GET /models` runs before the first test; only a thrown error stops the run, since any HTTP status at all means something is listening.
+- `runner.ts` never prints; it tells an optional listener when each test starts and finishes, and `conformance_command.ts` writes those lines to standard error under `-v/--verbose`.
+- A second request mode reruns `parameters` and `tools` alone, the groups a probe cache backs.
+- `conformance_tests/` holds the shipped program; `tests/` at the package root holds this package's own suite. Neither imports the other.
 
 ## Background
 
-- The "never read an answer's content" rule this refines could not survive: `parameters/` and `tools/` already read content. See [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).
+- The "never read an answer's content" rule this refines could not survive `parameters/` and `tools/`. See [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).

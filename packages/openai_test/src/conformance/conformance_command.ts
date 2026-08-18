@@ -3,6 +3,7 @@ import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
 import { reportFormats, type CompletionMode, type CompletionTarget } from '../completion_types.js';
 import { exitCodes } from '../exit_codes.js';
+import { EndpointReachability } from '../endpoint_reachability.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportWriter } from '../report_writer.js';
 import { SharedOptions, type RawSharedOptions } from '../shared_options.js';
@@ -23,7 +24,7 @@ import { MatrixReporter } from './reporter/matrix.js';
 import { ReportParameters } from './reporter/report_parameters.js';
 import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
-import { Runner, type ConformanceRun, type SkippedModel } from './runner.js';
+import { Runner, type ConformanceRun, type RunnerProgressListener, type SkippedModel } from './runner.js';
 import type { ConformanceTest, TestContext } from './types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -127,6 +128,7 @@ export class ConformanceCommand {
 
 		const target = SharedOptions.buildTarget(rawOptions);
 		const rawHttpClient = new RawHttpClient(target);
+		await EndpointReachability.assertReachable(rawHttpClient, target.baseUrl);
 		if (rawOptions.model.trim() === 'list') {
 			SharedOptions.printModelIds(await ModelResolver.listModelIds(rawHttpClient));
 			return;
@@ -137,6 +139,8 @@ export class ConformanceCommand {
 		const modes = SharedOptions.resolveModes(rawOptions);
 		const selection = await ModelResolver.resolve(rawOptions.model, rawHttpClient);
 
+		const isSweep = selection.modelIds.length > 1 || modes.length > 1;
+		const progressPrinter = ConformanceCommand._isProgressWanted(rawOptions);
 		const runs: ConformanceRun[] = [];
 		const skippedModels: SkippedModel[] = [];
 		for (const modelId of selection.modelIds) {
@@ -151,7 +155,7 @@ export class ConformanceCommand {
 					continue;
 				}
 			}
-			runs.push(...(await ConformanceCommand._runOneModel(tests, modelId, modes, repeats, target)));
+			runs.push(...(await ConformanceCommand._runOneModel(tests, modelId, modes, repeats, target, progressPrinter, isSweep)));
 		}
 		if (runs.length === 0) {
 			throw new Error(`no model was measured. ${ConformanceCommand._describeSkipped(skippedModels)}`);
@@ -192,6 +196,8 @@ export class ConformanceCommand {
 		modes: readonly CompletionMode[],
 		repeats: number,
 		target: CompletionTarget,
+		isProgressWanted: boolean,
+		isSweep: boolean,
 	): Promise<ConformanceRun[]> {
 		const buildContext = (mode: CompletionMode): TestContext => {
 			const openaiPackageClient = new OpenaiPackageClient(target);
@@ -205,13 +211,21 @@ export class ConformanceCommand {
 			};
 		};
 
+		const listenerFor = (mode: CompletionMode | undefined): RunnerProgressListener | undefined => {
+			if (isProgressWanted === false) {
+				return undefined;
+			}
+			const prefix = ConformanceCommand._progressPrefix(modelId, mode, isSweep);
+			return ConformanceCommand._buildProgressListener(prefix);
+		};
+
 		const firstMode = modes[0] ?? 'nostream';
 		if (modes.length === 1) {
 			return [
 				{
 					modelId,
 					mode: firstMode,
-					records: await Runner.run(tests, buildContext(firstMode)),
+					records: await Runner.run(tests, buildContext(firstMode), listenerFor(firstMode)),
 				},
 			];
 		}
@@ -223,17 +237,72 @@ export class ConformanceCommand {
 			runs.push({
 				modelId,
 				mode: undefined,
-				records: await Runner.run(modeUnreached, buildContext(firstMode)),
+				records: await Runner.run(modeUnreached, buildContext(firstMode), listenerFor(undefined)),
 			});
 		}
 		for (const mode of modeReached.length > 0 ? modes : []) {
 			runs.push({
 				modelId,
 				mode,
-				records: await Runner.run(modeReached, buildContext(mode)),
+				records: await Runner.run(modeReached, buildContext(mode), listenerFor(mode)),
 			});
 		}
 		return runs;
+	}
+
+	/**
+	 * Reports whether the run is to print each test as it starts and as it finishes.
+	 *
+	 * `--ci` prints nothing, since a continuous integration log reads the report rather than a run
+	 * as it happens.
+	 *
+	 * @param rawOptions The subcommand's options.
+	 * @returns `true` when the lines are to be printed.
+	 */
+	private static _isProgressWanted(rawOptions: RawConformanceOptions): boolean {
+		return rawOptions.verbose === true && rawOptions.ci !== true;
+	}
+
+	/**
+	 * Builds what every progress line of one run is written behind, so a sweep says which model and
+	 * which mode reached a verdict rather than printing the same test identifier several times over.
+	 *
+	 * @param modelId The model identifier this run measures.
+	 * @param mode The mode this run's probes are sent in, `undefined` for the tests no mode reaches.
+	 * @param isSweep Whether more than one run is expected. A single run needs no prefix at all,
+	 * because there is nothing to tell its lines apart from.
+	 * @returns The prefix, empty when there is nothing to distinguish.
+	 */
+	private static _progressPrefix(modelId: string, mode: CompletionMode | undefined, isSweep: boolean): string {
+		if (isSweep === false) {
+			return '';
+		}
+		if (mode === undefined) {
+			return `${modelId} `;
+		}
+		return `${modelId} ${mode} `;
+	}
+
+	/**
+	 * Builds the listener that prints each test as it starts and as it finishes, so a run against a
+	 * slow endpoint says what it is doing rather than sitting silent for minutes.
+	 *
+	 * The lines go to standard error, so that a report written to standard output stays exactly the
+	 * report and nothing else. Each test writes its own line in two halves: the name when the test
+	 * starts, and the verdict with the duration when it finishes.
+	 *
+	 * @param prefix What to write in front of every line, empty when nothing distinguishes this run.
+	 * @returns The listener to hand `Runner.run`.
+	 */
+	private static _buildProgressListener(prefix: string): RunnerProgressListener {
+		return {
+			onTestStarted: (test) => {
+				process.stderr.write(`${prefix}${test.id.padEnd(28)} ${test.name} ... `);
+			},
+			onTestFinished: (record) => {
+				process.stderr.write(`${record.result.verdict} (${record.durationMs} ms)\n`);
+			},
+		};
 	}
 
 	/**

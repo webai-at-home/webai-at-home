@@ -7,6 +7,7 @@ import Test from 'node:test';
 import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
 import { RawHttpClient } from '../src/clients/raw_http_client.js';
 import type { CompletionTarget } from '../src/completion_types.js';
+import { EndpointReachability } from '../src/endpoint_reachability.js';
 import { ModelResolver } from '../src/model_resolver.js';
 import { SharedOptions } from '../src/shared_options.js';
 
@@ -194,4 +195,58 @@ Test('a model is proved usable only when the endpoint answers under the name tha
 	} finally {
 		await server.stop();
 	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Whether anything is listening at all, before a run starts measuring
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+Test('an endpoint that answers any status at all is reachable, 404 included', async () => {
+	const server = Http.createServer((request, response) => {
+		response.writeHead(404, {
+			'content-type': 'application/json',
+		});
+		response.end('{"error":"this server has no GET /models"}');
+	});
+	await new Promise<void>((resolve) => {
+		server.listen(0, '127.0.0.1', resolve);
+	});
+	const address = server.address();
+	if (address === null || typeof address === 'string') {
+		throw new Error('the test server did not report a port');
+	}
+	const target: CompletionTarget = {
+		baseUrl: `http://127.0.0.1:${address.port}/v1`,
+		apiKey: 'no-key-required',
+		timeoutMs: 5_000,
+	};
+	try {
+		await EndpointReachability.assertReachable(new RawHttpClient(target), target.baseUrl);
+	} finally {
+		await new Promise<void>((resolve) => {
+			server.close(() => resolve());
+		});
+	}
+});
+
+Test('an endpoint nothing is listening on is refused before the first test, and named in the message', async () => {
+	const target: CompletionTarget = {
+		baseUrl: 'http://127.0.0.1:1/v1',
+		apiKey: 'no-key-required',
+		timeoutMs: 2_000,
+	};
+	await Assert.rejects(
+		async () => await EndpointReachability.assertReachable(new RawHttpClient(target), target.baseUrl),
+		/http:\/\/127\.0\.0\.1:1\/v1 could not be reached[\s\S]*--base_url/,
+	);
+});
+
+Test('the reason a connection was refused is unwrapped out of the causes Node.js hides it inside', () => {
+	const refusal = new Error('connect ECONNREFUSED 127.0.0.1:1');
+	const aggregated = new AggregateError([refusal]);
+	const thrown = new Error('fetch failed', { cause: aggregated });
+	Assert.equal(EndpointReachability.describeError(thrown), 'fetch failed: connect ECONNREFUSED 127.0.0.1:1');
+	Assert.equal(EndpointReachability.describeError('not an error at all'), 'not an error at all');
 });

@@ -1069,3 +1069,44 @@ void Test('the terminal reporter prints a passing test\'s detail only when verbo
 	Assert.match(verbose, /the interesting measurement/);
 	Assert.match(verbose, /\[chat\.basic, \d+ ms\]/);
 });
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Showing a run as it happens
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+void Test('Runner tells a progress listener when each test starts and when it finishes, in that order', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.wellBehaved());
+	try {
+		const seen: string[] = [];
+		const records = await Runner.run([chatBasicTest, usageTotalIsSumTest], context, {
+			onTestStarted: (test) => {
+				seen.push(`started ${test.id}`);
+			},
+			onTestFinished: (record) => {
+				seen.push(`finished ${record.test.id} ${record.result.verdict}`);
+			},
+		});
+		Assert.equal(records.length, 2);
+		Assert.deepEqual(seen, [
+			'started chat.basic',
+			`finished chat.basic ${records[0].result.verdict}`,
+			'started usage.total_is_sum',
+			`finished usage.total_is_sum ${records[1].result.verdict}`,
+		]);
+	} finally {
+		await stop();
+	}
+});
+
+void Test('Runner runs exactly as it always did when no progress listener is given', async () => {
+	const { context, stop } = await TestFixtures.startServer(TestFixtures.wellBehaved());
+	try {
+		const records = await Runner.run([chatBasicTest], context);
+		Assert.equal(records.length, 1);
+		Assert.equal(records[0].result.verdict, 'PASS');
+	} finally {
+		await stop();
+	}
+});

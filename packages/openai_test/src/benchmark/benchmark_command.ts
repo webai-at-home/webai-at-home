@@ -2,6 +2,7 @@
 import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
 import { reportFormats, type BenchmarkReport } from '../completion_types.js';
+import { EndpointReachability } from '../endpoint_reachability.js';
 import { exitCodes } from '../exit_codes.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportWriter } from '../report_writer.js';
@@ -53,7 +54,8 @@ export class BenchmarkCommand {
 	 * model named could not be measured while another one could, since the run produced numbers but
 	 * not the numbers it was asked for.
 	 * @throws {Error} If `-f/--format` names a format that cannot be written, if a request count is
-	 * not a whole number in range, or if no model could be measured at all.
+	 * not a whole number in range, if nothing is listening at the endpoint, or if no model could be
+	 * measured at all.
 	 */
 	static async run(rawOptions: RawBenchmarkOptions): Promise<void> {
 		if (rawOptions.model === undefined || rawOptions.model.trim() === '') {
@@ -65,6 +67,7 @@ export class BenchmarkCommand {
 
 		const target = SharedOptions.buildTarget(rawOptions);
 		const rawHttpClient = new RawHttpClient(target);
+		await EndpointReachability.assertReachable(rawHttpClient, target.baseUrl);
 		if (rawOptions.model.trim() === 'list') {
 			SharedOptions.printModelIds(await ModelResolver.listModelIds(rawHttpClient));
 			return;

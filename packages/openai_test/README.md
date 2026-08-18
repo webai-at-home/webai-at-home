@@ -45,8 +45,9 @@ Anything that reaches for the listing has every model it names proved usable fir
 - `--profile <name>` — `core`, `streaming`, `tools`, `parameters`, `structured_output`, `sdk`, `agent`, or `full`.
 - `-g/--group <name>` and `-t/--test <id...>` — run part of a profile.
 - `-s/--streamed` and `--nostream` — which request mode the tool call and generation control probes send in. Both given measures both, and reports them side by side.
-- `-r/--repeats <count>` — how many times a test that samples the model repeats before deciding. Defaults to `5`.
-- `--verbose`, `--ci`.
+- `-r/--repeats <count>` — how many times a test that samples the model repeats before deciding. Defaults to `3`.
+- `-v/--verbose` — print each test as it starts and as it finishes, on standard error, and print the detail of every test rather than only the ones that did not pass.
+- `--ci` — print none of those lines, since a continuous integration log reads the report rather than the run.
 
 | Verdict | Meaning |
 | --- | --- |
@@ -76,7 +77,7 @@ Three in-session commands, and no more: `/reset` clears the history and keeps th
 
 `conformance` and `benchmark` both accept `-f/--format text|markdown|json|junit` and `-o/--output <path>`. `chat` accepts neither; it is a terminal session, not a report.
 
-Exit code `0` when nothing failed, `1` when a test failed or a model asked for could not be measured, `2` when the run itself could not start. `chat` returns only `0` or `2`. `--ci` never changes which of these is returned.
+Exit code `0` when nothing failed, `1` when a test failed or a model asked for could not be measured, `2` when the run itself could not start — an unusable command line, or nothing listening at the endpoint, which one `GET /models` finds out before the first measurement rather than after every test has failed the same way. `chat` returns only `0` or `2`. `--ci` never changes which of these is returned.
 
 The `report:*` scripts of `package.json` write markdown reports into [`data/conformance_reports/`](data/conformance_reports/) and [`data/benchmark_reports/`](data/benchmark_reports/).
 
