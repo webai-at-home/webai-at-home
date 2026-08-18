@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Gemma 4 E2B on hand-written WebGPU compute kernels, with no model runtime in between." />
+    <link rel="stylesheet" href="/gemma4-e2b-webgpu-kernels/css/styles.css" />
+    <title>Gemma 4 E2B · WebGPU compute kernels</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="back-link" href="../">← All experiments</a>
+        <span class="model-tag">google/gemma-4-E2B-it-qat-mobile-transformers</span>
+      </header>
+
+      <section class="hero">
+        <p class="eyebrow">WebGPU experiments / issue #207</p>
+        <h1>Gemma 4 E2B<br /><em>on hand-written WebGPU compute kernels</em></h1>
+        <p class="intro">
+          No ONNX Runtime Web, no Transformers.js, and no LiteRT.js. The page holds the WebGPU Shading Language
+          compute kernels itself and talks to the graphics processor directly. This is the floor every other
+          measurement of the same weights is compared against.
+        </p>
+      </section>
+
+      <section class="step">
+        <h2>Step 1 — Load the model</h2>
+        <p class="step-intro">
+          The first load downloads about 2.5 gigabytes of weights from Hugging Face and writes them to a WebGPU
+          device. The browser caches them, so later loads skip the download.
+        </p>
+        <button id="load-button" class="primary-button" type="button">Load the model</button>
+        <div class="metrics">
+          <div class="metric"><span>Load time</span><strong id="load-time">—</strong></div>
+          <div class="metric"><span>Weights</span><strong id="downloaded-bytes">—</strong></div>
+          <div class="metric"><span>Compute shaders compiled</span><strong id="shader-count">—</strong></div>
+        </div>
+      </section>
+
+      <section class="step">
+        <h2>Step 2 — Check the answers against a reference</h2>
+        <p class="step-intro">
+          WebGPU returns wrong numbers silently. Nothing on this page is measured until the model has answered
+          questions whose answers are known, and until its answer to the measurement question can be read beside
+          the answer the Transformers.js page gave to the same question.
+        </p>
+        <button id="check-button" class="primary-button" type="button" disabled>Run the correctness check</button>
+        <ul id="check-results" class="check-results"></ul>
+        <div class="comparison">
+          <div>
+            <p class="section-label">This page, on WebGPU compute kernels</p>
+            <p id="webgpu-kernels-answer" class="answer">—</p>
+          </div>
+          <div>
+            <p class="section-label">packages/_onnx_experiments, on Transformers.js</p>
+            <p id="transformers-js-answer" class="answer">—</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step">
+        <h2>Step 3 — Measure</h2>
+        <p class="step-intro">
+          Every figure below is the middle of several runs, with the smallest and the largest beside it. Warm-up
+          runs are thrown away. Keep this page in sight while it runs: reading a hidden page lifts the slowdown
+          Google Chrome puts on a hidden page, and has moved figures by a factor of five before.
+        </p>
+        <p class="prompt-line">Question asked: <span id="measurement-prompt"></span></p>
+        <button id="measure-button" class="primary-button" type="button" disabled>Run the measurement</button>
+        <div class="metrics">
+          <div class="metric"><span>Time to the first token</span><strong id="time-to-first-token">—</strong></div>
+          <div class="metric"><span>Tokens per second</span><strong id="tokens-per-second">—</strong></div>
+          <div class="metric"><span>Answer length</span><strong id="token-count">—</strong></div>
+          <div class="metric"><span>Runs</span><strong id="run-count">—</strong></div>
+        </div>
+        <p id="page-visibility" class="visibility">—</p>
+      </section>
+
+      <section class="step">
+        <p class="section-label">Latest answer, as it streams</p>
+        <p id="stream" class="answer stream"></p>
+      </section>
+
+      <p id="status" class="status">Ready.</p>
+      <footer>
+        <span>Hand-written WebGPU compute kernels</span>
+        <span>Everything runs in this browser · no question leaves this machine</span>
+      </footer>
+    </main>
+    <script type="module" src="/gemma4-e2b-webgpu-kernels/src/main.ts"></script>
+  </body>
+</html>

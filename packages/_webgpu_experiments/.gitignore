@@ -1,0 +1,7 @@
+# Model files and generated artifacts are never committed. The browser downloads the Gemma 4 E2B
+# weights from Hugging Face and caches them itself, and nothing in this package writes them to disk.
+public/*/models/
+public/*/artifacts/
+
+# The Vite build output.
+dist/

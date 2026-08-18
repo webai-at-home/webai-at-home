@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Browser experiments running language models on hand-written WebGPU compute kernels." />
+    <link rel="stylesheet" href="/gemma4-e2b-webgpu-kernels/css/styles.css" />
+    <title>WebGPU experiments</title>
+  </head>
+  <body>
+    <main class="shell">
+      <p class="eyebrow">WebAI / WebGPU experiments</p>
+      <h1>One language model.<br /><em>Nothing between the page and the graphics processor.</em></h1>
+      <p class="intro">
+        Every other experiment in this repository puts a model runtime between the page and the graphics
+        processor: ONNX Runtime Web, Transformers.js, or LiteRT.js. These experiments take the runtime away and
+        drive WebGPU with compute kernels the page holds itself.
+      </p>
+      <div class="metrics">
+        <a class="metric" href="./gemma4-e2b-webgpu-kernels/">
+          <span>01 · issue #207</span>
+          <strong>Gemma 4 E2B · hand-written WebGPU compute kernels</strong>
+          <span>google/gemma-4-E2B-it-qat-mobile-transformers · quantization-aware trained · WebGPU only</span>
+        </a>
+      </div>
+      <p class="status">
+        The weights download once from Hugging Face and stay cached by the browser. Nothing is sent to a server
+        for generation.
+      </p>
+    </main>
+  </body>
+</html>
