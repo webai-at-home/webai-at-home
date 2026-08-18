@@ -160,11 +160,14 @@ export class CompletionSender {
 	 * answers for it, which is how a provider resolves an alias to a dated release — `gpt-4.1-mini`
 	 * answered as `gpt-4.1-mini-2025-04-14`.
 	 *
-	 * That second form is taken from `api.openai.com`'s documented behaviour and has not been
-	 * confirmed against a live request, because Milestone 0 of
-	 * [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208) had no key to reach
-	 * that endpoint with. Milestone 5 confirms it. LM Studio and Ollama both name the requested
-	 * identifier exactly, so neither exercises this form.
+	 * That second form is confirmed against `api.openai.com` itself: a request naming `gpt-4.1-mini`
+	 * is answered with `"model": "gpt-4.1-mini-2025-04-14"`, which would otherwise fail this check
+	 * and throw away a measurement the endpoint made correctly. See Milestone 7 of
+	 * [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208) for the raw answer.
+	 * LM Studio names the requested identifier exactly, so it never exercises this form.
+	 *
+	 * A shorter identifier than the one requested is never accepted, since `gpt-4.1-mini` answering
+	 * a request for `gpt-4.1-mini-2025-04-14` names a model other than the one that was asked for.
 	 *
 	 * @param requestedModelId The model identifier the request named.
 	 * @param reportedModelId The model identifier the endpoint named in its answer, `undefined` when
