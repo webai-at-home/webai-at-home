@@ -26,6 +26,6 @@ The command line tool that exercises and measures a server speaking the OpenAI-c
 
 ## Background
 
-- The freeze comes from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which merged this package and `packages/openai_conformance_test` into `packages/openai_test`. A follow-up issue deletes both.
+- The freeze comes from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which merged this package and `packages/openai_conformance_test` into `packages/openai_test`. Both packages stay, and neither is deleted.
 
 - The generation control probes come from [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151), and the six separate tool call probes from [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78).
