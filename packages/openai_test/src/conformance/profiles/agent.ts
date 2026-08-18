@@ -1,7 +1,8 @@
 // local imports
 import { chatBasicTest } from '../conformance_tests/chat/basic.js';
-import { chatMultiTurnTest } from '../conformance_tests/chat/multi_turn.js';
 import { chatSystemMessageTest } from '../conformance_tests/chat/system_message.js';
+import { historyAcceptedTest } from '../conformance_tests/history/accepted.js';
+import { historyRecalledTest } from '../conformance_tests/history/recalled.js';
 import { sdkBasicTest } from '../conformance_tests/sdk/basic.js';
 import { sdkStreamingTest } from '../conformance_tests/sdk/streaming.js';
 import { sdkToolsTest } from '../conformance_tests/sdk/tools.js';
@@ -23,8 +24,12 @@ import type { ConformanceTest } from '../types.js';
 /**
  * The `agent` profile of section 5 of issue #181: the features an agent framework such as the
  * OpenAI Agents SDK, LangChain, or the Vercel AI SDK actually leans on — chat, streaming, system
- * instructions, tools, tool results, structured JSON, multi-turn history, and the official
- * `openai` Node.js package.
+ * instructions, tools, tool results, structured JSON, the history, and the official `openai`
+ * Node.js package.
+ *
+ * The whole `history` group is here, both the acceptance and the recall, because an agent leans on
+ * the history harder than on anything else: every turn of an agent loop is a request carrying
+ * everything that came before it.
  *
  * This is a selection from the other profiles, never a new test. It is deliberately narrower than
  * `full`: `models.list` and the error group matter for compatibility in general and not for
@@ -34,7 +39,8 @@ import type { ConformanceTest } from '../types.js';
 export const agentProfile: readonly ConformanceTest[] = [
 	chatBasicTest,
 	chatSystemMessageTest,
-	chatMultiTurnTest,
+	historyAcceptedTest,
+	historyRecalledTest,
 	streamingBasicTest,
 	streamingContentConcatenatesTest,
 	streamingDoneTest,

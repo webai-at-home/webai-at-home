@@ -54,6 +54,7 @@ export class MarkdownReporter {
 	private static readonly _groupHeadings: ReadonlyMap<string, string> = new Map([
 		['models', 'Models'],
 		['chat', 'Chat Completions'],
+		['history', 'History'],
 		['usage', 'Usage'],
 		['errors', 'Errors'],
 		['streaming', 'Streaming'],

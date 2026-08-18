@@ -4,18 +4,19 @@ import type { ConformanceTest, TestContext, TestResult } from '../../types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	ChatMultiTurnTest — a previous assistant message is accepted back into a later request
+//	HistoryAcceptedTest — a previous assistant message is accepted back into a later request
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
  * Checks that a request whose history already carries a previous `assistant` message is accepted.
  *
- * The primary concern is protocol acceptance, per section 9 of issue #181, not whether the model
- * actually recalls what an earlier turn said — that would grade the answer, which this package
- * never does.
+ * Protocol acceptance and nothing else, per section 9 of issue #181. Whether the model then uses
+ * what the history says is the separate question `history.recalled` asks, and the two are kept
+ * apart on purpose: an endpoint can accept a history perfectly and the model behind it still
+ * ignore every word of it.
  */
-class ChatMultiTurnTest {
+class HistoryAcceptedTest {
 	/**
 	 * @param context The endpoint, the model, and both clients to run this test with.
 	 * @returns The verdict this run reached.
@@ -40,9 +41,9 @@ class ChatMultiTurnTest {
 	}
 }
 
-export const chatMultiTurnTest: ConformanceTest = {
-	id: 'chat.multi_turn',
-	name: 'multi-turn conversation',
-	group: 'chat',
-	run: ChatMultiTurnTest.run,
+export const historyAcceptedTest: ConformanceTest = {
+	id: 'history.accepted',
+	name: 'a previous assistant message is accepted',
+	group: 'history',
+	run: HistoryAcceptedTest.run,
 };

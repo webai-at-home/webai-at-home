@@ -1,12 +1,13 @@
 // local imports
 import type { ConformanceTest } from '../../types.js';
 import { chatBasicTest } from './basic.js';
-import { chatMultiTurnTest } from './multi_turn.js';
 import { chatSystemMessageTest } from './system_message.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	chatGroup — a basic completion, a system message, and a multi-turn history
+//	chatGroup — a basic completion and a system message
+//
+//	Single-turn tests only. Anything a history is needed to ask belongs to the `history` group.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -14,5 +15,4 @@ import { chatSystemMessageTest } from './system_message.js';
 export const chatGroup: readonly ConformanceTest[] = [
 	chatBasicTest,
 	chatSystemMessageTest,
-	chatMultiTurnTest,
 ];

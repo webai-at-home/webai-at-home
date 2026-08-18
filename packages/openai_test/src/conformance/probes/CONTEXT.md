@@ -14,7 +14,7 @@ Runs each prober of `src/probers/` exactly once per run, and translates that pro
 ## Rules
 
 - `ToolCallProber` and `GenerationControlProber` live in `src/probers/` and are read from here, never reimplemented here; see decision two of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182).
-- A cache runs its prober once per run. `probeAll` sends several requests per ability, so a test calling it directly would multiply the whole run's cost by the number of tests in its group. `tests/index.test.ts` asserts that a second tools test sends zero further requests once Milestone 7 of [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208) merges the two suites.
+- A cache runs its prober once per run. `probeAll` sends several requests per ability, so a test calling it directly would multiply the whole run's cost by the number of tests in its group. A second tools test therefore sends no further request at all.
 - `GenerationControlVerdict` reads `not_honoured` as `FAIL` where `ToolCallVerdict` reads `unsupported` as `WARN`. The two look alike and are not, and neither reading may be copied onto the other.
 
 ## Background

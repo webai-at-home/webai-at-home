@@ -15,7 +15,7 @@ One file per named profile, each composing the groups declared in `../conformanc
 
 - A profile file holds a list only, never test logic, and never a test's membership of its own group. Which tests a group holds, and in which order, is declared in that group's `../conformance_tests/<group>/group.ts`; a profile composes groups.
 - `agent.ts` is the sole exception and names tests directly, because it is a selection across groups rather than a whole group. It never imports a test `full.ts` cannot reach, so the two lists can never disagree about which tests exist.
-- A test added anywhere reaches `full.ts`, either through a base profile it spreads or on its own; `tests/index.test.ts` asserts this once Milestone 7 of [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208) merges the two suites, so `full` cannot silently fall behind.
+- A test added anywhere reaches `full.ts`, either through a base profile it spreads or on its own; so `full` cannot silently fall behind.
 - A profile declares no new test of its own.
 
 ## Background
