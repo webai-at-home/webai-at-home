@@ -1,12 +1,10 @@
-// node imports
-import Fs from 'node:fs';
-
 // local imports
 import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
-import type { CompletionMode, CompletionTarget } from '../completion_types.js';
+import { reportFormats, type CompletionMode, type CompletionTarget } from '../completion_types.js';
 import { exitCodes } from '../exit_codes.js';
 import { ModelResolver } from '../model_resolver.js';
+import { ReportWriter } from '../report_writer.js';
 import { SharedOptions, type RawSharedOptions } from '../shared_options.js';
 import { GenerationControlProbeCache } from './probes/generation_control_probe_cache.js';
 import { ToolCallProbeCache } from './probes/tool_call_probe_cache.js';
@@ -61,9 +59,6 @@ export const knownProfiles: ReadonlyMap<string, readonly ConformanceTest[]> = ne
 	['agent', agentProfile],
 	['full', fullProfile],
 ]);
-
-/** Every report format `conformance` can write. */
-export const knownFormats = ['text', 'json', 'markdown', 'junit'] as const;
 
 /**
  * The groups whose verdicts depend on which mode the requests behind them were sent in.
@@ -126,8 +121,8 @@ export class ConformanceCommand {
 		if (profile === undefined) {
 			throw new Error(`--profile must be one of ${[...knownProfiles.keys()].join(', ')}, got "${rawOptions.profile}"`);
 		}
-		if (knownFormats.includes(rawOptions.format as (typeof knownFormats)[number]) === false) {
-			throw new Error(`-f/--format must be one of ${knownFormats.join(', ')}, got "${rawOptions.format}"`);
+		if ((reportFormats as readonly string[]).includes(rawOptions.format) === false) {
+			throw new Error(`-f/--format must be one of ${reportFormats.join(', ')}, got "${rawOptions.format}"`);
 		}
 
 		const target = SharedOptions.buildTarget(rawOptions);
@@ -163,7 +158,7 @@ export class ConformanceCommand {
 		}
 
 		const report = ConformanceCommand._renderReport(runs, skippedModels, rawOptions, target.baseUrl, args, invokedName);
-		ConformanceCommand._writeReport(report, rawOptions.output);
+		ReportWriter.write(report, rawOptions.output);
 		ConformanceCommand._setExitCode(runs);
 	}
 
@@ -354,29 +349,6 @@ export class ConformanceCommand {
 					verbose: rawOptions.verbose === true,
 				});
 		}
-	}
-
-	/**
-	 * Writes the report to `-o/--output` when one was named, and to standard output otherwise.
-	 *
-	 * @param report The rendered report.
-	 * @param outputPath The file to write to, `undefined` to print instead.
-	 * @returns Nothing.
-	 * @throws {Error} If the file cannot be written, which stops the run rather than being a test
-	 * result.
-	 */
-	private static _writeReport(report: string, outputPath: string | undefined): void {
-		if (outputPath === undefined) {
-			console.log(report);
-			return;
-		}
-		try {
-			Fs.writeFileSync(outputPath, `${report}\n`, 'utf8');
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(`-o/--output could not be written: ${message}`);
-		}
-		console.log(`Report written to ${outputPath}`);
 	}
 
 	/**

@@ -18,7 +18,7 @@ One file per output format section 33 of issue #181 names with `-f/--format`, pl
 
 - A reporter renders the records of `../runner.ts` into a string; it never runs a test and never talks to an endpoint.
 - More than one run is rendered by `matrix.ts` or by the `renderRuns` of `json.ts` and `junit.ts`; one run alone keeps the single-run formats, so a single-model, single-mode invocation reports as it always did.
-- `render` returns the report as a string rather than printing it, so a test can assert on the returned text and `conformance_command.ts` is the only place that calls `console.log`.
+- `render` returns the report as a string rather than printing it, so a test can assert on the returned text and `../../report_writer.ts` is the only place that prints one.
 - No reporter counts verdicts itself; every one of them asks `ReportSummary`, so four formats of one run can never disagree about how many tests passed.
 - `SKIP` stays out of the compatibility percentage and `WARN` stays in it, because a skipped test measured nothing while a warned test measured something short of correct.
 - The compatibility percentage never replaces the per-test lines above it, per section 30 of issue #181.

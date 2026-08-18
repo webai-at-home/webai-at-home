@@ -17,8 +17,8 @@ The one command line tool that tests, measures, and talks to a server speaking t
 - Every request checks that the model identifier the endpoint named in its answer answers for the one that was requested, and fails the run when it does not. An endpoint answering as the wrong model is not always an error the endpoint reports.
 - Never grade whether an answer is a good answer. A prompt built so that the behaviour under test is visible in the answer is a measurement; an opinion about whether the answer was helpful is not, and never appears.
 - `PASS`, `FAIL`, `SKIP`, and `WARN` belong to `conformance` and to nothing else. `benchmark` reports numbers, and `chat` has no verdicts.
-- Exit code `0` when nothing failed, `1` when a test failed, `2` when the run itself could not start. `chat` returns only `0` or `2`.
-- A subcommand this program lists is a subcommand this program runs: `benchmark` is registered by the milestone that builds it, not before.
+- Exit code `0` when nothing failed, `1` when a test failed or a model asked for could not be measured, `2` when the run itself could not start. `chat` returns only `0` or `2`.
+- A subcommand this program lists is a subcommand this program runs. All three are built and registered.
 
 ## Background
 

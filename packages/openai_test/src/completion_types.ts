@@ -257,6 +257,14 @@ export type BenchmarkSummary = {
 	readonly outputCharacters: MetricStatistics;
 };
 
+/** One model the benchmark named but could not measure, and the reason it could not. */
+export type BenchmarkFailure = {
+	/** The model identifier that was asked for. */
+	readonly modelId: string;
+	/** Why the measurement could not be made, in the words the endpoint or the transport used. */
+	readonly reason: string;
+};
+
 /** The full benchmark report, holding one summary per measured model. */
 export type BenchmarkReport = {
 	/** The benchmark settings that affect comparability with another run. */
@@ -272,13 +280,18 @@ export type BenchmarkReport = {
 	};
 	/** The aggregate measurements, one entry per measured model, in the order they were measured. */
 	readonly summaries: readonly BenchmarkSummary[];
+	/**
+	 * The models named that could not be measured, in the order they were tried. Absent when every
+	 * model named was measured, so a report of a run where nothing went wrong carries no empty list.
+	 */
+	readonly failures?: readonly BenchmarkFailure[];
 };
 
-/** The ways a benchmark report, or a completion/history sweep report, can be written out. */
-export type ReportFormat = 'text' | 'markdown' | 'json';
+/** The ways a report can be written out. */
+export type ReportFormat = 'text' | 'markdown' | 'json' | 'junit';
 
-/** Every format all three subcommands accept, in the order the help text lists them. */
-export const reportFormats: readonly ReportFormat[] = ['text', 'markdown', 'json'];
+/** Every format the two reporting subcommands accept, in the order the help text lists them. */
+export const reportFormats: readonly ReportFormat[] = ['text', 'markdown', 'json', 'junit'];
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

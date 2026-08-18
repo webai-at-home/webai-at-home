@@ -8,8 +8,9 @@ import Url from 'node:url';
 import { Command } from 'commander';
 
 // local imports
+import { BenchmarkCommand, type RawBenchmarkOptions } from './benchmark/benchmark_command.js';
 import { ChatCommand, type RawChatOptions } from './chat/chat_command.js';
-import { ConformanceCommand, knownFormats, knownProfiles, type RawConformanceOptions } from './conformance/conformance_command.js';
+import { ConformanceCommand, knownProfiles, type RawConformanceOptions } from './conformance/conformance_command.js';
 import { exitCodes } from './exit_codes.js';
 import { SharedOptions } from './shared_options.js';
 
@@ -19,6 +20,7 @@ import { SharedOptions } from './shared_options.js';
 //
 //	Run with:
 //	  ./src/cli.ts conformance --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --profile full
+//	  ./src/cli.ts benchmark --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct
 //	  ./src/cli.ts chat --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --prompt "What is the capital of France?"
 //	or, from the workspace:
 //	  npm run chat --workspace @webai/openai-test -- --model llama-3.2-1b-instruct --prompt "..."
@@ -27,17 +29,13 @@ import { SharedOptions } from './shared_options.js';
 //	  conformance — does this server honour the protocol, and what can the model behind it do
 //	  benchmark   — how fast is this endpoint
 //	  chat        — what does this endpoint actually answer
-//
-//	`benchmark` arrives in Milestone 5 of
-//	https://github.com/webai-at-home/webai-at-home/issues/208, and is not registered until it does,
-//	so that a subcommand this program lists is a subcommand this program runs.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /** The `openai_test` command line program. */
 export class Cli {
 	/**
-	 * Parses the command line and dispatches to `chat`.
+	 * Parses the command line and dispatches to `conformance`, `benchmark`, or `chat`.
 	 *
 	 * @param args The command line arguments, without the program name. Defaults to the arguments
 	 * this process was started with.
@@ -64,12 +62,30 @@ export class Cli {
 			.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '3')
 			.option('-o, --output <file>', 'write the report to this file rather than to standard output')
 			.option('--verbose', 'print the detail of every test, including the ones that passed')
-			.option('--ci', 'exit 1 when any test failed, for a continuous integration run')
-			.option('-f, --format <format>', `output format: ${knownFormats.join(', ')}`, 'text');
+			.option('--ci', 'exit 1 when any test failed, for a continuous integration run');
+		SharedOptions.addFormatOption(conformance);
 		SharedOptions.addModeOptions(conformance);
 		SharedOptions.addEndpointOptions(conformance);
 		conformance.action(async (rawOptions: RawConformanceOptions) => {
 			await ConformanceCommand.run(rawOptions, args, invokedName);
+		});
+
+		const benchmark = program
+			.command('benchmark')
+			.description("Measures one OpenAI-compatible endpoint's streamed chat completion latency, one model at a time.")
+			.option(
+				'-m, --model <name>',
+				'model identifier, a comma-separated list of identifiers, a pattern such as llm_*, all, or list to print the identifiers the endpoint serves',
+				process.env.OPENAI_MODEL,
+			)
+			.option('-p, --prompt <text>', 'the one prompt sent to the endpoint', BenchmarkCommand.defaultPrompt)
+			.option('-r, --runs <number>', 'measured requests per model', '10')
+			.option('-w, --warmup_runs <number>', 'unreported warm-up requests per model', '1')
+			.option('-o, --output <file>', 'write the report to this file rather than to standard output');
+		SharedOptions.addFormatOption(benchmark);
+		SharedOptions.addEndpointOptions(benchmark);
+		benchmark.action(async (rawOptions: RawBenchmarkOptions) => {
+			await BenchmarkCommand.run(rawOptions);
 		});
 
 		const chat = program

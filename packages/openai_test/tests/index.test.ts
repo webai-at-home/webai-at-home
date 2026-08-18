@@ -4,9 +4,12 @@ import Http from 'node:http';
 import Test from 'node:test';
 
 // local imports
+import { BenchmarkRunner } from '../src/benchmark/benchmark_runner.js';
+import { ReportRenderer } from '../src/benchmark/report_renderer.js';
+import { StatisticsCalculator } from '../src/benchmark/statistics_calculator.js';
 import { ChatCommand } from '../src/chat/chat_command.js';
 import { CompletionSender } from '../src/clients/completion_sender.js';
-import type { CompletionTarget } from '../src/completion_types.js';
+import { reportFormats, type CompletionResult, type CompletionTarget } from '../src/completion_types.js';
 import { SharedOptions } from '../src/shared_options.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -269,5 +272,149 @@ Test.describe('ChatCommand.run', () => {
 				}),
 			/-p\/--prompt/,
 		);
+	});
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The benchmark subcommand
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** The endpoint the benchmark tests name, which no test of this section ever reaches. */
+const benchmarkTarget: CompletionTarget = {
+	baseUrl: 'http://localhost:1234/v1',
+	apiKey: 'no-key-required',
+	timeoutMs: 600_000,
+};
+
+/**
+ * Builds one whole completion result out of the three things a benchmark sample is built from, so a
+ * test states those three and nothing else.
+ *
+ * @param modelId The model identifier the answer names.
+ * @param answer The assistant answer, read for its character count.
+ * @param timeToFirstCharacterMs Time to First Character, in milliseconds.
+ * @param timeToLastCharacterMs Time to Last Character, in milliseconds.
+ * @returns The completion result a fake requester answers with.
+ */
+function benchmarkResultOf(modelId: string, answer: string, timeToFirstCharacterMs: number, timeToLastCharacterMs: number): CompletionResult {
+	return {
+		answer,
+		reportedModelId: modelId,
+		timeToFirstCharacterMs,
+		timeToLastCharacterMs,
+		clusterGenerationTimeMs: undefined,
+		clusterTimeToFirstPieceMs: undefined,
+		usage: undefined,
+		finishReason: 'stop',
+		toolCalls: [],
+	};
+}
+
+Test.describe('StatisticsCalculator.of', () => {
+	Test.it('takes the middle value as the median of an odd number of values', () => {
+		const statistics = StatisticsCalculator.of([30, 10, 20]);
+		Assert.equal(statistics.average, 20);
+		Assert.equal(statistics.median, 20);
+		Assert.equal(statistics.minimum, 10);
+		Assert.equal(statistics.maximum, 30);
+	});
+
+	Test.it('takes the mean of the two middle values as the median of an even number of values', () => {
+		Assert.equal(StatisticsCalculator.of([10, 20, 30, 50]).median, 25);
+	});
+
+	Test.it('refuses to state a statistic of nothing', () => {
+		Assert.throws(() => StatisticsCalculator.of([]), /No values were measured/);
+	});
+});
+
+Test.describe('BenchmarkRunner.runBenchmark', () => {
+	Test.it('measures every model named, and carries on past the one that failed', async () => {
+		const report = await BenchmarkRunner.runBenchmark(
+			{
+				target: benchmarkTarget,
+				modelIds: ['first-model', 'failing-model', 'second-model'],
+				prompt: 'Count up to 30',
+				runs: 2,
+				warmupRuns: 1,
+			},
+			async (modelId: string) => {
+				if (modelId === 'failing-model') {
+					throw new Error('this model answered as somebody else');
+				}
+				return benchmarkResultOf(modelId, 'one two three', 20, 1020);
+			},
+		);
+		Assert.deepEqual(report.summaries.map((summary) => summary.modelId), ['first-model', 'second-model']);
+		Assert.deepEqual(report.failures?.map((failure) => failure.modelId), ['failing-model']);
+		Assert.match(report.failures?.[0].reason ?? '', /answered as somebody else/);
+		Assert.equal(report.summaries[0].samples.length, 2);
+		Assert.equal(report.summaries[0].timeToFirstCharacterMs.average, 20);
+		Assert.equal(report.summaries[0].outputCharacters.average, 13);
+	});
+
+	Test.it('carries no failure list at all when every model named was measured', async () => {
+		const report = await BenchmarkRunner.runBenchmark(
+			{
+				target: benchmarkTarget,
+				modelIds: ['first-model'],
+				prompt: 'Count up to 30',
+				runs: 1,
+				warmupRuns: 0,
+			},
+			async (modelId: string) => benchmarkResultOf(modelId, 'one', 5, 105),
+		);
+		Assert.equal(report.failures, undefined);
+	});
+
+	Test.it('refuses a run in which no model could be measured', async () => {
+		await Assert.rejects(
+			async () =>
+				await BenchmarkRunner.runBenchmark(
+					{
+						target: benchmarkTarget,
+						modelIds: ['failing-model'],
+						prompt: 'Count up to 30',
+						runs: 1,
+						warmupRuns: 0,
+					},
+					async () => {
+						throw new Error('nothing answered');
+					},
+				),
+			/no model was measured/,
+		);
+	});
+});
+
+Test.describe('ReportRenderer.formatBenchmarkReport', () => {
+	Test.it('names the model that could not be measured in every one of the four formats', async () => {
+		const report = await BenchmarkRunner.runBenchmark(
+			{
+				target: benchmarkTarget,
+				modelIds: ['first-model', 'failing-model'],
+				prompt: 'Count up to 30',
+				runs: 1,
+				warmupRuns: 0,
+			},
+			async (modelId: string) => {
+				if (modelId === 'failing-model') {
+					throw new Error('this model answered as somebody else');
+				}
+				return benchmarkResultOf(modelId, 'one two three', 20, 1020);
+			},
+		);
+		for (const format of reportFormats) {
+			const rendered = ReportRenderer.formatBenchmarkReport(report, format);
+			Assert.match(rendered, /failing-model/, `the ${format} format left the failing model out`);
+		}
+		Assert.match(ReportRenderer.formatBenchmarkReport(report, 'junit'), /failures="1"/);
+	});
+
+	Test.it('refuses a format it cannot write', () => {
+		Assert.equal(ReportRenderer.isReportFormat('csv'), false);
+		Assert.equal(ReportRenderer.isReportFormat('junit'), true);
 	});
 });

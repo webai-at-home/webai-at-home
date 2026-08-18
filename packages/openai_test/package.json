@@ -11,6 +11,7 @@
 		"typecheck": "tsc -p tsconfig.json",
 		"test": "npx tsx --test tests/index.test.ts",
 		"conformance": "tsx src/cli.ts conformance",
+		"benchmark": "tsx src/cli.ts benchmark",
 		"chat": "tsx src/cli.ts chat",
 		"lmstudio:server:status": "lms server status",
 		"lmstudio:server:start": "lms server start",
