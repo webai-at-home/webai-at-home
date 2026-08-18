@@ -178,9 +178,61 @@ export class Cli {
 			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, rawOptions.model, repeats),
 		};
 
+		await Cli._checkEndpointIsReachable(context.rawHttpClient, target.baseUrl);
+
 		const records = await Runner.run(tests, context);
 		Cli._writeReport(Cli._renderReport(records, rawOptions, target.baseUrl, args, invokedName), rawOptions.output);
 		Cli._setExitCode(records);
+	}
+
+	/**
+	 * Sends one `GET /models` before the first test, so a run against an endpoint that nothing is
+	 * listening on stops at once instead of walking the whole profile and reporting every single
+	 * test as a `FAIL` that only ever says the connection was refused.
+	 *
+	 * Only a thrown error stops the run: an endpoint that answers with any HTTP status at all,
+	 * including `404` for a server that does not implement `GET /models`, is a reachable endpoint,
+	 * and whether it implements that route is a test result rather than a runner error.
+	 *
+	 * @param rawHttpClient The client to send the request with.
+	 * @param baseUrl The endpoint being tested, named in the error message.
+	 * @returns Nothing, once the endpoint has answered.
+	 * @throws {Error} If the request throws: a refused connection, an unknown host, or a timeout.
+	 */
+	private static async _checkEndpointIsReachable(rawHttpClient: RawHttpClient, baseUrl: string): Promise<void> {
+		try {
+			await rawHttpClient.listModels();
+		} catch (error) {
+			throw new Error(`${baseUrl} could not be reached: ${Cli._describeError(error)}. Start the server, or point --base_url at one that is already running.`);
+		}
+	}
+
+	/**
+	 * Describes a thrown value in one line, unwrapping the causes Node.js hides a connection
+	 * refusal inside: `fetch` throws `fetch failed`, whose `cause` is an `AggregateError` carrying
+	 * no message of its own, whose own `errors` hold the one line worth printing.
+	 *
+	 * @param error The thrown value.
+	 * @returns The message to print.
+	 */
+	private static _describeError(error: unknown): string {
+		if (error instanceof Error === false) {
+			return String(error);
+		}
+		const messages: string[] = [];
+		let current: unknown = error;
+		while (current instanceof Error) {
+			if (current.message.length > 0) {
+				messages.push(current.message);
+			}
+			const aggregated = (current as AggregateError).errors;
+			if (Array.isArray(aggregated) && aggregated.length > 0) {
+				current = aggregated[0];
+				continue;
+			}
+			current = current.cause;
+		}
+		return messages.join(': ');
 	}
 
 	/**
