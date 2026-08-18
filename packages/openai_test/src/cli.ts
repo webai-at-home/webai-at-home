@@ -21,6 +21,7 @@ import { SharedOptions } from './shared_options.js';
 //	Run with:
 //	  ./src/cli.ts conformance --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --profile full
 //	  ./src/cli.ts benchmark --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct
+//	  ./src/cli.ts chat --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct
 //	  ./src/cli.ts chat --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --prompt "What is the capital of France?"
 //	or, from the workspace:
 //	  npm run chat --workspace @webai/openai-test -- --model llama-3.2-1b-instruct --prompt "..."
@@ -90,7 +91,7 @@ export class Cli {
 
 		const chat = program
 			.command('chat')
-			.description('Sends turns to one model and streams each answer back to the terminal.')
+			.description('Opens a session against one model, and streams each answer back to the terminal.')
 			.option('-m, --model <name>', 'the one model identifier to send turns to', process.env.OPENAI_MODEL)
 			.option('--system <text>', 'the system message sent as the first message of the session')
 			.option('-p, --prompt <text>', 'send this one turn and leave, rather than starting a session');

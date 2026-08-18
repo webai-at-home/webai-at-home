@@ -3,11 +3,16 @@ import Assert from 'node:assert/strict';
 import Http from 'node:http';
 import Test from 'node:test';
 
+// npm imports
+import type OpenAI from 'openai';
+
 // local imports
 import { BenchmarkRunner } from '../src/benchmark/benchmark_runner.js';
 import { ReportRenderer } from '../src/benchmark/report_renderer.js';
 import { StatisticsCalculator } from '../src/benchmark/statistics_calculator.js';
 import { ChatCommand } from '../src/chat/chat_command.js';
+import { ChatRenderer } from '../src/chat/chat_renderer.js';
+import { ChatSession, type LineSource } from '../src/chat/chat_session.js';
 import { CompletionSender } from '../src/clients/completion_sender.js';
 import { reportFormats, type CompletionResult, type CompletionTarget } from '../src/completion_types.js';
 import { SharedOptions } from '../src/shared_options.js';
@@ -222,31 +227,211 @@ Test.describe('SharedOptions', () => {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-Test.describe('ChatCommand.buildMessages', () => {
-	Test.it('sends the turn alone when no system message was asked for', () => {
-		Assert.deepEqual(ChatCommand.buildMessages(undefined, 'What is the capital of France?'), [
-			{
-				role: 'user',
-				content: 'What is the capital of France?',
-			},
-		]);
+/**
+ * Builds a line source that reads the given lines and then ends, which is how a session is driven
+ * without a terminal.
+ *
+ * @param lines The lines to read, in order.
+ * @returns The line source to hand to a session.
+ */
+function lineSourceOf(lines: readonly string[]): LineSource {
+	let index = 0;
+	return {
+		next: async () => {
+			if (index >= lines.length) {
+				return {
+					done: true,
+				};
+			}
+			const value = lines[index];
+			index += 1;
+			return {
+				done: false,
+				value,
+			};
+		},
+	};
+}
+
+/** What one scripted session wrote, and what it was asked to send. */
+type SessionTranscript = {
+	/** The session that ran, so a test can read the history it ended with. */
+	readonly session: ChatSession;
+	/** Everything written, concatenated. */
+	readonly written: string;
+	/** The messages of every turn sent, in the order the turns were sent. */
+	readonly sentMessages: OpenAI.ChatCompletionMessageParam[][];
+};
+
+/**
+ * Runs one whole session over scripted lines, with a sender that answers without an endpoint.
+ *
+ * @param lines The lines typed into the session, in order.
+ * @param systemText The system message to open the session with, `undefined` for none.
+ * @param answerOf What the model answers a turn with, read from the turn itself. Throwing from it is
+ * how a turn the endpoint would not answer is scripted.
+ * @returns What the session wrote and what it sent.
+ */
+async function runScriptedSession(
+	lines: readonly string[],
+	systemText: string | undefined,
+	answerOf: (turn: string) => string,
+): Promise<SessionTranscript> {
+	const sentMessages: OpenAI.ChatCompletionMessageParam[][] = [];
+	let written = '';
+	const session = new ChatSession({
+		modelId: 'a-model',
+		baseUrl: 'http://localhost:1234/v1',
+		systemText,
+		isInteractive: true,
+		lines: lineSourceOf(lines),
+		write: (text: string) => {
+			written += text;
+		},
+		sendTurn: async (messages, writePiece) => {
+			sentMessages.push([...messages]);
+			const lastMessage = messages[messages.length - 1];
+			const answer = answerOf(typeof lastMessage.content === 'string' ? lastMessage.content : '');
+			for (const piece of answer) {
+				writePiece(piece);
+			}
+			return {
+				answer,
+				reportedModelId: 'a-model',
+				timeToFirstCharacterMs: 12,
+				timeToLastCharacterMs: 34,
+				clusterGenerationTimeMs: undefined,
+				clusterTimeToFirstPieceMs: undefined,
+				usage: undefined,
+				finishReason: 'stop',
+				toolCalls: [],
+			};
+		},
+	});
+	await session.run();
+	return {
+		session,
+		written,
+		sentMessages,
+	};
+}
+
+Test.describe('ChatRenderer.banner', () => {
+	Test.it('says what can be typed only when somebody is typing', () => {
+		Assert.match(ChatRenderer.banner('a-model', 'http://localhost:1234/v1', true), /Type a turn/);
+		Assert.doesNotMatch(ChatRenderer.banner('a-model', 'http://localhost:1234/v1', false), /Type a turn/);
 	});
 
-	Test.it('opens the session with the system message when one was asked for', () => {
-		Assert.deepEqual(ChatCommand.buildMessages('Answer in one word.', 'What is the capital of France?'), [
+	Test.it('names the model and the endpoint either way', () => {
+		for (const isInteractive of [true, false]) {
+			const banner = ChatRenderer.banner('a-model', 'http://localhost:1234/v1', isInteractive);
+			Assert.match(banner, /a-model/);
+			Assert.match(banner, /localhost:1234/);
+		}
+	});
+});
+
+Test.describe('ChatSession.openingMessages', () => {
+	Test.it('opens with nothing at all when no system message was asked for', () => {
+		Assert.deepEqual(ChatSession.openingMessages(undefined), []);
+	});
+
+	Test.it('opens with the system message when one was asked for', () => {
+		Assert.deepEqual(ChatSession.openingMessages('Answer in one word.'), [
 			{
 				role: 'system',
 				content: 'Answer in one word.',
-			},
-			{
-				role: 'user',
-				content: 'What is the capital of France?',
 			},
 		]);
 	});
 });
 
-Test.describe('ChatCommand.run', () => {
+Test.describe('ChatSession.run', () => {
+	Test.it('sends the whole history with every turn after the first', async () => {
+		const transcript = await runScriptedSession(
+			['What is the capital of France?', 'And of Spain?'],
+			'Answer in one word.',
+			() => 'Paris',
+		);
+		Assert.equal(transcript.sentMessages.length, 2);
+		Assert.deepEqual(
+			transcript.sentMessages[0].map((message) => message.role),
+			['system', 'user'],
+		);
+		Assert.deepEqual(
+			transcript.sentMessages[1].map((message) => message.role),
+			['system', 'user', 'assistant', 'user'],
+		);
+		Assert.equal(transcript.session.currentMessages().length, 5);
+	});
+
+	Test.it('writes the answer and the dimmed timings under it', async () => {
+		const transcript = await runScriptedSession(['What is the capital of France?'], undefined, () => 'Paris');
+		Assert.match(transcript.written, /Paris/);
+		Assert.match(transcript.written, /Time to First Character 12 ms/);
+		Assert.match(transcript.written, /Time to Last Character 34 ms/);
+		Assert.match(transcript.written, /5 characters/);
+	});
+
+	Test.it('leaves the session on /quit, and reads nothing after it', async () => {
+		const transcript = await runScriptedSession(['/quit', 'this turn is never read'], undefined, () => 'Paris');
+		Assert.equal(transcript.sentMessages.length, 0);
+	});
+
+	Test.it('clears the history on /reset, and keeps the system message', async () => {
+		const transcript = await runScriptedSession(
+			['What is the capital of France?', '/reset', 'And of Spain?'],
+			'Answer in one word.',
+			() => 'Paris',
+		);
+		Assert.deepEqual(
+			transcript.sentMessages[1].map((message) => message.role),
+			['system', 'user'],
+		);
+		Assert.match(transcript.written, /The history is cleared/);
+	});
+
+	Test.it('prints every message the next turn would carry on /history', async () => {
+		const transcript = await runScriptedSession(['What is the capital of France?', '/history'], undefined, () => 'Paris');
+		Assert.match(transcript.written, /2 messages will be sent with the next turn/);
+		Assert.match(transcript.written, /user: What is the capital of France\?/);
+		Assert.match(transcript.written, /assistant: Paris/);
+	});
+
+	Test.it('sends a line that only starts with a slash as a turn', async () => {
+		const transcript = await runScriptedSession(['/resetting is not /reset'], undefined, () => 'Paris');
+		Assert.equal(transcript.sentMessages.length, 1);
+	});
+
+	Test.it('reports a turn the endpoint would not answer, and carries on with the history it had', async () => {
+		const transcript = await runScriptedSession(
+			['What is the capital of France?', 'And of Spain?'],
+			undefined,
+			(turn: string) => {
+				if (turn === 'What is the capital of France?') {
+					throw new Error('the endpoint refused this one');
+				}
+				return 'Madrid';
+			},
+		);
+		Assert.match(transcript.written, /That turn was not answered: the endpoint refused this one/);
+		Assert.deepEqual(
+			transcript.sentMessages[1].map((message) => message.role),
+			['user'],
+		);
+		Assert.deepEqual(
+			transcript.session.currentMessages().map((message) => message.role),
+			['user', 'assistant'],
+		);
+	});
+
+	Test.it('skips a line with nothing on it', async () => {
+		const transcript = await runScriptedSession(['', '   ', 'What is the capital of France?'], undefined, () => 'Paris');
+		Assert.equal(transcript.sentMessages.length, 1);
+	});
+});
+
+Test.describe('ChatCommand', () => {
 	Test.it('refuses a model spelling that names more than one model', async () => {
 		await Assert.rejects(
 			async () =>
@@ -261,17 +446,27 @@ Test.describe('ChatCommand.run', () => {
 		);
 	});
 
-	Test.it('says the session is not built yet when no turn was given', async () => {
+	Test.it('refuses a run that named no model at all', async () => {
 		await Assert.rejects(
 			async () =>
 				await ChatCommand.run({
-					model: 'a-model',
 					base_url: 'http://localhost:1234/v1',
 					api_key: 'no-key-required',
 					timeout_ms: '600000',
 				}),
-			/-p\/--prompt/,
+			/no model was named/,
 		);
+	});
+
+	Test.it('reads the one turn of -p/--prompt and then ends the input', async () => {
+		const lines = ChatCommand.oneLineSource('What is the capital of France?');
+		Assert.deepEqual(await lines.next(), {
+			done: false,
+			value: 'What is the capital of France?',
+		});
+		Assert.deepEqual(await lines.next(), {
+			done: true,
+		});
 	});
 });
 

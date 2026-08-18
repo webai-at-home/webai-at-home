@@ -1,11 +1,10 @@
-// npm imports
-import Chalk from 'chalk';
-import type OpenAI from 'openai';
+// node imports
+import Readline from 'node:readline';
 
 // local imports
 import { CompletionSender } from '../clients/completion_sender.js';
-import type { CompletionResult } from '../completion_types.js';
 import { SharedOptions, type RawEndpointOptions } from '../shared_options.js';
+import { ChatSession, type LineSource } from './chat_session.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,87 +45,83 @@ export type RawChatOptions = RawEndpointOptions & {
 /** Sends turns to one model and streams each answer back to the terminal. */
 export class ChatCommand {
 	/**
-	 * Sends the one turn `-p/--prompt` named and streams the answer.
-	 *
-	 * The session someone types into is not built yet. Until it is, a run without `-p/--prompt`
-	 * says so and stops, rather than starting a session that cannot read a second turn.
+	 * Runs the `chat` subcommand: either the one turn `-p/--prompt` named, or the session somebody
+	 * types turns into.
 	 *
 	 * @param rawOptions The subcommand's options, exactly as commander parsed them.
-	 * @returns Nothing, once the answer has been written out.
-	 * @throws {Error} If no `-p/--prompt` was given, if `-m/--model` named more than one model, or
-	 * if the request did not produce an answer.
+	 * @returns Nothing, once the session has ended or the one turn has been written out.
+	 * @throws {Error} If no model was named, or if `-m/--model` named more than one model. A turn the
+	 * endpoint would not answer is reported inside the session and never throws, since a session that
+	 * ended on the first refusal would throw away the history somebody typed.
 	 */
 	static async run(rawOptions: RawChatOptions): Promise<void> {
 		const modelId = ChatCommand._readSingleModelId(rawOptions.model);
-		if (rawOptions.prompt === undefined) {
-			throw new Error(
-				'the session to type turns into is not built yet — send one turn with -p/--prompt for now. See Milestone 6 of https://github.com/webai-at-home/webai-at-home/issues/208',
-			);
-		}
-
 		const target = SharedOptions.buildTarget(rawOptions);
 		const client = CompletionSender.createClient(target);
-		const messages = ChatCommand.buildMessages(rawOptions.system, rawOptions.prompt);
+		const sendTurn = ChatSession.streamedTurnSender(client, modelId);
+		const write = (text: string): void => {
+			process.stdout.write(text);
+		};
 
-		console.log(Chalk.bold(`${modelId} on ${target.baseUrl}`));
-		// The answer is written out as it arrives, so a request that fails after its first piece has
-		// already put text on the screen. The line is closed either way, so that what the endpoint
-		// wrote and what went wrong with it never end up on the same line.
-		let writtenCharacterCount = 0;
-		try {
-			const result = await CompletionSender.send({
-				client,
+		if (rawOptions.prompt !== undefined) {
+			const session = new ChatSession({
 				modelId,
-				messages,
-				mode: 'streamed',
-				writePiece: (piece: string) => {
-					writtenCharacterCount += piece.length;
-					process.stdout.write(piece);
-				},
+				baseUrl: target.baseUrl,
+				systemText: rawOptions.system,
+				isInteractive: false,
+				lines: ChatCommand.oneLineSource(rawOptions.prompt),
+				write,
+				sendTurn,
 			});
-			process.stdout.write('\n');
-			console.log(ChatCommand.renderTimings(result));
-		} catch (error: unknown) {
-			if (writtenCharacterCount > 0) {
-				process.stdout.write('\n');
-			}
-			throw error;
+			await session.run();
+			return;
 		}
-	}
 
-	/**
-	 * Builds the messages of a session that has had one turn typed into it.
-	 *
-	 * @param systemText The system message to open the session with, `undefined` when none was asked
-	 * for.
-	 * @param promptText The turn to send.
-	 * @returns The messages to send, in the order they are sent.
-	 */
-	static buildMessages(systemText: string | undefined, promptText: string): OpenAI.ChatCompletionMessageParam[] {
-		const messages: OpenAI.ChatCompletionMessageParam[] = [];
-		if (systemText !== undefined) {
-			messages.push({
-				role: 'system',
-				content: systemText,
-			});
-		}
-		messages.push({
-			role: 'user',
-			content: promptText,
+		const readlineInterface = Readline.createInterface({
+			input: process.stdin,
+			terminal: process.stdin.isTTY === true,
 		});
-		return messages;
+		try {
+			const session = new ChatSession({
+				modelId,
+				baseUrl: target.baseUrl,
+				systemText: rawOptions.system,
+				isInteractive: true,
+				lines: readlineInterface[Symbol.asyncIterator](),
+				write,
+				sendTurn,
+			});
+			await session.run();
+		} finally {
+			readlineInterface.close();
+		}
 	}
 
 	/**
-	 * Renders the one dimmed line printed under an answer.
+	 * Builds the line source of a `-p/--prompt` run: one turn, and then the end of the input.
 	 *
-	 * @param result What the request produced.
-	 * @returns The line to print.
+	 * The one-turn run and the session are the same loop, fed differently, so that the two can never
+	 * disagree about what is printed under an answer or about what is sent with a turn.
+	 *
+	 * @param promptText The one turn to send.
+	 * @returns The line source to hand to a session.
 	 */
-	static renderTimings(result: CompletionResult): string {
-		const timeToFirstCharacter = `Time to First Character ${Math.round(result.timeToFirstCharacterMs)} ms`;
-		const timeToLastCharacter = `Time to Last Character ${Math.round(result.timeToLastCharacterMs)} ms`;
-		return Chalk.dim(`${timeToFirstCharacter}, ${timeToLastCharacter}, ${result.answer.length} characters`);
+	static oneLineSource(promptText: string): LineSource {
+		let isRead = false;
+		return {
+			next: async (): Promise<{ done?: boolean; value?: string }> => {
+				if (isRead === true) {
+					return {
+						done: true,
+					};
+				}
+				isRead = true;
+				return {
+					done: false,
+					value: promptText,
+				};
+			},
+		};
 	}
 
 	///////////////////////////////////////////////////////////////////////////////
