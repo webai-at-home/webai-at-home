@@ -18,6 +18,12 @@ export type GenerationRun = {
 	decodeMs: number;
 	/** How many tokens arrived per second, counting every token after the first. */
 	tokensPerSecond: number;
+	/**
+	 * Whether the run stopped because it reached the token cap rather than because the model wrote its end
+	 * token. An answer that stopped at the cap is cut off part way through, so it is not the answer the model
+	 * would have written, and neither its length nor anything read out of its text means what it usually means.
+	 */
+	isStoppedAtCap: boolean;
 	/** The whole answer this run generated. */
 	text: string;
 };

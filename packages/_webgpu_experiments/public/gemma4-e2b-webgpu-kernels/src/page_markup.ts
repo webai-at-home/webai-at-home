@@ -16,9 +16,16 @@ export class PageMarkup {
 	 * @param defaultPrompt The question the prompt box holds when the page opens.
 	 * @param warmupRunCount How many runs the measurement throws away, named in the hint beside its button.
 	 * @param measuredRunCount How many runs the measurement measures, named in the hint beside its button.
+	 * @param maxNewTokens How many tokens an answer may hold at most, named in the hint beside the run button.
 	 * @returns The markup, ready to be written into the `#app` element.
 	 */
-	static build(modelId: string, defaultPrompt: string, warmupRunCount: number, measuredRunCount: number): string {
+	static build(
+		modelId: string,
+		defaultPrompt: string,
+		warmupRunCount: number,
+		measuredRunCount: number,
+		maxNewTokens: number,
+	): string {
 		return `
   <main class="shell experiment-shell">
     <header class="topbar">
@@ -41,7 +48,7 @@ export class PageMarkup {
       <textarea id="prompt" rows="3">${defaultPrompt}</textarea>
       <div class="controls">
         <button id="run-button" class="primary-button" type="button">Loading model… <span class="spinner"></span></button>
-        <span class="hint">Streaming · greedy · stops at the end token</span>
+        <span class="hint">Streaming · greedy · stops at the end token or after ${maxNewTokens} tokens</span>
       </div>
     </section>
     <section class="results" aria-live="polite">

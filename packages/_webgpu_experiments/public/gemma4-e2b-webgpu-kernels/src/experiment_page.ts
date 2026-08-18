@@ -35,8 +35,13 @@ export type CorrectnessCheck = {
 /** The Hugging Face model the vendored bundle loads, shown in the page beside the prompt. */
 const MODEL_ID = 'google/gemma-4-E2B-it-qat-mobile-transformers';
 
-/** How many tokens any single answer on this page may hold at most. */
-const MAX_NEW_TOKENS = 256;
+/**
+ * How many tokens any single answer on this page may hold at most. It is the bound the Transformers.js Gemma 4
+ * E2B page uses, and it is a guard against a model that never writes its end token, not a length this page wants.
+ * A run that reaches it is cut off part way through, and the page says so rather than letting the cut answer pass
+ * for a finished one.
+ */
+const MAX_NEW_TOKENS = 2048;
 
 /**
  * The question the prompt box holds when the page opens. It is the question the Transformers.js Gemma 4 E2B page
@@ -110,7 +115,7 @@ export class ExperimentPage {
 		if (app === null) {
 			throw new Error('The page must hold #app.');
 		}
-		app.innerHTML = PageMarkup.build(MODEL_ID, DEFAULT_PROMPT, WARMUP_RUN_COUNT, MEASURED_RUN_COUNT);
+		app.innerHTML = PageMarkup.build(MODEL_ID, DEFAULT_PROMPT, WARMUP_RUN_COUNT, MEASURED_RUN_COUNT, MAX_NEW_TOKENS);
 
 		const isWebgpuPresent = navigator.gpu !== undefined;
 		this._element<HTMLElement>('#runtime-label').textContent = isWebgpuPresent ? 'WebGPU available' : 'WebGPU absent';
@@ -228,9 +233,13 @@ export class ExperimentPage {
 
 			this._element<HTMLElement>('#generation-time').textContent = `${((run.timeToFirstTokenMs + run.decodeMs) / 1000).toFixed(2)} s`;
 			this._element<HTMLElement>('#speed').textContent = `${run.tokensPerSecond.toFixed(1)} tok/s`;
+			const ending = run.isStoppedAtCap
+				? `stopped at the cap of ${MAX_NEW_TOKENS} tokens, so this answer is cut off part way through and is ` +
+					'not the answer the model would have written'
+				: 'stopped at the end token';
 			this._setStatus(
-				`One run: ${run.tokenCount} tokens, first token after ${run.timeToFirstTokenMs.toFixed(0)} ms. ` +
-					'One run is a demonstration, not a measurement — use the measurement panel below.',
+				`One run: ${run.tokenCount} tokens, first token after ${run.timeToFirstTokenMs.toFixed(0)} ms, ` +
+					`${ending}. One run is a demonstration, not a measurement — use the measurement panel below.`,
 			);
 		} catch (error: unknown) {
 			console.error(error);
@@ -329,7 +338,7 @@ export class ExperimentPage {
 			this._element<HTMLElement>('#tokens-per-second').textContent = MeasurementStatistics.format(tokensPerSecond, 'tok/s', 1);
 			this._element<HTMLElement>('#token-count').textContent = MeasurementStatistics.format(tokenCount, 'tokens', 0);
 			this._element<HTMLElement>('#run-count').textContent = `${MEASURED_RUN_COUNT} measured, ${WARMUP_RUN_COUNT} thrown away`;
-			this._reportMeasurementTrust(prompt);
+			this._reportMeasurementTrust(prompt, runs.some((run) => run.isStoppedAtCap));
 			this._setStatus(this.#wasEverHidden ? 'The measurement finished, but the page was out of sight.' : 'The measurement finished.');
 		} catch (error: unknown) {
 			console.error(error);
@@ -396,6 +405,9 @@ export class ExperimentPage {
 				tokenCount,
 				decodeMs,
 				tokensPerSecond,
+				// The bundle stops at the end token or at the cap, and says which nowhere. Reaching the cap
+				// exactly is what tells the two apart.
+				isStoppedAtCap: tokenCount >= MAX_NEW_TOKENS,
 				text,
 			};
 		} finally {
@@ -427,11 +439,18 @@ export class ExperimentPage {
 	 * Says whether the figures just measured can be trusted, and why not when they cannot.
 	 *
 	 * @param prompt The question the measured runs asked.
+	 * @param isAnyRunStoppedAtCap Whether any measured run reached the token cap instead of the end token.
 	 * @returns Nothing.
 	 */
-	_reportMeasurementTrust(prompt: string): void {
+	_reportMeasurementTrust(prompt: string, isAnyRunStoppedAtCap: boolean): void {
 		const visibility = this._element<HTMLElement>('#page-visibility');
 		const reasons: string[] = [];
+		if (isAnyRunStoppedAtCap) {
+			reasons.push(
+				`A run stopped at the cap of ${MAX_NEW_TOKENS} tokens instead of at the end token, so its answer ` +
+					'is cut off part way through. Ask a question with a shorter answer, or raise MAX_NEW_TOKENS.',
+			);
+		}
 		if (this.#wasEverHidden) {
 			reasons.push(
 				'The page was out of sight during the measurement. Reading a hidden page lifts the slowdown Google ' +
