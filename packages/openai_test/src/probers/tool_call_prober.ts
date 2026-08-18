@@ -47,14 +47,17 @@ export type ToolCallProbeOptions = {
 	/** Whether to ask for the answer as it is written, or in one piece. */
 	readonly mode: CompletionMode;
 	/**
-	 * How many times a probe that needs a tool call sends its prompt before giving up on getting
-	 * one.
+	 * How many times a probe that needs a tool call, or that needs the answer to carry a particular
+	 * word, sends its prompt before giving up on getting one.
 	 *
 	 * Whether a model asks for a tool is a choice it makes afresh each time, so one request that
 	 * produced no call is weak evidence where one request that produced a call is strong evidence.
 	 * Sending the prompt several times and reporting how many of them produced a call is the
 	 * difference between "this model cannot call tools" and "this model calls tools once in three
 	 * tries", which are two very different findings and look identical after a single request.
+	 *
+	 * Whether an answer repeats a word the tool result gave it is the same kind of choice, made
+	 * afresh each time, which is why `_probeReadsAToolResultBack` repeats its prompt too.
 	 */
 	readonly repeats: number;
 };
@@ -419,12 +422,19 @@ export class ToolCallProber {
 	 * [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119) read a tool result
 	 * back, while only one of them generated a call.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * Sent several times, for the same reason `_probeGeneratesACall` is: whether the answer repeats
+	 * the temperature or writes around it is a choice the model makes afresh each time. Measured
+	 * against `llama-3.2-1b-instruct` on LM Studio 0.4.20, fifteen answers of twenty repeated the
+	 * number and five wrote around it, so one request reported an ability the model had every time
+	 * as absent about one run in four
+	 * ([issue #208](https://github.com/webai-at-home/webai-at-home/issues/208)).
+	 *
+	 * @param options The client, the model identifier, the mode, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeReadsAToolResultBack(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
 		const toolCallId = 'call_probe_weather';
-		const answer = await ToolCallProber._ask(options, [weatherTool], 'auto', [
+		const asked = await ToolCallProber._askHistoryUntilTheResultIsRead(options, [weatherTool], 'auto', [
 			{
 				role: 'user',
 				content: prompts.weather,
@@ -459,34 +469,36 @@ export class ToolCallProber {
 				content: 'Answer my question using that result. State the temperature in degrees celsius.',
 			},
 		]);
-		const failure = ToolCallProber._failureOf(options, 'reads_a_tool_result_back', [answer]);
+		const failure = ToolCallProber._failureOf(options, 'reads_a_tool_result_back', asked);
 		if (failure !== undefined) {
 			return failure;
 		}
-		if (answer.toolCalls.length > 0) {
+		const withTheTemperature = asked.filter((answer) => ToolCallProber._readsTheResultBack(answer) === true);
+		if (withTheTemperature.length > 0) {
 			return ToolCallProber._outcome(
 				options,
 				'reads_a_tool_result_back',
-				'unsupported',
-				`the history already carried the result and the model asked for ${ToolCallProber._namesOf([answer])} again rather than answering from it`,
-				[answer],
+				'supported',
+				`${withTheTemperature.length} of ${asked.length} answers state the ${probedTemperatureCelsius} degrees celsius that only the tool result could have told it`,
+				asked,
 			);
 		}
-		if (answer.text.includes(probedTemperatureCelsius) === false) {
+		const withACall = asked.filter((answer) => answer.toolCalls.length > 0);
+		if (withACall.length > 0) {
 			return ToolCallProber._outcome(
 				options,
 				'reads_a_tool_result_back',
 				'unsupported',
-				`the tool result said ${probedTemperatureCelsius} degrees celsius and the answer does not contain ${probedTemperatureCelsius}`,
-				[answer],
+				`the history already carried the result and ${withACall.length} of ${asked.length} answers asked for ${ToolCallProber._namesOf(withACall)} again rather than answering from it`,
+				asked,
 			);
 		}
 		return ToolCallProber._outcome(
 			options,
 			'reads_a_tool_result_back',
-			'supported',
-			`the answer states the ${probedTemperatureCelsius} degrees celsius that only the tool result could have told it`,
-			[answer],
+			'unsupported',
+			`the tool result said ${probedTemperatureCelsius} degrees celsius and none of the ${asked.length} answers contains ${probedTemperatureCelsius}`,
+			asked,
 		);
 	}
 
@@ -654,6 +666,53 @@ export class ToolCallProber {
 			}
 		}
 		return answers;
+	}
+
+	/**
+	 * Sends one whole history with one set of tools declared until an answer reads the tool result
+	 * back, or until the repeat count runs out.
+	 *
+	 * `_askRepeatedly` and `_askUntilACall` each build their own one-message history out of one
+	 * prompt. This one takes the whole history instead, because the probe that uses it has to put a
+	 * tool call and that tool's result in front of the model before it can ask anything.
+	 *
+	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param tools The tools to declare on every request.
+	 * @param toolChoice How much choice to leave the model.
+	 * @param messages The whole history to send every time.
+	 * @returns The answers, in the order they were sent, ending at the first one that read the tool
+	 * result back or at the first that failed.
+	 */
+	private static async _askHistoryUntilTheResultIsRead(
+		options: ToolCallProbeOptions,
+		tools: readonly ToolDeclaration[],
+		toolChoice: ToolChoice,
+		messages: OpenAI.ChatCompletionMessageParam[],
+	): Promise<ProbeAnswer[]> {
+		const answers: ProbeAnswer[] = [];
+		for (let runIndex = 0; runIndex < options.repeats; runIndex += 1) {
+			const answer = await ToolCallProber._ask(options, tools, toolChoice, messages);
+			answers.push(answer);
+			if (answer.failureMessage !== undefined || ToolCallProber._readsTheResultBack(answer) === true) {
+				break;
+			}
+		}
+		return answers;
+	}
+
+	/**
+	 * Reports whether one answer read the tool result back: it answered in words rather than asking
+	 * for the tool again, and those words carry the temperature only the tool result could have
+	 * told it.
+	 *
+	 * @param answer The answer to read.
+	 * @returns `true` when the answer states the probed temperature.
+	 */
+	private static _readsTheResultBack(answer: ProbeAnswer): boolean {
+		if (answer.toolCalls.length > 0) {
+			return false;
+		}
+		return answer.text.includes(probedTemperatureCelsius);
 	}
 
 	/**

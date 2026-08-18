@@ -40,6 +40,15 @@ export type TestContext = {
 	/** The model identifier every request is sent with. */
 	readonly modelId: string;
 	/**
+	 * How many times a test whose answer the model may write differently each time sends its
+	 * prompt before giving up, as `-r/--repeats` asked for.
+	 *
+	 * `toolCallProbeCache` and `generationControlProbeCache` already carry this count into the two
+	 * probers. It is on the context as well for `history.recalled`, which sends its own two turns
+	 * rather than going through a prober and needs the same count for the same reason.
+	 */
+	readonly repeats: number;
+	/**
 	 * The one `ToolCallProber` run the six tool call tests share, so that probing six abilities
 	 * costs one run's requests rather than six.
 	 */

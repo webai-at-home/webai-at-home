@@ -24,6 +24,7 @@ One file per conformance test, grouped into subfolders by the part of the protoc
 - A test added to a folder is added to that folder's `group.ts`, the only place its membership is declared.
 - A `group.ts` holds a list only, never test logic, and never a test declared nowhere else.
 - A test never grades whether an answer is a good answer. It may read an answer's words only when the prompt was built so the behaviour under test is visible in them; the rule is stated once, in [../CONTEXT.md](../CONTEXT.md).
+- A test reading an answer's words repeats its prompt `context.repeats` times and takes the first answer that carries what it looks for.
 - A test in `tools/` or `parameters/` never probes an endpoint itself; it reads its outcome from the shared cache on `TestContext` and translates it through `../probes/`.
 - A 4xx refusal of an optional request field is `SKIP` on the status alone, never on the error body's shape, since an endpoint may send no `code` to key on.
 - `streaming/timing.ts` is the worked example of `WARN` rather than `FAIL`: a buffered answer is a compatibility concern, not a protocol violation (section 12 of issue #181).

@@ -18,6 +18,7 @@ One file per subcommand of `openai_api_tool`: sending completions, checking hist
 - A subcommand never talks to an endpoint itself: every request goes through `../completion_sender.ts`, and every measurement through `../benchmark_runner.ts`.
 - A subcommand does not build its own probing logic when one exists one level up — `generation_controls_command.ts` and `tool_calls_command.ts` are thin wrappers over their prober.
 - Every subcommand accepts `-f/--format text|markdown|json` from `../shared_options.ts`, and does not declare its own copy of that option.
+- `history_command.ts` sends its two turns `-r/--repeats` times and reports a model as not having recalled the facts only when no second answer of them all did.
 
 ## Background
 

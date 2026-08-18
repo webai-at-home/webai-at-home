@@ -123,6 +123,7 @@ export class ConformanceCommand {
 			rawHttpClient: new RawHttpClient(target),
 			openaiPackageClient,
 			modelId: rawOptions.model,
+			repeats,
 			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, rawOptions.model, repeats),
 			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, rawOptions.model, repeats),
 		};

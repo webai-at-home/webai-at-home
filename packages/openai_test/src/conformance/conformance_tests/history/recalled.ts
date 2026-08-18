@@ -22,6 +22,15 @@ import type { ConformanceTest, TestContext, TestResult } from '../../types.js';
  * A missing fact is `WARN` rather than `FAIL`, for the same reason a model that declines to ask
  * for a tool is `WARN`: the endpoint carried the history correctly — `history.accepted` is the
  * test that says so — and what the model then did with it is the model's own doing.
+ *
+ * The two turns are sent as many times as `-r/--repeats` asked for, stopping at the first second
+ * answer that carries both facts, because whether a small model recalls them is a choice it makes
+ * afresh each time. Measured against `llama-3.2-1b-instruct` on LM Studio 0.4.20, fifteen second
+ * answers of twenty carried both facts and five denied knowing either — while still addressing the
+ * reply to Ada, so the history had reached the model every time. One send therefore reported an
+ * ability the endpoint and the model both had as missing about one run in four, which is the flake
+ * [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208) recorded. Sending three
+ * times and taking the best is the same rule `ToolCallProber` already follows.
  */
 class HistoryRecalledTest {
 	/** The first turn, stating two facts and asking for nothing back. */
@@ -34,37 +43,45 @@ class HistoryRecalledTest {
 	private static readonly _facts = ['ada', 'lisp'] as const;
 
 	/**
-	 * @param context The endpoint, the model, and both clients to run this test with.
+	 * Sends the two turns as many times as `-r/--repeats` asked for, and stops at the first second
+	 * answer that carries both facts.
+	 *
+	 * @param context The endpoint, the model, both clients, and the repeat count to run this test
+	 * with.
 	 * @returns The verdict this run reached.
 	 */
 	static async run(context: TestContext): Promise<TestResult> {
-		const firstAnswer = await HistoryRecalledTest._ask(context, [
-			{ role: 'user', content: HistoryRecalledTest._firstMessage },
-		]);
-		if (typeof firstAnswer !== 'string') {
-			return firstAnswer;
-		}
+		const secondAnswers: string[] = [];
+		for (let runIndex = 0; runIndex < context.repeats; runIndex += 1) {
+			const firstAnswer = await HistoryRecalledTest._ask(context, [
+				{ role: 'user', content: HistoryRecalledTest._firstMessage },
+			]);
+			if (typeof firstAnswer !== 'string') {
+				return firstAnswer;
+			}
 
-		const secondAnswer = await HistoryRecalledTest._ask(context, [
-			{ role: 'user', content: HistoryRecalledTest._firstMessage },
-			{ role: 'assistant', content: firstAnswer },
-			{ role: 'user', content: HistoryRecalledTest._secondMessage },
-		]);
-		if (typeof secondAnswer !== 'string') {
-			return secondAnswer;
-		}
+			const secondAnswer = await HistoryRecalledTest._ask(context, [
+				{ role: 'user', content: HistoryRecalledTest._firstMessage },
+				{ role: 'assistant', content: firstAnswer },
+				{ role: 'user', content: HistoryRecalledTest._secondMessage },
+			]);
+			if (typeof secondAnswer !== 'string') {
+				return secondAnswer;
+			}
+			secondAnswers.push(secondAnswer);
 
-		const secondAnswerLower = secondAnswer.toLowerCase();
-		const missing = HistoryRecalledTest._facts.filter((fact) => secondAnswerLower.includes(fact) === false);
-		if (missing.length > 0) {
-			return {
-				verdict: 'WARN',
-				detail: `the second answer does not carry ${missing.join(' or ')}, answer=${JSON.stringify(secondAnswer)}`,
-			};
+			const secondAnswerLower = secondAnswer.toLowerCase();
+			const missing = HistoryRecalledTest._facts.filter((fact) => secondAnswerLower.includes(fact) === false);
+			if (missing.length === 0) {
+				return {
+					verdict: 'PASS',
+					detail: `the second answer carries both facts the first turn stated on try ${secondAnswers.length} of ${context.repeats}, answer=${JSON.stringify(secondAnswer)}`,
+				};
+			}
 		}
 		return {
-			verdict: 'PASS',
-			detail: `the second answer carries both facts the first turn stated, answer=${JSON.stringify(secondAnswer)}`,
+			verdict: 'WARN',
+			detail: `no second answer of ${secondAnswers.length} carries both ${HistoryRecalledTest._facts.join(' and ')}, answers=${JSON.stringify(secondAnswers)}`,
 		};
 	}
 

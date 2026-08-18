@@ -79,7 +79,8 @@ export class Cli {
 				'-m, --model <name>',
 				`model identifier, a comma-separated list of identifiers, a pattern, all, or list to print the model identifiers — only ${taskTypeNamesAcceptingHistory.join(' and ')} accept a whole history`,
 				'all',
-			);
+			)
+			.option('-r, --repeats <number>', 'how many times the two turns are sent before the model is reported not to have recalled them', '3');
 		SharedOptions.addModeOptions(history);
 		SharedOptions.addFormatOption(history);
 		SharedOptions.addEndpointOptions(history);
