@@ -10,6 +10,7 @@
 		"build": "tsc -p tsconfig.build.json",
 		"typecheck": "tsc -p tsconfig.json",
 		"test": "npx tsx --test tests/index.test.ts",
+		"conformance": "tsx src/cli.ts conformance",
 		"chat": "tsx src/cli.ts chat",
 		"lmstudio:server:status": "lms server status",
 		"lmstudio:server:start": "lms server start",

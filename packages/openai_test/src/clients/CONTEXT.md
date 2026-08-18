@@ -7,6 +7,8 @@ The ways this package reaches an OpenAI-compatible endpoint, and the timing of e
 ## Key Exports & Entry Points
 
 - `completion_sender.ts`: `CompletionSender`, which sends one chat completion request through the `openai` npm package, measures when its first and last character arrived, and checks that the endpoint answered as the model that was requested.
+- `raw_http_client.ts`: `RawHttpClient`, the one file that builds and parses a body by hand, for the tests whose subject is the wire itself.
+- `openai_package_client.ts`: `OpenaiPackageClient`, which holds the `openai` npm package's own client, for the tests asking whether that package still works against this endpoint.
 
 ## Rules
 

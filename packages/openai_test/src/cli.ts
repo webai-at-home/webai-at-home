@@ -9,6 +9,8 @@ import { Command } from 'commander';
 
 // local imports
 import { ChatCommand, type RawChatOptions } from './chat/chat_command.js';
+import { ConformanceCommand, knownFormats, knownProfiles, type RawConformanceOptions } from './conformance/conformance_command.js';
+import { exitCodes } from './exit_codes.js';
 import { SharedOptions } from './shared_options.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,6 +18,7 @@ import { SharedOptions } from './shared_options.js';
 //	Cli — the openai_test command line program and its three subcommands
 //
 //	Run with:
+//	  ./src/cli.ts conformance --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --profile full
 //	  ./src/cli.ts chat --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --prompt "What is the capital of France?"
 //	or, from the workspace:
 //	  npm run chat --workspace @webai/openai-test -- --model llama-3.2-1b-instruct --prompt "..."
@@ -25,8 +28,8 @@ import { SharedOptions } from './shared_options.js';
 //	  benchmark   — how fast is this endpoint
 //	  chat        — what does this endpoint actually answer
 //
-//	`conformance` and `benchmark` arrive in Milestones 2 and 5 of
-//	https://github.com/webai-at-home/webai-at-home/issues/208, and are not registered until they do,
+//	`benchmark` arrives in Milestone 5 of
+//	https://github.com/webai-at-home/webai-at-home/issues/208, and is not registered until it does,
 //	so that a subcommand this program lists is a subcommand this program runs.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -43,9 +46,26 @@ export class Cli {
 	 * reached — reported in words rather than as a stack trace. A test that failed sets `1`, and
 	 * only `conformance` can do that.
 	 */
-	static async run(args: string[] = process.argv.slice(2)): Promise<void> {
+	static async run(args: string[] = process.argv.slice(2), invokedName = 'openai_test'): Promise<void> {
 		const program = new Command();
-		program.name('openai_test').description('Tests, measures, and talks to a server that speaks the OpenAI-compatible API.');
+		program.name(invokedName).description('Tests, measures, and talks to a server that speaks the OpenAI-compatible API.');
+
+		const conformance = program
+			.command('conformance')
+			.description('Reports which parts of the OpenAI-compatible Chat Completions API one server actually honours.')
+			.option('-m, --model <name>', 'the model identifier to request', process.env.OPENAI_MODEL)
+			.option('--profile <name>', `which group of tests to run: ${[...knownProfiles.keys()].join(', ')}`, 'core')
+			.option('-g, --group <name>', 'run only the tests of one group, such as streaming')
+			.option('-t, --test <id...>', 'run only the tests with these identifiers, such as chat.basic')
+			.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '3')
+			.option('-o, --output <file>', 'write the report to this file rather than to standard output')
+			.option('--verbose', 'print the detail of every test, including the ones that passed')
+			.option('--ci', 'exit 1 when any test failed, for a continuous integration run')
+			.option('-f, --format <format>', `output format: ${knownFormats.join(', ')}`, 'text');
+		SharedOptions.addEndpointOptions(conformance);
+		conformance.action(async (rawOptions: RawConformanceOptions) => {
+			await ConformanceCommand.run(rawOptions, args, invokedName);
+		});
 
 		const chat = program
 			.command('chat')
@@ -63,7 +83,7 @@ export class Cli {
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(message);
-			process.exitCode = 2;
+			process.exitCode = exitCodes.runnerError;
 		}
 	}
 

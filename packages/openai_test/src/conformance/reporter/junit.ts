@@ -1,0 +1,92 @@
+// local imports
+import type { TestRunRecord } from '../runner.js';
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	JunitReporter — the JUnit XML of section 33 of issue #181, for a continuous integration run
+//	that already knows how to read it
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** What `JunitReporter.render` needs beyond the run records themselves. */
+export type JunitReportOptions = {
+	/** The endpoint's base URL, carried as a property of the test suite. */
+	readonly endpoint: string;
+	/** The model identifier requested, carried as a property of the test suite. */
+	readonly modelId: string;
+};
+
+/** Renders a run as JUnit XML. */
+export class JunitReporter {
+	/**
+	 * Renders a run as a single JUnit test suite, one test case per conformance test.
+	 *
+	 * `WARN` is written as a passing test case carrying a `system-out` note rather than as a
+	 * failure, because a continuous integration run must not go red on a result this package
+	 * deliberately does not call a failure. `SKIP` becomes `<skipped>`, which JUnit already has.
+	 *
+	 * @param records Every test's outcome, in the order the tests were run.
+	 * @param options The endpoint and the model to record on the suite.
+	 * @returns The XML document, ready to print or redirect to a file.
+	 */
+	static render(records: readonly TestRunRecord[], options: JunitReportOptions): string {
+		const failureCount = records.filter((record) => record.result.verdict === 'FAIL').length;
+		const skippedCount = records.filter((record) => record.result.verdict === 'SKIP').length;
+		const totalDurationSeconds = (records.reduce((total, record) => total + record.durationMs, 0) / 1000).toFixed(3);
+
+		const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>'];
+		lines.push(
+			`<testsuite name="openai_test" tests="${records.length}" failures="${failureCount}" skipped="${skippedCount}" time="${totalDurationSeconds}">`,
+		);
+		lines.push('\t<properties>');
+		lines.push(`\t\t<property name="endpoint" value="${JunitReporter._escape(options.endpoint)}"/>`);
+		lines.push(`\t\t<property name="model" value="${JunitReporter._escape(options.modelId)}"/>`);
+		lines.push('\t</properties>');
+
+		for (const record of records) {
+			lines.push(...JunitReporter._testCaseLines(record));
+		}
+
+		lines.push('</testsuite>');
+		return lines.join('\n');
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	Private Helpers
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Builds the lines of one `<testcase>` element.
+	 *
+	 * @param record The test and the outcome it reached.
+	 * @returns The lines, in order.
+	 */
+	private static _testCaseLines(record: TestRunRecord): string[] {
+		const durationSeconds = (record.durationMs / 1000).toFixed(3);
+		const openingTag = `\t<testcase classname="${JunitReporter._escape(record.test.group)}" name="${JunitReporter._escape(record.test.id)}" time="${durationSeconds}">`;
+		const detail = JunitReporter._escape(record.result.detail);
+		switch (record.result.verdict) {
+			case 'PASS':
+				return [`${openingTag.slice(0, -1)}/>`];
+			case 'FAIL':
+				return [openingTag, `\t\t<failure message="${detail}"/>`, '\t</testcase>'];
+			case 'SKIP':
+				return [openingTag, `\t\t<skipped message="${detail}"/>`, '\t</testcase>'];
+			case 'WARN':
+				return [openingTag, `\t\t<system-out>WARN: ${detail}</system-out>`, '\t</testcase>'];
+		}
+	}
+
+	/**
+	 * Escapes the five characters XML reserves, so a detail carrying a quotation mark or an angle
+	 * bracket cannot break the document.
+	 *
+	 * @param text The text to escape.
+	 * @returns The escaped text.
+	 */
+	private static _escape(text: string): string {
+		return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+	}
+}

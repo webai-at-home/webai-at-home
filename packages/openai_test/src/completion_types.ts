@@ -315,7 +315,7 @@ export type GenerationControls = {
 	readonly seed?: number;
 };
 
-/** Every generation control `openai_api_tool` probes, named as the request field it is sent in. */
+/** Every generation control `openai_test` probes, named as the request field it is sent in. */
 export const generationControlFields = ['temperature', 'top_p', 'max_completion_tokens', 'stop', 'seed'] as const;
 
 /** One generation control this tool probes, named as the request field it is sent in. */
@@ -410,7 +410,7 @@ export type ChatCompletionToolCall = {
 };
 
 /**
- * Every ability `openai_api_tool` probes a model for, in the order the probes run.
+ * Every ability `openai_test` probes a model for, in the order the probes run.
  *
  * They are separate abilities rather than one, which is the whole reason this subcommand exists:
  * the de-risk gate of [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78) found
@@ -445,7 +445,7 @@ export const toolCallAbilities = [
 	'answers_without_a_call_when_none_is_needed',
 ] as const;
 
-/** One ability `openai_api_tool` probes a model for. */
+/** One ability `openai_test` probes a model for. */
 export type ToolCallAbility = typeof toolCallAbilities[number];
 
 /**

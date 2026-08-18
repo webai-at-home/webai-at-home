@@ -9,7 +9,7 @@ The one command line tool that tests, measures, and talks to a server speaking t
 - `src/cli.ts`: the `openai_test` program and its subcommands.
 - `src/`: every source folder — see [its own CONTEXT.md](src/CONTEXT.md).
 - `tests/index.test.ts`: this package's own automated test suite, which starts its own local HTTP server and so needs neither a cluster nor a local model server.
-- Command to run this folder: `npx tsx src/cli.ts chat --base_url http://localhost:1234/v1 --model <name> --prompt "..."`
+- Command to run this folder: `npx tsx src/cli.ts conformance --base_url http://localhost:1234/v1 --model <name> --profile full`
 
 ## Rules
 
@@ -18,7 +18,7 @@ The one command line tool that tests, measures, and talks to a server speaking t
 - Never grade whether an answer is a good answer. A prompt built so that the behaviour under test is visible in the answer is a measurement; an opinion about whether the answer was helpful is not, and never appears.
 - `PASS`, `FAIL`, `SKIP`, and `WARN` belong to `conformance` and to nothing else. `benchmark` reports numbers, and `chat` has no verdicts.
 - Exit code `0` when nothing failed, `1` when a test failed, `2` when the run itself could not start. `chat` returns only `0` or `2`.
-- A subcommand this program lists is a subcommand this program runs: `conformance` and `benchmark` are registered by the milestone that builds them, not before.
+- A subcommand this program lists is a subcommand this program runs: `benchmark` is registered by the milestone that builds it, not before.
 
 ## Background
 
