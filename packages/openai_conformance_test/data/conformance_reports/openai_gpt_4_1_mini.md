@@ -2,37 +2,37 @@
 
 ## Summary
 
-- Passed: 30
+- Passed: 32
 - Failed: 0
 - Skipped: 0
-- Warned: 2
+- Warned: 0
 
-Compatibility: 93.8%
+Compatibility: 100.0%
 
 A skipped test is a capability the endpoint declared it does not support, and is left out of the percentage. A warned test behaved correctly in a way that may still break a client.
 
 ## Test Run
 
-- Generated: 2026-08-17T11:34:23.967Z
-- Endpoint: `http://localhost:11434/v1`
-- Model: `llama3.1:latest`
+- Generated: 2026-08-17T14:41:40.953Z
+- Endpoint: `https://api.openai.com/v1`
+- Model: `gpt-4.1-mini`
 
 ### Command Line
 
 ```bash
-openai_conformance_test --model llama3.1:latest --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_llama3_1_8b.md
+openai_conformance_test --model gpt-4.1-mini --base_url https://api.openai.com/v1 --profile full --format markdown --output data/conformance_reports/openai_gpt_4_1_mini.md
 ```
 
 ### Parameters
 
 | Option | Value |
 | --- | --- |
-| `--model` | llama3.1:latest |
+| `--model` | gpt-4.1-mini |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/ollama_llama3_1_8b.md |
-| `--base_url` | http://localhost:11434/v1 |
-| `--api_key` | no-key-required |
+| `--output` | data/conformance_reports/openai_gpt_4_1_mini.md |
+| `--base_url` | https://api.openai.com/v1 |
+| `--api_key` | <redacted> |
 | `--timeout_ms` | 600000 |
 | `--format` | markdown |
 
@@ -84,8 +84,8 @@ openai_conformance_test --model llama3.1:latest --base_url http://localhost:1143
 | `tools.generates_a_call_when_forced` | ✅ |  |
 | `tools.fills_in_the_arguments` | ✅ |  |
 | `tools.chooses_among_several_tools` | ✅ |  |
-| `tools.reads_a_tool_result_back` | ⚠️ | the history already carried the result and the model asked for get_current_weather again rather than answering from it |
-| `tools.answers_without_a_call_when_none_is_needed` | ⚠️ | the question needed no tool and the model asked for get_current_weather anyway |
+| `tools.reads_a_tool_result_back` | ✅ |  |
+| `tools.answers_without_a_call_when_none_is_needed` | ✅ |  |
 
 ## Parameters
 

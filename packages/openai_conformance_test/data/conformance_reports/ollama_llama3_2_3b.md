@@ -3,9 +3,9 @@
 ## Summary
 
 - Passed: 30
-- Failed: 1
+- Failed: 0
 - Skipped: 0
-- Warned: 1
+- Warned: 2
 
 Compatibility: 93.8%
 
@@ -13,26 +13,26 @@ A skipped test is a capability the endpoint declared it does not support, and is
 
 ## Test Run
 
-- Generated: 2026-08-17T14:58:23.819Z
+- Generated: 2026-08-18T13:35:45.986Z
 - Endpoint: `http://localhost:11434/v1`
-- Model: `gemma4:e4b`
+- Model: `llama3.2:3b`
 
 ### Command Line
 
 ```bash
-openai_conformance_test --model gemma4:e4b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_gemma4_e4b.md
+openai_conformance_test --model llama3.2:3b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/conformance_reports/ollama_llama3_2_3b.md
 ```
 
 ### Parameters
 
 | Option | Value |
 | --- | --- |
-| `--model` | gemma4:e4b |
+| `--model` | llama3.2:3b |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/ollama_gemma4_e4b.md |
+| `--output` | data/conformance_reports/ollama_llama3_2_3b.md |
 | `--base_url` | http://localhost:11434/v1 |
-| `--api_key` | <redacted> |
+| `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |
 | `--format` | markdown |
 
@@ -84,8 +84,8 @@ openai_conformance_test --model gemma4:e4b --base_url http://localhost:11434/v1 
 | `tools.generates_a_call_when_forced` | ✅ |  |
 | `tools.fills_in_the_arguments` | ✅ |  |
 | `tools.chooses_among_several_tools` | ✅ |  |
-| `tools.reads_a_tool_result_back` | ✅ |  |
-| `tools.answers_without_a_call_when_none_is_needed` | ✅ |  |
+| `tools.reads_a_tool_result_back` | ⚠️ | the history already carried the result and the model asked for get_current_weather again rather than answering from it |
+| `tools.answers_without_a_call_when_none_is_needed` | ⚠️ | the question needed no tool and the model asked for get_current_weather anyway |
 
 ## Parameters
 
@@ -93,7 +93,7 @@ openai_conformance_test --model gemma4:e4b --base_url http://localhost:11434/v1 
 | --- | --- | --- |
 | `parameters.temperature` | ✅ |  |
 | `parameters.top_p` | ✅ |  |
-| `parameters.max_completion_tokens` | ❌ | asking for at most 8 tokens gave 515 characters against 515 with no budget, and finish_reason was stop, and the older spelling max_tokens failed: the endpoint returned no answer text |
+| `parameters.max_completion_tokens` | ✅ |  |
 | `parameters.stop` | ✅ |  |
 | `parameters.seed` | ✅ |  |
 
@@ -101,7 +101,7 @@ openai_conformance_test --model gemma4:e4b --base_url http://localhost:11434/v1 
 
 | Test | Result | Detail |
 | --- | --- | --- |
-| `structured_output.json_object` | ⚠️ | the content is JSON, but wrapped in a markdown code fence, so JSON.parse on it as it stands would fail: "```json\n{\n  \"greeting\": \"hello\"\n}\n```" |
+| `structured_output.json_object` | ✅ |  |
 | `structured_output.json_schema` | ✅ |  |
 
 ## OpenAI Node.js Package

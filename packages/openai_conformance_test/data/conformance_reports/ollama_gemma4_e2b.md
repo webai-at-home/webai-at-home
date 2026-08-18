@@ -20,7 +20,7 @@ A skipped test is a capability the endpoint declared it does not support, and is
 ### Command Line
 
 ```bash
-openai_conformance_test --model gemma4:e2b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_gemma4_e2b.md
+openai_conformance_test --model gemma4:e2b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/conformance_reports/ollama_gemma4_e2b.md
 ```
 
 ### Parameters
@@ -30,7 +30,7 @@ openai_conformance_test --model gemma4:e2b --base_url http://localhost:11434/v1 
 | `--model` | gemma4:e2b |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/ollama_gemma4_e2b.md |
+| `--output` | data/conformance_reports/ollama_gemma4_e2b.md |
 | `--base_url` | http://localhost:11434/v1 |
 | `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |

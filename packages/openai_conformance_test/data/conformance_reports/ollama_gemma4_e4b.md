@@ -2,36 +2,36 @@
 
 ## Summary
 
-- Passed: 32
-- Failed: 0
+- Passed: 30
+- Failed: 1
 - Skipped: 0
-- Warned: 0
+- Warned: 1
 
-Compatibility: 100.0%
+Compatibility: 93.8%
 
 A skipped test is a capability the endpoint declared it does not support, and is left out of the percentage. A warned test behaved correctly in a way that may still break a client.
 
 ## Test Run
 
-- Generated: 2026-08-17T14:41:40.953Z
-- Endpoint: `https://api.openai.com/v1`
-- Model: `gpt-4.1-mini`
+- Generated: 2026-08-17T14:58:23.819Z
+- Endpoint: `http://localhost:11434/v1`
+- Model: `gemma4:e4b`
 
 ### Command Line
 
 ```bash
-openai_conformance_test --model gpt-4.1-mini --base_url https://api.openai.com/v1 --profile full --format markdown --output data/reports/openai_gpt_4_1_mini.md
+openai_conformance_test --model gemma4:e4b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/conformance_reports/ollama_gemma4_e4b.md
 ```
 
 ### Parameters
 
 | Option | Value |
 | --- | --- |
-| `--model` | gpt-4.1-mini |
+| `--model` | gemma4:e4b |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/openai_gpt_4_1_mini.md |
-| `--base_url` | https://api.openai.com/v1 |
+| `--output` | data/conformance_reports/ollama_gemma4_e4b.md |
+| `--base_url` | http://localhost:11434/v1 |
 | `--api_key` | <redacted> |
 | `--timeout_ms` | 600000 |
 | `--format` | markdown |
@@ -93,7 +93,7 @@ openai_conformance_test --model gpt-4.1-mini --base_url https://api.openai.com/v
 | --- | --- | --- |
 | `parameters.temperature` | ✅ |  |
 | `parameters.top_p` | ✅ |  |
-| `parameters.max_completion_tokens` | ✅ |  |
+| `parameters.max_completion_tokens` | ❌ | asking for at most 8 tokens gave 515 characters against 515 with no budget, and finish_reason was stop, and the older spelling max_tokens failed: the endpoint returned no answer text |
 | `parameters.stop` | ✅ |  |
 | `parameters.seed` | ✅ |  |
 
@@ -101,7 +101,7 @@ openai_conformance_test --model gpt-4.1-mini --base_url https://api.openai.com/v
 
 | Test | Result | Detail |
 | --- | --- | --- |
-| `structured_output.json_object` | ✅ |  |
+| `structured_output.json_object` | ⚠️ | the content is JSON, but wrapped in a markdown code fence, so JSON.parse on it as it stands would fail: "```json\n{\n  \"greeting\": \"hello\"\n}\n```" |
 | `structured_output.json_schema` | ✅ |  |
 
 ## OpenAI Node.js Package

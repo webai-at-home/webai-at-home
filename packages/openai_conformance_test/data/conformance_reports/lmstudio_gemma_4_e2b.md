@@ -2,37 +2,37 @@
 
 ## Summary
 
-- Passed: 28
-- Failed: 3
+- Passed: 26
+- Failed: 5
 - Skipped: 1
 - Warned: 0
 
-Compatibility: 90.3%
+Compatibility: 83.9%
 
 A skipped test is a capability the endpoint declared it does not support, and is left out of the percentage. A warned test behaved correctly in a way that may still break a client.
 
 ## Test Run
 
-- Generated: 2026-08-17T15:02:29.496Z
+- Generated: 2026-08-17T14:20:10.727Z
 - Endpoint: `http://localhost:1234/v1`
-- Model: `google/gemma-4-e4b`
+- Model: `google/gemma-4-e2b`
 
 ### Command Line
 
 ```bash
-openai_conformance_test --model google/gemma-4-e4b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/reports/lmstudio_gemma_4_e4b.md
+openai_conformance_test --model google/gemma-4-e2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/conformance_reports/lmstudio_gemma_4_e2b.md
 ```
 
 ### Parameters
 
 | Option | Value |
 | --- | --- |
-| `--model` | google/gemma-4-e4b |
+| `--model` | google/gemma-4-e2b |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/lmstudio_gemma_4_e4b.md |
+| `--output` | data/conformance_reports/lmstudio_gemma_4_e2b.md |
 | `--base_url` | http://localhost:1234/v1 |
-| `--api_key` | <redacted> |
+| `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |
 | `--format` | markdown |
 
@@ -61,7 +61,7 @@ openai_conformance_test --model google/gemma-4-e4b --base_url http://localhost:1
 
 | Test | Result | Detail |
 | --- | --- | --- |
-| `errors.unknown_model` | ❌ | expected an error status, got HTTP 200: {"id":"chatcmpl-0y6dbfrovvc94gvie5mdry1","object":"chat.completion","created":1786978904,"model":"google/gemma-4-e4b","choices":[{"index":0,"message":{"role":"assistant","content":"Hello! How can I help you today?","reasoning_content":"","tool_calls":[]},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":10,"total_tokens":20,"completion_tokens_details":{"reasoning_tokens":0}},"stats":{},"system_fingerprint":"google/gemma-4-e4b"} |
+| `errors.unknown_model` | ✅ |  |
 | `errors.malformed_json` | ✅ |  |
 | `errors.missing_messages` | ❌ | HTTP 400 but no "error" object: {"error":"'messages' field is required"} |
 
@@ -92,9 +92,9 @@ openai_conformance_test --model google/gemma-4-e4b --base_url http://localhost:1
 | Test | Result | Detail |
 | --- | --- | --- |
 | `parameters.temperature` | ✅ |  |
-| `parameters.top_p` | ✅ |  |
-| `parameters.max_completion_tokens` | ✅ |  |
-| `parameters.stop` | ✅ |  |
+| `parameters.top_p` | ❌ | the answers still varied at temperature 1.6 with top_p 0.01, so the value changed nothing |
+| `parameters.max_completion_tokens` | ❌ | the endpoint returned no answer text |
+| `parameters.stop` | ❌ | the endpoint returned no answer text |
 | `parameters.seed` | ❌ | seed 42 gave two different answers, so the seed decided nothing |
 
 ## Structured Output
