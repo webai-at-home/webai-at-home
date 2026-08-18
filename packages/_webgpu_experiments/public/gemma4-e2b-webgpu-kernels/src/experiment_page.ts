@@ -1,10 +1,11 @@
 import { Gemma4Mobile } from '../vendor/gemma-4-e2b.js';
 import type { Gemma4MobileProgressEvent } from '../vendor/gemma-4-e2b.js';
 import { MeasurementStatistics, type GenerationRun } from './measurement_statistics.js';
+import { PageMarkup } from './page_markup.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	ExperimentPage — drives the three steps of the Gemma 4 E2B WebGPU compute kernel experiment
+//	ExperimentPage — drives the Gemma 4 E2B WebGPU compute kernel experiment page
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -15,11 +16,11 @@ import { MeasurementStatistics, type GenerationRun } from './measurement_statist
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * One question whose answer is checked before anything is measured. WebGPU returns wrong numbers silently,
- * so a generation that runs to the end proves nothing on its own.
+ * One question whose answer is checked before anything is measured. WebGPU returns wrong numbers silently, so a
+ * generation that runs to the end proves nothing on its own.
  */
 export type CorrectnessCheck = {
-	/** The question to ask.  */
+	/** The question to ask. */
 	prompt: string;
 	/** Text the answer has to hold for the check to pass, compared without regard to letter case. */
 	requiredSubstring: string;
@@ -31,16 +32,22 @@ export type CorrectnessCheck = {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-/** The Hugging Face model to load, or `null` to take the one the vendored bundle names itself. */
-const MODEL_ID: string | null = null;
+/** The Hugging Face model the vendored bundle loads, shown in the page beside the prompt. */
+const MODEL_ID = 'google/gemma-4-E2B-it-qat-mobile-transformers';
 
 /** How many tokens any single answer on this page may hold at most. */
 const MAX_NEW_TOKENS = 256;
 
 /**
- * The questions whose answers are checked before anything is measured. Their answers are short, they are the
- * same in every runtime, and no wrong-numbers answer reaches them by chance. The bundle always takes the
- * highest scoring token, so the same question always gives the same answer.
+ * The question the prompt box holds when the page opens. It is the question the Transformers.js Gemma 4 E2B page
+ * in `packages/_onnx_experiments/public/gemma4-e2b-it/` asks, so that the two pages are compared on one question.
+ */
+const DEFAULT_PROMPT = 'Explain in two short sentences why running a language model in the browser can be useful.';
+
+/**
+ * The questions whose answers are checked before anything is measured. Their answers are short, they are the same
+ * in every runtime, and no wrong-numbers answer reaches them by chance. The bundle always takes the highest
+ * scoring token, so the same question always gives the same answer.
  */
 const CORRECTNESS_CHECKS: CorrectnessCheck[] = [
 	{
@@ -54,17 +61,10 @@ const CORRECTNESS_CHECKS: CorrectnessCheck[] = [
 ];
 
 /**
- * The question every measured run asks. It is the question the Transformers.js Gemma 4 E2B page in
- * `packages/_onnx_experiments/public/gemma4-e2b-it/` asks, so that the two pages are compared on one question.
- */
-const MEASUREMENT_PROMPT = 'Explain in two short sentences why running a language model in the browser can be useful.';
-
-/**
  * The answer the Transformers.js Gemma 4 E2B page in `packages/_onnx_experiments/public/gemma4-e2b-it/` gave to
- * `MEASUREMENT_PROMPT`. It is shown beside this page's answer so that a person can see the two side by side.
- * The two answers are not word for word the same and are not meant to be: the two pages load two different
- * quantizations of Gemma 4 E2B. What is compared is whether both answers say the same thing.
- * It was recorded on 2026-08-18 by running that page and asking `MEASUREMENT_PROMPT`.
+ * `DEFAULT_PROMPT`. It is shown beside this page's answer so that a person can see the two side by side. The two
+ * answers are not word for word the same and are not meant to be: the two pages load two different quantizations
+ * of Gemma 4 E2B. What is compared is whether both answers say the same thing. Recorded on 2026-08-18.
  */
 const TRANSFORMERS_JS_REFERENCE_ANSWER =
 	'Running a language model in the browser offers instant, private, and low-latency interactions without ' +
@@ -84,33 +84,41 @@ const MEASURED_RUN_COUNT = 5;
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * Holds the loaded model and the state of the three steps, and writes every result into the page.
+ * Builds the page, starts the model downloading as soon as the page opens, and drives the single run, the
+ * correctness check, and the measurement.
  */
 export class ExperimentPage {
-	/** The loaded model, or `undefined` until the load step has finished. */
+	/** The loaded model, or `undefined` until the load has finished. */
 	#model: Gemma4Mobile | undefined = undefined;
 
-	/** Whether every correctness check passed, which the measurement step waits for. */
-	#isCorrectnessChecked = false;
+	/** The load, kept so that a second caller waits for the first one instead of starting a second load. */
+	#loadPromise: Promise<Gemma4Mobile> | undefined = undefined;
 
-	/** Whether the page was out of sight at any moment while a run was going. */
+	/** Whether the page was out of sight at any moment while the measurement was going. */
 	#wasEverHidden = false;
 
-	/** How many bytes of weights were downloaded, as the load reported them. */
-	#downloadedByteCount = 0;
-
-	/** Whether the weights came from the browser cache instead of from the network. */
-	#isFromCache = false;
+	/** Whether a generation is going, so that no second one is started on top of it. */
+	#isGenerating = false;
 
 	/**
-	 * Wires every button to its step and starts watching whether the page stays in sight.
+	 * Writes the page, wires every button, and starts the model downloading straight away.
 	 *
 	 * @returns Nothing.
 	 */
 	start(): void {
-		if (navigator.gpu === undefined) {
+		const app = document.querySelector<HTMLElement>('#app');
+		if (app === null) {
+			throw new Error('The page must hold #app.');
+		}
+		app.innerHTML = PageMarkup.build(MODEL_ID, DEFAULT_PROMPT, WARMUP_RUN_COUNT, MEASURED_RUN_COUNT);
+
+		const isWebgpuPresent = navigator.gpu !== undefined;
+		this._element<HTMLElement>('#runtime-label').textContent = isWebgpuPresent ? 'WebGPU available' : 'WebGPU absent';
+		this._element<HTMLElement>('#backend').textContent = isWebgpuPresent ? 'WebGPU' : 'none';
+		if (isWebgpuPresent === false) {
+			this._element<HTMLElement>('#runtime-pill').classList.add('absent');
+			this._setRunButton('WebGPU is absent', false, true);
 			this._setStatus('This browser has no WebGPU. Nothing on this page can run without it.');
-			this._element<HTMLButtonElement>('#load-button').disabled = true;
 			return;
 		}
 
@@ -120,72 +128,127 @@ export class ExperimentPage {
 			}
 		});
 
-		this._element<HTMLButtonElement>('#load-button').addEventListener('click', () => {
-			void this._runLoadStep();
+		this._element<HTMLButtonElement>('#run-button').addEventListener('click', () => {
+			void this._runInference();
 		});
 		this._element<HTMLButtonElement>('#check-button').addEventListener('click', () => {
-			void this._runCorrectnessCheckStep();
+			void this._runCorrectnessCheck();
 		});
 		this._element<HTMLButtonElement>('#measure-button').addEventListener('click', () => {
-			void this._runMeasurementStep();
+			void this._runMeasurement();
 		});
 
-		this._element<HTMLElement>('#measurement-prompt').textContent = MEASUREMENT_PROMPT;
-		this._setStatus('Ready. The first load downloads about 2.5 gigabytes of weights.');
+		// The weights start downloading as soon as the page opens, the same way the Transformers.js experiment
+		// does it. The first load moves about 2.5 gigabytes, so waiting for a button press wastes that time.
+		void this._loadModel().catch((error: unknown) => {
+			console.error(error);
+			this._setStatus(`Unable to load Gemma 4 E2B: ${this._describeError(error)}`);
+		});
 	}
 
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
-	//	The three steps
+	//	Loading
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
-	 * Downloads the weights, writes them to a WebGPU device, and warms the compute kernels up.
+	 * Downloads the weights, writes them to a WebGPU device, and compiles the compute kernels. A second caller
+	 * waits for the first load instead of starting another one.
 	 *
-	 * @returns Nothing, once the model is loaded or the load has failed.
+	 * @returns The loaded model.
 	 */
-	async _runLoadStep(): Promise<void> {
-		const loadButton = this._element<HTMLButtonElement>('#load-button');
-		loadButton.disabled = true;
-		this.#wasEverHidden = false;
-		const startedAt = performance.now();
+	async _loadModel(): Promise<Gemma4Mobile> {
+		if (this.#model !== undefined) {
+			return this.#model;
+		}
+		if (this.#loadPromise !== undefined) {
+			return this.#loadPromise;
+		}
 
-		try {
-			this._setStatus('Requesting a WebGPU device…');
-			this.#model = await Gemma4Mobile.load(MODEL_ID, {
+		this._setStatus('Requesting a WebGPU device…');
+		const startedAt = performance.now();
+		this.#loadPromise = (async () => {
+			const model = await Gemma4Mobile.load(null, {
 				onProgress: (event) => {
 					this._reportLoadProgress(event);
 				},
 			});
 			this._setStatus('Compiling the WebGPU compute kernels…');
-			await this.#model.warmup();
+			await model.warmup();
+			return model;
+		})();
 
+		try {
+			const model = await this.#loadPromise;
+			this.#model = model;
 			const loadSeconds = (performance.now() - startedAt) / 1000;
 			this._element<HTMLElement>('#load-time').textContent = `${loadSeconds.toFixed(1)} s`;
-			this._element<HTMLElement>('#downloaded-bytes').textContent =
-				this.#downloadedByteCount === 0
-					? 'not reported'
-					: `${MeasurementStatistics.formatBytes(this.#downloadedByteCount)}${this.#isFromCache ? ' (from the browser cache)' : ''}`;
-			this._element<HTMLElement>('#shader-count').textContent = String(this._countCompiledShaders());
+			this._setRunButton('Run inference', true, false);
 			this._element<HTMLButtonElement>('#check-button').disabled = false;
-			this._setStatus('The model is loaded. Run the correctness check before measuring anything.');
+			this._setStatus(
+				`Model ready in ${loadSeconds.toFixed(1)} s, with ${this._countCompiledShaders()} compute shaders ` +
+					'compiled. Run the correctness check before trusting any figure.',
+			);
+			return model;
+		} catch (error: unknown) {
+			this.#loadPromise = undefined;
+			this._setRunButton('Load the model', true, false);
+			throw error;
+		}
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	The three things the page does
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Answers the question in the prompt box once, streaming the answer into the page, and reports how long that
+	 * one run took. One run is a demonstration, not a measurement: the figures that count come from the
+	 * measurement panel, which runs the same question several times.
+	 *
+	 * @returns Nothing, once the run has finished or has failed.
+	 */
+	async _runInference(): Promise<void> {
+		if (this.#isGenerating) {
+			return;
+		}
+		this._setRunButton('Working…', false, true);
+		const output = this._element<HTMLElement>('#output');
+		output.classList.remove('placeholder');
+		output.textContent = '';
+
+		try {
+			const model = await this._loadModel();
+			this._setStatus('Running one generation…');
+			const prompt = this._element<HTMLTextAreaElement>('#prompt').value;
+			const run = await this._generateOnce(model, prompt, output);
+
+			this._element<HTMLElement>('#generation-time').textContent = `${((run.timeToFirstTokenMs + run.decodeMs) / 1000).toFixed(2)} s`;
+			this._element<HTMLElement>('#speed').textContent = `${run.tokensPerSecond.toFixed(1)} tok/s`;
+			this._setStatus(
+				`One run: ${run.tokenCount} tokens, first token after ${run.timeToFirstTokenMs.toFixed(0)} ms. ` +
+					'One run is a demonstration, not a measurement — use the measurement panel below.',
+			);
 		} catch (error: unknown) {
 			console.error(error);
-			loadButton.disabled = false;
-			this._setStatus(`The model could not be loaded: ${this._describeError(error)}`);
+			output.textContent = 'The run could not finish. Look in the browser console for what went wrong.';
+			this._setStatus(`Error: ${this._describeError(error)}`);
+		} finally {
+			this._setRunButton('Run inference again', true, false);
 		}
 	}
 
 	/**
-	 * Asks every question of `CORRECTNESS_CHECKS` and compares each answer against what it has to hold, then
-	 * asks the measurement question once and shows its answer beside the Transformers.js answer.
+	 * Asks every question of `CORRECTNESS_CHECKS` and compares each answer against what it has to hold, then asks
+	 * the default question once and shows its answer beside the Transformers.js answer to the same question.
 	 *
 	 * @returns Nothing, once every check has run.
 	 */
-	async _runCorrectnessCheckStep(): Promise<void> {
-		const model = this.#model;
-		if (model === undefined) {
+	async _runCorrectnessCheck(): Promise<void> {
+		if (this.#isGenerating) {
 			return;
 		}
 		const checkButton = this._element<HTMLButtonElement>('#check-button');
@@ -193,34 +256,29 @@ export class ExperimentPage {
 		const resultList = this._element<HTMLElement>('#check-results');
 		resultList.replaceChildren();
 
-		let isEveryCheckPassed = true;
 		try {
+			const model = await this._loadModel();
+			let isEveryCheckPassed = true;
 			for (const check of CORRECTNESS_CHECKS) {
 				this._setStatus(`Checking: ${check.prompt}`);
-				const run = await this._generateOnce(model, check.prompt, 0);
+				const run = await this._generateOnce(model, check.prompt, undefined);
 				const isPassed = run.text.toLowerCase().includes(check.requiredSubstring.toLowerCase());
 				if (isPassed === false) {
 					isEveryCheckPassed = false;
 				}
-				const item = document.createElement('li');
-				item.className = isPassed ? 'check passed' : 'check failed';
-				item.textContent =
-					`${isPassed ? 'PASSED' : 'FAILED'} — asked “${check.prompt}”, ` +
-					`wanted “${check.requiredSubstring}”, got “${run.text.trim()}”`;
-				resultList.appendChild(item);
+				resultList.appendChild(this._buildCheckResult(check, run.text.trim(), isPassed));
 			}
 
-			this._setStatus('Asking the measurement question once, to compare it against the Transformers.js answer…');
-			const comparisonRun = await this._generateOnce(model, MEASUREMENT_PROMPT, 0);
-			this._element<HTMLElement>('#webgpu-kernels-answer').textContent = comparisonRun.text.trim();
-			this._element<HTMLElement>('#transformers-js-answer').textContent =
-				TRANSFORMERS_JS_REFERENCE_ANSWER === ''
-					? 'Not recorded yet. Run packages/_onnx_experiments/public/gemma4-e2b-it/ with the same question and write its answer into TRANSFORMERS_JS_REFERENCE_ANSWER.'
-					: TRANSFORMERS_JS_REFERENCE_ANSWER;
+			this._setStatus('Asking the default question once, to put its answer beside the Transformers.js answer…');
+			const comparisonRun = await this._generateOnce(model, DEFAULT_PROMPT, undefined);
+			const ourAnswer = this._element<HTMLElement>('#webgpu-kernels-answer');
+			const referenceAnswer = this._element<HTMLElement>('#transformers-js-answer');
+			ourAnswer.classList.remove('placeholder');
+			referenceAnswer.classList.remove('placeholder');
+			ourAnswer.textContent = comparisonRun.text.trim();
+			referenceAnswer.textContent = TRANSFORMERS_JS_REFERENCE_ANSWER;
 
-			this.#isCorrectnessChecked = isEveryCheckPassed;
 			this._element<HTMLButtonElement>('#measure-button').disabled = isEveryCheckPassed === false;
-			checkButton.disabled = false;
 			this._setStatus(
 				isEveryCheckPassed
 					? 'Every correctness check passed. The measurement can run.'
@@ -228,61 +286,56 @@ export class ExperimentPage {
 			);
 		} catch (error: unknown) {
 			console.error(error);
-			checkButton.disabled = false;
 			this._setStatus(`The correctness check could not finish: ${this._describeError(error)}`);
+		} finally {
+			checkButton.disabled = false;
 		}
 	}
 
 	/**
-	 * Throws away `WARMUP_RUN_COUNT` runs, measures `MEASURED_RUN_COUNT` runs of the same question, and writes
-	 * the smallest, middle, and largest figure of each measured quantity into the page.
+	 * Throws `WARMUP_RUN_COUNT` runs away, measures `MEASURED_RUN_COUNT` runs of the question in the prompt box,
+	 * and writes the middle figure of each measured quantity with the range beside it.
 	 *
 	 * @returns Nothing, once every run has finished.
 	 */
-	async _runMeasurementStep(): Promise<void> {
-		const model = this.#model;
-		if (model === undefined || this.#isCorrectnessChecked === false) {
+	async _runMeasurement(): Promise<void> {
+		if (this.#isGenerating) {
 			return;
 		}
 		const measureButton = this._element<HTMLButtonElement>('#measure-button');
 		measureButton.disabled = true;
 		this.#wasEverHidden = document.hidden;
+		const prompt = this._element<HTMLTextAreaElement>('#prompt').value;
+		const output = this._element<HTMLElement>('#output');
+		output.classList.remove('placeholder');
 
 		try {
+			const model = await this._loadModel();
 			for (let index = 1; index <= WARMUP_RUN_COUNT; index += 1) {
 				this._setStatus(`Warm-up run ${index} of ${WARMUP_RUN_COUNT}, which is thrown away…`);
-				await this._generateOnce(model, MEASUREMENT_PROMPT, 0);
+				await this._generateOnce(model, prompt, output);
 			}
 
 			const runs: GenerationRun[] = [];
 			for (let index = 1; index <= MEASURED_RUN_COUNT; index += 1) {
 				this._setStatus(`Measured run ${index} of ${MEASURED_RUN_COUNT}. Keep this page in sight.`);
-				runs.push(await this._generateOnce(model, MEASUREMENT_PROMPT, index));
+				runs.push(await this._generateOnce(model, prompt, output, index));
 			}
 
 			const timeToFirstToken = MeasurementStatistics.summarise(runs.map((run) => run.timeToFirstTokenMs));
 			const tokensPerSecond = MeasurementStatistics.summarise(runs.map((run) => run.tokensPerSecond));
 			const tokenCount = MeasurementStatistics.summarise(runs.map((run) => run.tokenCount));
-
 			this._element<HTMLElement>('#time-to-first-token').textContent = MeasurementStatistics.format(timeToFirstToken, 'ms', 0);
 			this._element<HTMLElement>('#tokens-per-second').textContent = MeasurementStatistics.format(tokensPerSecond, 'tok/s', 1);
 			this._element<HTMLElement>('#token-count').textContent = MeasurementStatistics.format(tokenCount, 'tokens', 0);
-			this._element<HTMLElement>('#run-count').textContent =
-				`${MEASURED_RUN_COUNT} measured, ${WARMUP_RUN_COUNT} warm-up runs thrown away`;
-			this._element<HTMLElement>('#page-visibility').textContent = this.#wasEverHidden
-				? 'The page was out of sight during the measurement. Throw these figures away and run it again.'
-				: 'The page stayed in sight for every run.';
-
-			measureButton.disabled = false;
-			this._setStatus(
-				this.#wasEverHidden
-					? 'The measurement finished, but the page was out of sight. The figures cannot be trusted.'
-					: 'The measurement finished.',
-			);
+			this._element<HTMLElement>('#run-count').textContent = `${MEASURED_RUN_COUNT} measured, ${WARMUP_RUN_COUNT} thrown away`;
+			this._reportMeasurementTrust(prompt);
+			this._setStatus(this.#wasEverHidden ? 'The measurement finished, but the page was out of sight.' : 'The measurement finished.');
 		} catch (error: unknown) {
 			console.error(error);
-			measureButton.disabled = false;
 			this._setStatus(`The measurement could not finish: ${this._describeError(error)}`);
+		} finally {
+			measureButton.disabled = false;
 		}
 	}
 
@@ -297,63 +350,120 @@ export class ExperimentPage {
 	 *
 	 * @param model The loaded model.
 	 * @param prompt The question to ask.
+	 * @param streamInto Where to stream the answer as it arrives, or `undefined` to stream it nowhere.
 	 * @param index Which measured run this is, or 0 when this run is not measured.
 	 * @returns What the run generated and how long each part of it took.
 	 */
-	async _generateOnce(model: Gemma4Mobile, prompt: string, index: number): Promise<GenerationRun> {
-		model.reset();
-		const streamElement = this._element<HTMLElement>('#stream');
-		streamElement.textContent = '';
-
-		const startedAt = performance.now();
-		let firstTokenAt = 0;
-		let tokenCount = 0;
-		let text = '';
-
-		for await (const generated of model.generate([{ role: 'user', content: prompt }], { maxNewTokens: MAX_NEW_TOKENS })) {
-			if (firstTokenAt === 0) {
-				firstTokenAt = performance.now();
+	async _generateOnce(
+		model: Gemma4Mobile,
+		prompt: string,
+		streamInto: HTMLElement | undefined,
+		index = 0,
+	): Promise<GenerationRun> {
+		this.#isGenerating = true;
+		try {
+			model.reset();
+			if (streamInto !== undefined) {
+				streamInto.textContent = '';
 			}
-			tokenCount += 1;
-			text = generated.text;
-			streamElement.textContent = text;
-		}
 
-		const endedAt = performance.now();
-		if (firstTokenAt === 0) {
-			throw new Error('The model generated no token at all.');
+			const startedAt = performance.now();
+			let firstTokenAt = 0;
+			let tokenCount = 0;
+			let text = '';
+			for await (const generated of model.generate([{ role: 'user', content: prompt }], { maxNewTokens: MAX_NEW_TOKENS })) {
+				if (firstTokenAt === 0) {
+					firstTokenAt = performance.now();
+				}
+				tokenCount += 1;
+				text = generated.text;
+				if (streamInto !== undefined) {
+					streamInto.textContent = text;
+				}
+			}
+
+			const endedAt = performance.now();
+			if (firstTokenAt === 0) {
+				throw new Error('The model generated no token at all.');
+			}
+			// The first token is left out of the rate: it carries the whole question, and counting it inside the
+			// rate would mix the cost of reading the question into the cost of writing the answer.
+			const decodeMs = endedAt - firstTokenAt;
+			const tokensPerSecond = tokenCount > 1 ? ((tokenCount - 1) / decodeMs) * 1000 : 0;
+			return {
+				index,
+				timeToFirstTokenMs: firstTokenAt - startedAt,
+				tokenCount,
+				decodeMs,
+				tokensPerSecond,
+				text,
+			};
+		} finally {
+			this.#isGenerating = false;
 		}
-		// The first token is left out of the rate: it carries the whole prompt, and counting it inside the rate
-		// would mix the cost of reading the question into the cost of writing the answer.
-		const decodeMs = endedAt - firstTokenAt;
-		const tokensPerSecond = tokenCount > 1 ? ((tokenCount - 1) / decodeMs) * 1000 : 0;
-		return {
-			index,
-			timeToFirstTokenMs: firstTokenAt - startedAt,
-			tokenCount,
-			decodeMs,
-			tokensPerSecond,
-			text,
-		};
 	}
 
 	/**
-	 * Writes one step of the load into the page.
+	 * Builds one line of the correctness check list.
+	 *
+	 * @param check The question that was asked and what its answer had to hold.
+	 * @param answer What the model answered.
+	 * @param isPassed Whether the answer held what it had to hold.
+	 * @returns The list item, ready to be added to the list.
+	 */
+	_buildCheckResult(check: CorrectnessCheck, answer: string, isPassed: boolean): HTMLLIElement {
+		const item = document.createElement('li');
+		item.className = isPassed ? 'check passed' : 'check failed';
+		const label = document.createElement('b');
+		label.textContent = isPassed ? 'Passed' : 'Failed';
+		item.appendChild(label);
+		item.appendChild(
+			document.createTextNode(`Asked “${check.prompt}” · wanted “${check.requiredSubstring}” · got “${answer}”`),
+		);
+		return item;
+	}
+
+	/**
+	 * Says whether the figures just measured can be trusted, and why not when they cannot.
+	 *
+	 * @param prompt The question the measured runs asked.
+	 * @returns Nothing.
+	 */
+	_reportMeasurementTrust(prompt: string): void {
+		const visibility = this._element<HTMLElement>('#page-visibility');
+		const reasons: string[] = [];
+		if (this.#wasEverHidden) {
+			reasons.push(
+				'The page was out of sight during the measurement. Reading a hidden page lifts the slowdown Google ' +
+					'Chrome puts on it, which has moved figures by a factor of five. Throw these figures away and run ' +
+					'the measurement again with this page in sight.',
+			);
+		}
+		if (prompt !== DEFAULT_PROMPT) {
+			reasons.push(
+				'The question was changed, so these figures cannot be put beside the recorded figures of the other ' +
+					'runtimes, which all asked the default question.',
+			);
+		}
+		visibility.className = reasons.length === 0 ? 'warning clear' : 'warning';
+		visibility.textContent =
+			reasons.length === 0
+				? 'The page stayed in sight for every run, and the default question was asked. These figures count.'
+				: reasons.join(' ');
+	}
+
+	/**
+	 * Writes one step of the load into the status line.
 	 *
 	 * @param event The step the bundle reported.
 	 * @returns Nothing.
 	 */
 	_reportLoadProgress(event: Gemma4MobileProgressEvent): void {
 		if (event.status === 'weights' && event.kind !== 'tensors') {
-			if (event.total !== undefined) {
-				this.#downloadedByteCount = event.total;
-			}
-			if (event.fromCache === true) {
-				this.#isFromCache = true;
-			}
 			const loaded = event.loaded === undefined ? '' : MeasurementStatistics.formatBytes(event.loaded);
 			const total = event.total === undefined ? '' : MeasurementStatistics.formatBytes(event.total);
-			this._setStatus(`Downloading the weights: ${loaded} of ${total}`);
+			const source = event.fromCache === true ? 'from the browser cache' : 'from Hugging Face';
+			this._setStatus(`Downloading the weights ${source}: ${loaded} of ${total}`);
 			return;
 		}
 		if (event.status === 'weights') {
@@ -366,10 +476,28 @@ export class ExperimentPage {
 	/**
 	 * Counts the WebGPU compute shaders the bundle has compiled on this machine's graphics processor.
 	 *
-	 * @returns How many compute shaders were compiled, which is 0 before the first generation has run.
+	 * @returns How many compute shaders were compiled.
 	 */
 	_countCompiledShaders(): number {
 		return this.#model?.runtime.getRenderedShaders?.().length ?? 0;
+	}
+
+	/**
+	 * Writes the label of the run button, and says whether it can be pressed.
+	 *
+	 * @param label What the button says.
+	 * @param isEnabled Whether the button can be pressed.
+	 * @param isSpinning Whether a spinner is drawn beside the label.
+	 * @returns Nothing.
+	 */
+	_setRunButton(label: string, isEnabled: boolean, isSpinning: boolean): void {
+		const button = this._element<HTMLButtonElement>('#run-button');
+		button.disabled = isEnabled === false;
+		button.replaceChildren(document.createTextNode(`${label} `));
+		const marker = document.createElement('span');
+		marker.className = isSpinning ? 'spinner' : '';
+		marker.textContent = isSpinning ? '' : '↗';
+		button.appendChild(marker);
 	}
 
 	/**
