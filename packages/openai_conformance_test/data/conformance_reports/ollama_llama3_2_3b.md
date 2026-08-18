@@ -13,14 +13,14 @@ A skipped test is a capability the endpoint declared it does not support, and is
 
 ## Test Run
 
-- Generated: 2026-08-17T11:26:04.130Z
+- Generated: 2026-08-18T13:35:45.986Z
 - Endpoint: `http://localhost:11434/v1`
 - Model: `llama3.2:3b`
 
 ### Command Line
 
 ```bash
-openai_conformance_test --model llama3.2:3b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_llama3_2_3b.md
+openai_conformance_test --model llama3.2:3b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/conformance_reports/ollama_llama3_2_3b.md
 ```
 
 ### Parameters
@@ -30,7 +30,7 @@ openai_conformance_test --model llama3.2:3b --base_url http://localhost:11434/v1
 | `--model` | llama3.2:3b |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/ollama_llama3_2_3b.md |
+| `--output` | data/conformance_reports/ollama_llama3_2_3b.md |
 | `--base_url` | http://localhost:11434/v1 |
 | `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |

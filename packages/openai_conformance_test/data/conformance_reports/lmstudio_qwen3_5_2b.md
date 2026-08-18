@@ -20,7 +20,7 @@ A skipped test is a capability the endpoint declared it does not support, and is
 ### Command Line
 
 ```bash
-openai_conformance_test --model qwen3.5-2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/reports/lmstudio_qwen3_5_2b.md
+openai_conformance_test --model qwen3.5-2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/conformance_reports/lmstudio_qwen3_5_2b.md
 ```
 
 ### Parameters
@@ -30,7 +30,7 @@ openai_conformance_test --model qwen3.5-2b --base_url http://localhost:1234/v1 -
 | `--model` | qwen3.5-2b |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/lmstudio_qwen3_5_2b.md |
+| `--output` | data/conformance_reports/lmstudio_qwen3_5_2b.md |
 | `--base_url` | http://localhost:1234/v1 |
 | `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |

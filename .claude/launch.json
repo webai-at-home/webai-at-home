@@ -4,50 +4,130 @@
     {
       "name": "webai-gateway",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@webai/gateway"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/gateway"
+      ],
       "port": 8787
     },
     {
       "name": "worker-page",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@webai/worker-webpage", "--", "--port", "8789", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/worker-webpage",
+        "--",
+        "--port",
+        "8789",
+        "--strictPort"
+      ],
       "port": 8789
     },
     {
       "name": "log-visu",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@webai/log-visu"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/log-visu"
+      ],
       "port": 5173
     },
     {
       "name": "flow-viewer",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "flow_viewer", "--workspace", "@webai/flow-viewer", "--", "--port", "5599", "--no-open", "--no-autoplay"],
+      "runtimeArgs": [
+        "run",
+        "flow_viewer",
+        "--workspace",
+        "@webai/flow-viewer",
+        "--",
+        "--port",
+        "5599",
+        "--no-open",
+        "--no-autoplay"
+      ],
       "port": 5599
     },
     {
       "name": "idle-experiments",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@webai/idle-experiments", "--", "--port", "5183", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/idle-experiments",
+        "--",
+        "--port",
+        "5183",
+        "--strictPort"
+      ],
       "port": 5183
     },
     {
       "name": "onnx-experiments",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@webai/onnx-experiments", "--", "--port", "5184", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/onnx-experiments",
+        "--",
+        "--port",
+        "5184",
+        "--strictPort"
+      ],
       "port": 5184
     },
     {
       "name": "account-key-experiments",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@webai/account-key-experiments", "--", "--port", "5185", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/account-key-experiments",
+        "--",
+        "--port",
+        "5185",
+        "--strictPort"
+      ],
       "port": 5185
     },
     {
       "name": "litert-experiments",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@webai/litert-experiments", "--", "--port", "5186", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/litert-experiments",
+        "--",
+        "--port",
+        "5186",
+        "--strictPort"
+      ],
       "port": 5186
+    },
+    {
+      "name": "webgpu-experiments",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@webai/webgpu-experiments",
+        "--",
+        "--port",
+        "5187",
+        "--strictPort"
+      ],
+      "port": 5187
     }
   ]
 }

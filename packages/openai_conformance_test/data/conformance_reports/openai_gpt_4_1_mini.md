@@ -20,7 +20,7 @@ A skipped test is a capability the endpoint declared it does not support, and is
 ### Command Line
 
 ```bash
-openai_conformance_test --model gpt-4.1-mini --base_url https://api.openai.com/v1 --profile full --format markdown --output data/reports/openai_gpt_4_1_mini.md
+openai_conformance_test --model gpt-4.1-mini --base_url https://api.openai.com/v1 --profile full --format markdown --output data/conformance_reports/openai_gpt_4_1_mini.md
 ```
 
 ### Parameters
@@ -30,7 +30,7 @@ openai_conformance_test --model gpt-4.1-mini --base_url https://api.openai.com/v
 | `--model` | gpt-4.1-mini |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/openai_gpt_4_1_mini.md |
+| `--output` | data/conformance_reports/openai_gpt_4_1_mini.md |
 | `--base_url` | https://api.openai.com/v1 |
 | `--api_key` | <redacted> |
 | `--timeout_ms` | 600000 |

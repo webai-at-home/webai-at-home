@@ -2,36 +2,36 @@
 
 ## Summary
 
-- Passed: 30
-- Failed: 2
-- Skipped: 0
+- Passed: 26
+- Failed: 5
+- Skipped: 1
 - Warned: 0
 
-Compatibility: 93.8%
+Compatibility: 83.9%
 
 A skipped test is a capability the endpoint declared it does not support, and is left out of the percentage. A warned test behaved correctly in a way that may still break a client.
 
 ## Test Run
 
-- Generated: 2026-08-17T14:14:04.617Z
-- Endpoint: `http://localhost:11434/v1`
-- Model: `gemma4:e2b`
+- Generated: 2026-08-17T14:20:10.727Z
+- Endpoint: `http://localhost:1234/v1`
+- Model: `google/gemma-4-e2b`
 
 ### Command Line
 
 ```bash
-openai_conformance_test --model gemma4:e2b --base_url http://localhost:11434/v1 --profile full --format markdown --output data/reports/ollama_gemma4_e2b.md
+openai_conformance_test --model google/gemma-4-e2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/conformance_reports/lmstudio_gemma_4_e2b.md
 ```
 
 ### Parameters
 
 | Option | Value |
 | --- | --- |
-| `--model` | gemma4:e2b |
+| `--model` | google/gemma-4-e2b |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--output` | data/reports/ollama_gemma4_e2b.md |
-| `--base_url` | http://localhost:11434/v1 |
+| `--output` | data/conformance_reports/lmstudio_gemma_4_e2b.md |
+| `--base_url` | http://localhost:1234/v1 |
 | `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |
 | `--format` | markdown |
@@ -63,7 +63,7 @@ openai_conformance_test --model gemma4:e2b --base_url http://localhost:11434/v1 
 | --- | --- | --- |
 | `errors.unknown_model` | ✅ |  |
 | `errors.malformed_json` | ✅ |  |
-| `errors.missing_messages` | ✅ |  |
+| `errors.missing_messages` | ❌ | HTTP 400 but no "error" object: {"error":"'messages' field is required"} |
 
 ## Streaming
 
@@ -92,16 +92,16 @@ openai_conformance_test --model gemma4:e2b --base_url http://localhost:11434/v1 
 | Test | Result | Detail |
 | --- | --- | --- |
 | `parameters.temperature` | ✅ |  |
-| `parameters.top_p` | ✅ |  |
-| `parameters.max_completion_tokens` | ❌ | asking for at most 8 tokens gave 515 characters against 515 with no budget, and finish_reason was stop, and the older spelling max_tokens failed: the endpoint returned no answer text |
+| `parameters.top_p` | ❌ | the answers still varied at temperature 1.6 with top_p 0.01, so the value changed nothing |
+| `parameters.max_completion_tokens` | ❌ | the endpoint returned no answer text |
 | `parameters.stop` | ❌ | the endpoint returned no answer text |
-| `parameters.seed` | ✅ |  |
+| `parameters.seed` | ❌ | seed 42 gave two different answers, so the seed decided nothing |
 
 ## Structured Output
 
 | Test | Result | Detail |
 | --- | --- | --- |
-| `structured_output.json_object` | ✅ |  |
+| `structured_output.json_object` | ⊘ | json_object is not supported: HTTP 400, {"error":"'response_format.type' must be 'json_schema' or 'text'"} |
 | `structured_output.json_schema` | ✅ |  |
 
 ## OpenAI Node.js Package

@@ -10,7 +10,7 @@ The OpenAI API Conformance Test command line program: it points at a server clai
 - `src/types.ts`: the shapes every test, client, and report share.
 - `src/clients/`, `src/readers/`, `src/probes/`, `src/tests/`, `src/profiles/`, `src/reporter/`: each has its own `CONTEXT.md`.
 - `src/runner.ts`: runs the chosen tests in order, turning a thrown error into `FAIL` rather than stopping the run.
-- Command to run this folder: `npm run core -- --model <name>`. A `report:*` script beside it writes one target's markdown report into this package's own `data/reports/`.
+- Command to run this folder: `npm run core -- --model <name>`. A `report:*` script beside it writes one target's markdown report into this package's own `data/conformance_reports/`.
 
 ## Rules
 
