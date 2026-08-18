@@ -12,11 +12,12 @@ import { Cli as GatewayCli } from '@webai/gateway/dist/cli.js';
 import { Cli as ConsumerOpenaiCli } from '@webai/consumer-openai/dist/cli.js';
 import { Cli as WorkerOpenaiCli } from '@webai/worker-openai/dist/cli.js';
 import { Cli as OpenaiConformanceTestCli } from '@webai/openai-conformance-test/dist/cli.js';
+import { Cli as OpenaiTestCli } from '@webai/openai-test/dist/cli.js';
 import { Cli as ConsumerCliCli } from '@webai/consumer-cli/cli';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Cli — the webai-at-home command line program: dispatches to the other four
+//	Cli — the webai-at-home command line program: dispatches to the others
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -28,10 +29,10 @@ const programName = 'webai-at-home';
 /**
  * The command line program of `webai-at-home`.
  *
- * `gateway`, `consumer_openai`, `worker_openai`, `consumer_cli` and `openai_conformance_test` each
- * name one of the other five command line programs in this repository and run it, unchanged, on
- * whatever follows. All five are exposed the same way: one line in this program's own help, and
- * that program's own `--help` for anything more.
+ * `gateway`, `consumer_openai`, `worker_openai`, `consumer_cli`, `openai_conformance_test` and
+ * `openai_test` each name one of the other command line programs in this repository and run it,
+ * unchanged, on whatever follows. Every one of them is exposed the same way: one line in this
+ * program's own help, and that program's own `--help` for anything more.
  *
  * No other first word runs anything. `submit`, `status`, `capacity`, `log_statistics`, and every
  * account command belong to `@webai/consumer-cli`, and run behind the `consumer_cli` word alone; a
@@ -50,7 +51,7 @@ export class Cli {
 	 * exit code of 0, rather than with the fact that `account_key` is not a command of this program
 	 * at all.
 	 *
-	 * Everything after that is left to commander: each of the four wrapped programs is an ordinary
+	 * Everything after that is left to commander: each wrapped program is an ordinary
 	 * named subcommand, and `allowUnknownOption` and `passThroughOptions` keep this program's own
 	 * parser from rejecting or reinterpreting an option it does not itself declare, such as the
 	 * gateway's `--port`.
@@ -125,7 +126,7 @@ export class Cli {
 	 * `--port`, reaches the program it is meant for unchanged.
 	 *
 	 * `helpOption(false)` turns off commander's own automatic handling of `-h`/`--help` on this
-	 * program itself, so that a first word naming none of the four wrapped programs is reported as
+	 * program itself, so that a first word naming no wrapped program is reported as
 	 * an unknown command rather than being answered with this program's own help text and an exit
 	 * code of 0 — which is what commander did with `webai-at-home account_key --help` while that
 	 * handling was on, because it answers `--help` before it ever matches the first word against a
@@ -138,8 +139,8 @@ export class Cli {
 		const program = new Commander.Command(programName)
 			.description(
 				"Run one participant of the WebAI@Home cluster. \"gateway\", \"consumer_openai\","
-					+ ' "worker_openai", "consumer_cli" and "openai_conformance_test" each run the command'
-					+ ' line program of the same name in this cluster.',
+					+ ' "worker_openai", "consumer_cli", "openai_conformance_test" and "openai_test" each run'
+					+ ' the command line program of the same name in this cluster.',
 			)
 			.version(Cli.readVersion(), '-V, --version', 'print the version of webai-at-home that is running')
 			.enablePositionalOptions()
@@ -193,6 +194,17 @@ export class Cli {
 			.argument('[openaiConformanceTestArgs...]', "the conformance test's own options")
 			.action(async (openaiConformanceTestArgs: string[]): Promise<void> => {
 				await OpenaiConformanceTestCli.run(openaiConformanceTestArgs, `${programName} openai_conformance_test`);
+			});
+
+		program
+			.command('openai_test')
+			.description('test, measure, and talk to a server speaking the OpenAI-compatible API')
+			.allowUnknownOption()
+			.passThroughOptions()
+			.helpOption(false)
+			.argument('[openaiTestArgs...]', "the program's own options")
+			.action(async (openaiTestArgs: string[]): Promise<void> => {
+				await OpenaiTestCli.run(openaiTestArgs, `${programName} openai_test`);
 			});
 
 		program

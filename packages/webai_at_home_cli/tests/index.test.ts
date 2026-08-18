@@ -29,7 +29,7 @@ type CompletionResult = {
  * Runs this program with the given arguments in its own process, to completion, and reports what
  * it printed and exited with.
  *
- * Every one of the four command line programs this program dispatches to answers `--help` by
+ * Every command line program this program dispatches to answers `--help` by
  * calling `process.exit` itself, through commander's own default handling, which none of them
  * overrides. Calling `Cli.run` in this test process directly, the way every other test in this
  * repository calls the code it tests, would therefore end this test process itself partway
@@ -120,7 +120,7 @@ Test('refuses a global option belonging to consumer_cli when it is written ahead
 	Assert.match(stderr, /unknown option '--gateway-url'/);
 });
 
-Test('prints its own top-level help, listing all four programs one line each, when given no arguments', async () => {
+Test('prints its own top-level help, listing every wrapped program one line each, when given no arguments', async () => {
 	const { code, stdout } = await runCli([]);
 	Assert.equal(code, 1);
 	Assert.match(stdout, /gateway \[gatewayArgs\.\.\.\]/);
@@ -134,7 +134,7 @@ Test('prints its own top-level help, listing all four programs one line each, wh
 	Assert.doesNotMatch(stdout, /log_statistics/);
 });
 
-Test('names itself, rather than the program it dispatched to, in the usage line of every one of the four', async () => {
+Test('names itself, rather than the program it dispatched to, in the usage line of every one of them', async () => {
 	for (const [args, expected] of [
 		[['gateway', '--help'], /Usage: webai-at-home gateway \[options\]/],
 		[['consumer_openai', 'server', '--help'], /Usage: webai-at-home consumer_openai server \[options\]/],

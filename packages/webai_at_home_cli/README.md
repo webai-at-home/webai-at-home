@@ -1,6 +1,6 @@
 # `webai-at-home`
 
-The single command line program published to the npm registry as `webai-at-home`, so a user runs `npx webai-at-home <command>` to run one participant of the WebAI@Home cluster without cloning this repository. It dispatches to the other four command line programs in this repository — [`@webai/gateway`](../gateway/README.md), [`@webai/consumer-openai`](../consumer_openai/README.md), [`@webai/worker-openai`](../worker_openai/README.md), and [`@webai/consumer-cli`](../consumer_cli/README.md) — rather than reimplementing any of them. See [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170).
+The single command line program published to the npm registry as `webai-at-home`, so a user runs `npx webai-at-home <command>` to run one participant of the WebAI@Home cluster without cloning this repository. It dispatches to the other command line programs in this repository — [`@webai/gateway`](../gateway/README.md), [`@webai/consumer-openai`](../consumer_openai/README.md), [`@webai/worker-openai`](../worker_openai/README.md), [`@webai/consumer-cli`](../consumer_cli/README.md), [`@webai/openai-conformance-test`](../openai_conformance_test/README.md), and [`@webai/openai-test`](../openai_test/README.md) — rather than reimplementing any of them. See [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170).
 
 ## Run with `npx`
 
@@ -22,8 +22,10 @@ The first word of the command line decides:
 | `consumer_openai` | [`@webai/consumer-openai`](../consumer_openai/README.md), the OpenAI-compatible server |
 | `worker_openai` | [`@webai/worker-openai`](../worker_openai/README.md), the native worker |
 | `consumer_cli` | [`@webai/consumer-cli`](../consumer_cli/README.md), the command line client |
+| `openai_conformance_test` | [`@webai/openai-conformance-test`](../openai_conformance_test/README.md), the conformance test |
+| `openai_test` | [`@webai/openai-test`](../openai_test/README.md), which tests, measures, and talks to an OpenAI-compatible server |
 
-Anything else is reported as an unknown command. Each of the four words above runs one program on whatever follows it, unchanged, and no program runs under any other name.
+Anything else is reported as an unknown command. Each of the words above runs one program on whatever follows it, unchanged, and no program runs under any other name.
 
 Every `consumer_cli` command — `submit`, `status`, `capacity`, `log_statistics`, and the account commands — runs behind the `consumer_cli` word, as `npx webai-at-home consumer_cli submit ...`. A global option such as `--gateway-url` belongs after that word too, exactly as the gateway's `--port` belongs after `gateway`, because `consumer_cli` is what reads it. Run `npx webai-at-home consumer_cli --help` for the list of those commands. See each program's own README, linked above, for its own options.
 
@@ -41,7 +43,7 @@ npx webai-at-home --version
 npm run build --workspace webai-at-home
 ```
 
-Building this package on its own does not build the four programs it wraps: `npm run build:dependencies --workspace webai-at-home` builds all four first, and `prepack` runs both before `npm pack` or `npm publish` packs anything, so packing never depends on having built by hand first.
+Building this package on its own does not build the programs it wraps: `npm run build:dependencies --workspace webai-at-home` builds every one of them first, and `prepack` runs both before `npm pack` or `npm publish` packs anything, so packing never depends on having built by hand first.
 
 For local checks, also run:
 
@@ -50,6 +52,6 @@ npm run typecheck --workspace webai-at-home
 npm run test --workspace webai-at-home
 ```
 
-## How a real install gets all five programs from one published package
+## How a real install gets every program from one published package
 
-None of `@webai/gateway`, `@webai/consumer-openai`, `@webai/worker-openai`, `@webai/consumer-cli`, or `@webai/protocol` is published to the npm registry on its own — `webai-at-home` is the only package this repository publishes. `scripts/vendor_wrapped_programs.ts` copies each of the four wrapped programs' own built output, plus a copy of `@webai/protocol` and, where needed, `@webai/consumer-cli`, into this package's own `dist/vendor` as part of `prepack`, and rewrites `dist/cli.js` to import each one from its vendored copy instead of by package name. See [`CONTEXT.md`](CONTEXT.md) for why a plain copy replaced npm's own `bundledDependencies` mechanism, and what `scripts/vendor_wrapped_programs.ts` copies where.
+None of `@webai/gateway`, `@webai/consumer-openai`, `@webai/worker-openai`, `@webai/consumer-cli`, or `@webai/protocol` is published to the npm registry on its own — `webai-at-home` is the only package this repository publishes. `scripts/vendor_wrapped_programs.ts` copies each wrapped program's own built output, plus a copy of `@webai/protocol` and, where needed, `@webai/consumer-cli`, into this package's own `dist/vendor` as part of `prepack`, and rewrites `dist/cli.js` to import each one from its vendored copy instead of by package name. See [`CONTEXT.md`](CONTEXT.md) for why a plain copy replaced npm's own `bundledDependencies` mechanism, and what `scripts/vendor_wrapped_programs.ts` copies where.

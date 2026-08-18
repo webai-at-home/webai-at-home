@@ -12,8 +12,8 @@ The single command line program published to the npm registry as `webai-at-home`
 ## Rules
 
 - Each wrapped program takes the name it was invoked under and runs under no other, so no usage line names a program nobody typed.
-- All five wrapped programs are exposed the same way: one named commander subcommand each, one line each in the top-level help, and that program's own `--help` for more.
-- `-V/--version`, `-h/--help`, and the no-arguments case are answered inside `Cli.run` before commander parses. That lets the program set `helpOption(false)`, so a first word naming none of the five is an unknown command rather than this program's own help and exit code `0`.
+- Every wrapped program is exposed the same way: one named commander subcommand each, one line each in the top-level help, and that program's own `--help` for more.
+- `-V/--version`, `-h/--help`, and the no-arguments case are answered inside `Cli.run` before commander parses. That lets the program set `helpOption(false)`, so a first word naming none of them is an unknown command rather than this program's own help and exit code `0`.
 - This program never declares its own version of an option a wrapped program has; `allowUnknownOption` and `passThroughOptions` keep its parser out of the way, and each subcommand sets `helpOption(false)` so `--help` reaches that program's own help.
 - No wrapped package is named in this package's own `package.json`: naming a workspace member in `dependencies` makes `npm install` and `npx` resolve it against the real npm registry. The vendoring script copies the built files in, so this `version` need not match theirs.
 - Every test exercising a real subcommand runs this program in its own process, because `--help` calls `process.exit` inside the wrapped program's parser.
