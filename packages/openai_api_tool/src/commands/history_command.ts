@@ -16,11 +16,22 @@ import { SharedOptions, type RawSharedOptions } from '../shared_options.js';
 //	Sends a two-turn history and checks that the second turn's answer recalls both facts the
 //	first turn stated, across every model in `taskTypeNamesAcceptingHistory` — the only
 //	models whose task type accepts a whole history rather than only one prompt.
+//
+//	The two turns are sent as many times as `-r/--repeats` asks for, stopping at the first second
+//	answer that recalls both facts, because whether a small model recalls them is a choice it makes
+//	afresh each time. Measured against `llama-3.2-1b-instruct` on LM Studio 0.4.20, fifteen second
+//	answers of twenty recalled both facts and five denied knowing either — while still addressing
+//	the reply to Ada, so the history had reached the model every time. One send therefore failed
+//	this subcommand about one run in four over an ability the model had, which is the flake
+//	[issue #208](https://github.com/webai-at-home/webai-at-home/issues/208) recorded.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /** The `history` subcommand's own options, exactly as commander parses them. */
-export type RawHistoryOptions = RawSharedOptions;
+export type RawHistoryOptions = RawSharedOptions & {
+	/** How many times the two turns are sent before the model is reported not to have recalled them, still as text. */
+	repeats: string;
+};
 
 /** Sends a two-turn history to a model that accepts one, and checks what the second turn recalls. */
 export class HistoryCommand {
@@ -43,7 +54,8 @@ export class HistoryCommand {
 	 *
 	 * @param rawOptions The subcommand's own options, exactly as commander parsed them.
 	 * @returns Nothing. Sets `process.exitCode` to `1` when any pair failed.
-	 * @throws {Error} If `--format` names a format that cannot be written.
+	 * @throws {Error} If `--format` names a format that cannot be written, or `--repeats` is not a
+	 * positive whole number.
 	 */
 	static async run(rawOptions: RawHistoryOptions): Promise<void> {
 		if (rawOptions.model === 'list') {
@@ -56,13 +68,14 @@ export class HistoryCommand {
 
 		const modelIds = ModelSweeper.resolveModelIds(rawOptions.model, taskTypeNamesAcceptingHistory, 'accept');
 		const modes = SharedOptions.resolveModes(rawOptions);
+		const repeats = SharedOptions.positiveInteger(rawOptions.repeats, '--repeats');
 		const client = CompletionSender.createClient(SharedOptions.buildTarget(rawOptions));
 		const isText = rawOptions.format === 'text';
 
 		const outcomes: SweepOutcome[] = [];
 		for (const modelId of modelIds) {
 			for (const mode of modes) {
-				const outcome = await HistoryCommand._sweepOne(client, modelId, mode, isText);
+				const outcome = await HistoryCommand._sweepOne(client, modelId, mode, isText, repeats);
 				outcomes.push(outcome);
 				if (isText === true) {
 					ReportRenderer.printSweepOutcome(outcome);
@@ -89,91 +102,104 @@ export class HistoryCommand {
 	/**
 	 * Sweeps one model and one mode: sends the first turn, then sends the second turn with the
 	 * first turn's own answer carried along with it, and checks that the second answer recalls
-	 * both facts the first turn stated.
+	 * both facts the first turn stated. Sends both turns again, up to `repeats` times in all,
+	 * while the second answer recalls neither fact or only one of them.
 	 *
 	 * @param client The OpenAI client pointed at the endpoint under test.
 	 * @param modelId The model identifier to request.
 	 * @param mode Whether to ask for each turn's answer as it is written, or in one piece.
 	 * @param isText Whether to stream each turn's raw answer to standard output as it arrives.
+	 * @param repeats How many times the two turns are sent before the model is reported not to
+	 * have recalled them.
 	 * @returns What happened. The timings and character count are the second turn's own, since
-	 * that is the request whose latency and recall this subcommand measures.
+	 * that is the request whose latency and recall this subcommand measures, and they belong to
+	 * the try that decided the outcome.
 	 */
-	private static async _sweepOne(client: OpenAI, modelId: string, mode: CompletionMode, isText: boolean): Promise<SweepOutcome> {
+	private static async _sweepOne(client: OpenAI, modelId: string, mode: CompletionMode, isText: boolean, repeats: number): Promise<SweepOutcome> {
 		const startedAt = performance.now();
-		const turns: SweepTurn[] = [];
+		let turns: SweepTurn[] = [];
 		try {
-			turns.push({ role: 'user', content: HistoryCommand._firstMessage });
-			if (isText === true) {
-				process.stdout.write(`[user] ${HistoryCommand._firstMessage}\n`);
-				process.stdout.write('[assistant] ');
-			}
-			const firstTurn = await CompletionSender.send({
-				client,
-				modelId,
-				messages: [
-					{
-						role: 'user',
-						content: HistoryCommand._firstMessage,
-					},
-				],
-				mode,
-				...(isText === true ? { writePiece: (piece: string) => { process.stdout.write(piece); } } : {}),
-			});
-			turns.push({ role: 'assistant', content: firstTurn.answer });
-			if (isText === true) {
-				process.stdout.write('\n');
+			const secondAnswers: string[] = [];
+			for (let runIndex = 0; runIndex < repeats; runIndex += 1) {
+				turns = [];
+				if (isText === true && repeats > 1) {
+					process.stdout.write(`[try ${runIndex + 1} of ${repeats}]\n`);
+				}
+
+				turns.push({ role: 'user', content: HistoryCommand._firstMessage });
+				if (isText === true) {
+					process.stdout.write(`[user] ${HistoryCommand._firstMessage}\n`);
+					process.stdout.write('[assistant] ');
+				}
+				const firstTurn = await CompletionSender.send({
+					client,
+					modelId,
+					messages: [
+						{
+							role: 'user',
+							content: HistoryCommand._firstMessage,
+						},
+					],
+					mode,
+					...(isText === true ? { writePiece: (piece: string) => { process.stdout.write(piece); } } : {}),
+				});
+				turns.push({ role: 'assistant', content: firstTurn.answer });
+				if (isText === true) {
+					process.stdout.write('\n');
+				}
+
+				turns.push({ role: 'user', content: HistoryCommand._secondMessage });
+				if (isText === true) {
+					process.stdout.write(`[user] ${HistoryCommand._secondMessage}\n`);
+					process.stdout.write('[assistant] ');
+				}
+				const secondTurn = await CompletionSender.send({
+					client,
+					modelId,
+					messages: [
+						{
+							role: 'user',
+							content: HistoryCommand._firstMessage,
+						},
+						{
+							role: 'assistant',
+							content: firstTurn.answer,
+						},
+						{
+							role: 'user',
+							content: HistoryCommand._secondMessage,
+						},
+					],
+					mode,
+					...(isText === true ? { writePiece: (piece: string) => { process.stdout.write(piece); } } : {}),
+				});
+				turns.push({ role: 'assistant', content: secondTurn.answer });
+				if (isText === true) {
+					process.stdout.write('\n');
+				}
+				secondAnswers.push(secondTurn.answer);
+
+				const secondAnswerLower = secondTurn.answer.toLowerCase();
+				const recalledName = secondAnswerLower.includes('ada');
+				const recalledLanguage = secondAnswerLower.includes('lisp');
+				if (recalledName === true && recalledLanguage === true) {
+					return {
+						modelId,
+						mode,
+						status: 'ok',
+						timeToFirstCharacterMs: secondTurn.timeToFirstCharacterMs,
+						timeToLastCharacterMs: secondTurn.timeToLastCharacterMs,
+						characterCount: secondTurn.answer.length,
+						answer: secondTurn.answer,
+						failureMessage: undefined,
+						turns,
+						clusterGenerationTimeMs: secondTurn.clusterGenerationTimeMs,
+						clusterTimeToFirstPieceMs: secondTurn.clusterTimeToFirstPieceMs,
+					};
+				}
 			}
 
-			turns.push({ role: 'user', content: HistoryCommand._secondMessage });
-			if (isText === true) {
-				process.stdout.write(`[user] ${HistoryCommand._secondMessage}\n`);
-				process.stdout.write('[assistant] ');
-			}
-			const secondTurn = await CompletionSender.send({
-				client,
-				modelId,
-				messages: [
-					{
-						role: 'user',
-						content: HistoryCommand._firstMessage,
-					},
-					{
-						role: 'assistant',
-						content: firstTurn.answer,
-					},
-					{
-						role: 'user',
-						content: HistoryCommand._secondMessage,
-					},
-				],
-				mode,
-				...(isText === true ? { writePiece: (piece: string) => { process.stdout.write(piece); } } : {}),
-			});
-			turns.push({ role: 'assistant', content: secondTurn.answer });
-			if (isText === true) {
-				process.stdout.write('\n');
-			}
-
-			const secondAnswerLower = secondTurn.answer.toLowerCase();
-			const recalledName = secondAnswerLower.includes('ada');
-			const recalledLanguage = secondAnswerLower.includes('lisp');
-			if (recalledName === false || recalledLanguage === false) {
-				throw new Error(`the second turn's answer did not recall both facts the first turn stated: "${secondTurn.answer}"`);
-			}
-
-			return {
-				modelId,
-				mode,
-				status: 'ok',
-				timeToFirstCharacterMs: secondTurn.timeToFirstCharacterMs,
-				timeToLastCharacterMs: secondTurn.timeToLastCharacterMs,
-				characterCount: secondTurn.answer.length,
-				answer: secondTurn.answer,
-				failureMessage: undefined,
-				turns,
-				clusterGenerationTimeMs: secondTurn.clusterGenerationTimeMs,
-				clusterTimeToFirstPieceMs: secondTurn.clusterTimeToFirstPieceMs,
-			};
+			throw new Error(`no second turn's answer recalled both facts the first turn stated, in ${secondAnswers.length} tries: ${JSON.stringify(secondAnswers)}`);
 		} catch (error: unknown) {
 			if (isText === true) {
 				process.stdout.write('\n');

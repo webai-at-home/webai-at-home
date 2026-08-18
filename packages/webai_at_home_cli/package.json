@@ -17,7 +17,7 @@
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
-		"build:dependencies": "npm run build --workspace @webai/protocol && npm run build --workspace @webai/gateway && npm run build --workspace @webai/consumer-cli && npm run build --workspace @webai/consumer-openai && npm run build --workspace @webai/worker-openai && npm run build --workspace @webai/openai-api-tool && npm run build --workspace @webai/openai-conformance-test",
+		"build:dependencies": "npm run build --workspace @webai/protocol && npm run build --workspace @webai/gateway && npm run build --workspace @webai/consumer-cli && npm run build --workspace @webai/consumer-openai && npm run build --workspace @webai/worker-openai && npm run build --workspace @webai/openai-api-tool && npm run build --workspace @webai/openai-conformance-test && npm run build --workspace @webai/openai-test",
 		"typecheck": "tsc -p tsconfig.json",
 		"pretest": "npm run build:dependencies",
 		"test": "npx tsx --test tests/index.test.ts",

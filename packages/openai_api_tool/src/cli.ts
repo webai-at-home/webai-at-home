@@ -79,7 +79,8 @@ export class Cli {
 				'-m, --model <name>',
 				`model identifier, a comma-separated list of identifiers, a pattern, all, or list to print the model identifiers — only ${taskTypeNamesAcceptingHistory.join(' and ')} accept a whole history`,
 				'all',
-			);
+			)
+			.option('-r, --repeats <number>', 'how many times the two turns are sent before the model is reported not to have recalled them', '5');
 		SharedOptions.addModeOptions(history);
 		SharedOptions.addFormatOption(history);
 		SharedOptions.addEndpointOptions(history);
@@ -128,7 +129,7 @@ export class Cli {
 				'model identifier, a comma-separated list of identifiers, a pattern such as llm_*, all, or list to print the model identifiers',
 				'all',
 			)
-			.option('-r, --repeats <number>', 'how many times a probe that compares repeated answers sends its prompt', '3');
+			.option('-r, --repeats <number>', 'how many times a probe that compares repeated answers sends its prompt', '5');
 		SharedOptions.addModeOptions(generationControls);
 		SharedOptions.addFormatOption(generationControls);
 		SharedOptions.addEndpointOptions(generationControls);
@@ -144,7 +145,7 @@ export class Cli {
 				'model identifier, a comma-separated list of identifiers, a pattern such as llm_*, all, or list to print the model identifiers',
 				'all',
 			)
-			.option('-r, --repeats <number>', 'how many times a probe that needs a tool call sends its prompt before giving up on getting one', '3');
+			.option('-r, --repeats <number>', 'how many times a probe that needs a tool call sends its prompt before giving up on getting one', '5');
 		SharedOptions.addModeOptions(toolCalls);
 		SharedOptions.addFormatOption(toolCalls);
 		SharedOptions.addEndpointOptions(toolCalls);

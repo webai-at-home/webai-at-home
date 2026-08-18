@@ -1,0 +1,197 @@
+// node imports
+import Assert from 'node:assert/strict';
+import Http from 'node:http';
+import Test from 'node:test';
+
+// local imports
+import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
+import { RawHttpClient } from '../src/clients/raw_http_client.js';
+import type { CompletionTarget } from '../src/completion_types.js';
+import { ModelResolver } from '../src/model_resolver.js';
+import { SharedOptions } from '../src/shared_options.js';
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The options every subcommand shares
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+//	The Shared Options
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+Test('SharedOptions builds the endpoint out of the command line options', () => {
+	const target = SharedOptions.buildTarget({
+		base_url: 'http://localhost:1234/v1',
+		api_key: 'no-key-required',
+		timeout_ms: '600000',
+	});
+	Assert.deepEqual(target, {
+		baseUrl: 'http://localhost:1234/v1',
+		apiKey: 'no-key-required',
+		timeoutMs: 600_000,
+	});
+});
+
+Test('SharedOptions names the option at fault when a numeric option cannot be read', () => {
+	Assert.throws(() => SharedOptions.positiveInteger('not-a-number', '--timeout_ms'), /--timeout_ms/);
+});
+
+Test('SharedOptions sweeps both modes when neither mode flag was given', () => {
+	const modes = SharedOptions.resolveModes({
+		model: 'a-model',
+		base_url: 'http://localhost:1234/v1',
+		api_key: 'no-key-required',
+		timeout_ms: '600000',
+		format: 'text',
+	});
+	Assert.deepEqual(modes, ['nostream', 'streamed']);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	The model resolver, and the proof a listed model can answer under its own name
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** The model identifiers the listing server below names, an embedding model among them. */
+const listedModelIds = ['llama-3.2-1b-instruct', 'llm_qwen3_0_6b_sharded', 'llm_llama3_2_1b_full', 'text-embedding-nomic-embed-text-v1.5'];
+
+/**
+ * Starts a local HTTP server that answers `GET /models` with the listing above, and every chat
+ * completion as whichever model it is told to answer as.
+ *
+ * @param answeringModelId The model identifier every answer names, whatever was requested, which is
+ * how the substitution LM Studio performs is reproduced without LM Studio.
+ * @returns The client to hand the resolver, and how to stop the server again.
+ */
+async function startListingServer(answeringModelId: string): Promise<{ target: CompletionTarget; rawHttpClient: RawHttpClient; stop: () => Promise<void> }> {
+	const server = Http.createServer((request, response) => {
+		if ((request.url ?? '').endsWith('/models') === true) {
+			response.writeHead(200, {
+				'content-type': 'application/json',
+			});
+			response.end(JSON.stringify({
+				data: listedModelIds.map((modelId) => ({
+					id: modelId,
+					object: 'model',
+				})),
+			}));
+			return;
+		}
+		response.writeHead(200, {
+			'content-type': 'application/json',
+		});
+		response.end(JSON.stringify({
+			id: 'chatcmpl-test',
+			object: 'chat.completion',
+			model: answeringModelId,
+			choices: [
+				{
+					index: 0,
+					message: {
+						role: 'assistant',
+						content: 'Hello.',
+					},
+					finish_reason: 'stop',
+				},
+			],
+		}));
+	});
+	await new Promise<void>((resolve) => {
+		server.listen(0, '127.0.0.1', resolve);
+	});
+	const address = server.address();
+	if (address === null || typeof address === 'string') {
+		throw new Error('the test server did not report a port');
+	}
+	const target: CompletionTarget = {
+		baseUrl: `http://127.0.0.1:${address.port}/v1`,
+		apiKey: 'no-key-required',
+		timeoutMs: 5_000,
+	};
+	return {
+		target,
+		rawHttpClient: new RawHttpClient(target),
+		stop: async () => {
+			await new Promise<void>((resolve) => {
+				server.close(() => resolve());
+			});
+		},
+	};
+}
+
+Test('the model resolver reads a listing in the order the endpoint named it', async () => {
+	const server = await startListingServer('llama-3.2-1b-instruct');
+	try {
+		Assert.deepEqual(await ModelResolver.listModelIds(server.rawHttpClient), listedModelIds);
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('the model resolver expands all into every model the endpoint listed, and says the names came from the listing', async () => {
+	const server = await startListingServer('llama-3.2-1b-instruct');
+	try {
+		const selection = await ModelResolver.resolve('all', server.rawHttpClient);
+		Assert.deepEqual(selection.modelIds, listedModelIds);
+		Assert.equal(selection.isFromEndpointListing, true);
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('the model resolver expands a pattern into the listed names it matches, in listing order', async () => {
+	const server = await startListingServer('llama-3.2-1b-instruct');
+	try {
+		const selection = await ModelResolver.resolve('llm_*', server.rawHttpClient);
+		Assert.deepEqual(selection.modelIds, ['llm_qwen3_0_6b_sharded', 'llm_llama3_2_1b_full']);
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('the model resolver takes a name it was given even when the endpoint listed no such model, since another server may serve it', async () => {
+	const server = await startListingServer('llama-3.2-1b-instruct');
+	try {
+		const selection = await ModelResolver.resolve('llm_*,a-model-nobody-listed', server.rawHttpClient);
+		Assert.deepEqual(selection.modelIds, ['llm_qwen3_0_6b_sharded', 'llm_llama3_2_1b_full', 'a-model-nobody-listed']);
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('the model resolver never asks for the listing when every model was named in full', async () => {
+	const target: CompletionTarget = {
+		baseUrl: 'http://127.0.0.1:1/v1',
+		apiKey: 'no-key-required',
+		timeoutMs: 500,
+	};
+	const selection = await ModelResolver.resolve('one-model,another-model,one-model', new RawHttpClient(target));
+	Assert.deepEqual(selection.modelIds, ['one-model', 'another-model']);
+	Assert.equal(selection.isFromEndpointListing, false);
+});
+
+Test('the model resolver refuses a pattern that matched nothing the endpoint listed', async () => {
+	const server = await startListingServer('llama-3.2-1b-instruct');
+	try {
+		await Assert.rejects(async () => await ModelResolver.resolve('nothing_*', server.rawHttpClient), /No model matches "nothing_\*"/);
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('a model is proved usable only when the endpoint answers under the name that was asked for', async () => {
+	const server = await startListingServer('llama-3.2-1b-instruct');
+	try {
+		const client = new OpenaiPackageClient(server.target).client;
+		Assert.equal(await ModelResolver.probeUsable(client, 'llama-3.2-1b-instruct'), undefined);
+		const reason = await ModelResolver.probeUsable(client, 'text-embedding-nomic-embed-text-v1.5');
+		Assert.match(reason ?? '', /answered as "llama-3\.2-1b-instruct"/);
+		Assert.match(reason ?? '', /nobody asked for/);
+	} finally {
+		await server.stop();
+	}
+});
