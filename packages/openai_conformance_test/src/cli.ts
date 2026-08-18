@@ -26,7 +26,7 @@ import { MarkdownReporter } from './reporter/markdown.js';
 import { ReportParameters } from './reporter/report_parameters.js';
 import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
-import { Runner, type TestRunRecord } from './runner.js';
+import { Runner, type RunnerProgressListener, type TestRunRecord } from './runner.js';
 import { ToolCallProbeCache } from './probes/tool_call_probe_cache.js';
 import type { ConformanceTest, TestContext } from './types.js';
 
@@ -119,7 +119,7 @@ export class Cli {
 		program.option('-t, --test <id...>', 'run only the tests with these identifiers, such as chat.basic');
 		program.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '3');
 		program.option('-o, --output <file>', 'write the report to this file rather than to standard output');
-		program.option('--verbose', 'print the detail of every test, including the ones that passed');
+		program.option('-v, --verbose', 'print each test as it starts and as it finishes, and print the detail of every test, including the ones that passed');
 		program.option('--ci', 'exit 1 when any test failed, for a continuous integration run');
 		SharedOptions.addEndpointOptions(program);
 		program.option('-f, --format <format>', `output format: ${knownFormats.join(', ')}`, 'text');
@@ -180,9 +180,37 @@ export class Cli {
 
 		await Cli._checkEndpointIsReachable(context.rawHttpClient, target.baseUrl);
 
-		const records = await Runner.run(tests, context);
+		const records = await Runner.run(tests, context, Cli._buildProgressListener(rawOptions));
 		Cli._writeReport(Cli._renderReport(records, rawOptions, target.baseUrl, args, invokedName), rawOptions.output);
 		Cli._setExitCode(records);
+	}
+
+	/**
+	 * Builds the listener that prints each test as it starts and as it finishes, so a run against a
+	 * slow endpoint says what it is doing rather than sitting silent for minutes.
+	 *
+	 * The lines go to standard error, so that a report written to standard output stays exactly the
+	 * report and nothing else. Each test writes its own line in two halves: the name when the test
+	 * starts, and the verdict with the duration when it finishes.
+	 *
+	 * `--ci` prints nothing, since a continuous integration log reads the report rather than a run
+	 * as it happens.
+	 *
+	 * @param rawOptions The command line options.
+	 * @returns The listener to hand `Runner.run`, `undefined` when nothing is to be printed.
+	 */
+	private static _buildProgressListener(rawOptions: RawCliOptions): RunnerProgressListener | undefined {
+		if (rawOptions.verbose !== true || rawOptions.ci === true) {
+			return undefined;
+		}
+		return {
+			onTestStarted: (test) => {
+				process.stderr.write(`${test.id.padEnd(28)} ${test.name} ... `);
+			},
+			onTestFinished: (record) => {
+				process.stderr.write(`${record.result.verdict} (${record.durationMs} ms)\n`);
+			},
+		};
 	}
 
 	/**
