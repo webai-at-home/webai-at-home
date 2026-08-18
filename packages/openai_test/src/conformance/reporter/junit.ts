@@ -1,5 +1,5 @@
 // local imports
-import type { TestRunRecord } from '../runner.js';
+import type { ConformanceRun, TestRunRecord } from '../runner.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -30,24 +30,35 @@ export class JunitReporter {
 	 * @returns The XML document, ready to print or redirect to a file.
 	 */
 	static render(records: readonly TestRunRecord[], options: JunitReportOptions): string {
-		const failureCount = records.filter((record) => record.result.verdict === 'FAIL').length;
-		const skippedCount = records.filter((record) => record.result.verdict === 'SKIP').length;
-		const totalDurationSeconds = (records.reduce((total, record) => total + record.durationMs, 0) / 1000).toFixed(3);
+		return ['<?xml version="1.0" encoding="UTF-8"?>', ...JunitReporter._testSuiteLines(records, options, '')].join('\n');
+	}
 
-		const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>'];
-		lines.push(
-			`<testsuite name="openai_test" tests="${records.length}" failures="${failureCount}" skipped="${skippedCount}" time="${totalDurationSeconds}">`,
-		);
-		lines.push('\t<properties>');
-		lines.push(`\t\t<property name="endpoint" value="${JunitReporter._escape(options.endpoint)}"/>`);
-		lines.push(`\t\t<property name="model" value="${JunitReporter._escape(options.modelId)}"/>`);
-		lines.push('\t</properties>');
-
-		for (const record of records) {
-			lines.push(...JunitReporter._testCaseLines(record));
+	/**
+	 * Renders a sweep across several models as one `<testsuites>` element holding one `<testsuite>`
+	 * per run, which is the shape JUnit already has for exactly this.
+	 *
+	 * A suite is named `openai_test.<model>` and, where the mode reached its tests, `.<mode>` after
+	 * that, so a continuous integration run that shows one suite per line names the model rather
+	 * than showing the same name several times over.
+	 *
+	 * @param runs Every run of the sweep, in the order they were run.
+	 * @param endpoint The endpoint's base URL, recorded on every suite.
+	 * @returns The XML document, ready to print or redirect to a file.
+	 */
+	static renderRuns(runs: readonly ConformanceRun[], endpoint: string): string {
+		const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>', '<testsuites>'];
+		for (const run of runs) {
+			const suiteLines = JunitReporter._testSuiteLines(
+				run.records,
+				{
+					endpoint,
+					modelId: run.modelId,
+				},
+				run.mode === undefined ? `.${run.modelId}` : `.${run.modelId}.${run.mode}`,
+			);
+			lines.push(...suiteLines.map((line) => `\t${line}`));
 		}
-
-		lines.push('</testsuite>');
+		lines.push('</testsuites>');
 		return lines.join('\n');
 	}
 
@@ -56,6 +67,34 @@ export class JunitReporter {
 	//	Private Helpers
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Builds the lines of one `<testsuite>` element, without the XML declaration in front of it.
+	 *
+	 * @param records Every test's outcome, in the order the tests were run.
+	 * @param options The endpoint and the model to record on the suite.
+	 * @param nameSuffix What to add after `openai_test` in the suite's name, empty for a single run.
+	 * @returns The lines, in order.
+	 */
+	private static _testSuiteLines(records: readonly TestRunRecord[], options: JunitReportOptions, nameSuffix: string): string[] {
+		const failureCount = records.filter((record) => record.result.verdict === 'FAIL').length;
+		const skippedCount = records.filter((record) => record.result.verdict === 'SKIP').length;
+		const totalDurationSeconds = (records.reduce((total, record) => total + record.durationMs, 0) / 1000).toFixed(3);
+
+		const suiteName = JunitReporter._escape(`openai_test${nameSuffix}`);
+		const lines: string[] = [
+			`<testsuite name="${suiteName}" tests="${records.length}" failures="${failureCount}" skipped="${skippedCount}" time="${totalDurationSeconds}">`,
+			'\t<properties>',
+			`\t\t<property name="endpoint" value="${JunitReporter._escape(options.endpoint)}"/>`,
+			`\t\t<property name="model" value="${JunitReporter._escape(options.modelId)}"/>`,
+			'\t</properties>',
+		];
+		for (const record of records) {
+			lines.push(...JunitReporter._testCaseLines(record));
+		}
+		lines.push('</testsuite>');
+		return lines;
+	}
 
 	/**
 	 * Builds the lines of one `<testcase>` element.

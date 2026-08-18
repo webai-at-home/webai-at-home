@@ -17,12 +17,13 @@ The `conformance` subcommand: it points at a server speaking the OpenAI-compatib
 
 ## Rules
 
-- A test result is `PASS`, `FAIL`, `SKIP`, or `WARN`, per section 32 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181). `SKIP` is a declared-unsupported refusal; `WARN` is correct behaviour that may still break a client, such as a buffered stream or a model declining a capability the endpoint accepted. Neither is ever `FAIL`. These four verdicts belong to this subcommand alone, and a run counts as failed on its verdicts alone, never on `--ci`.
+- A test result is `PASS`, `FAIL`, `SKIP`, or `WARN`, per section 32 of [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181). `SKIP` is a declared-unsupported refusal; `WARN` is correct behaviour that may still break a client, such as a buffered stream. Neither is ever `FAIL`. A run counts as failed on its verdicts alone, never on `--ci`.
 - **Never grade whether an answer is a good answer. Behaviour proved by construction is allowed.** A test may read an answer's words when the prompt was built so the behaviour under test is visible in them and in nothing else: `history.recalled` states a fact its question can be answered from nowhere else, and `parameters/` and `tools/` compare repeated answers. It may never say an answer was helpful or well written. The general form is in [../../CONTEXT.md](../../CONTEXT.md).
 - What the endpoint did and what the model did are separate tests, never one: `history.accepted` says the history was carried, `history.recalled` says the model read it.
 - `conformance_command.ts` is the only file here that prints, reads a file path, or sets an exit code.
-- A test reaches an endpoint through `../clients/`, and never any other way.
-- `conformance_tests/` holds the shipped program and is compiled into `dist/`; `tests/` at the package root holds this package's automated test suite. Neither imports the other.
+- A test reaches an endpoint through `../clients/` only.
+- A second request mode reruns the tests of `parameters` and `tools` alone, the groups a probe cache backs; every other test's request shape is fixed.
+- `conformance_tests/` holds the shipped program; `tests/` at the package root holds this package's automated test suite. Neither imports the other.
 
 ## Background
 

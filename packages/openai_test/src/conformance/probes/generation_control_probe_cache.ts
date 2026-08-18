@@ -2,7 +2,7 @@
 import type OpenAI from 'openai';
 
 // local imports
-import type { GenerationControlField, GenerationControlOutcome } from '../../completion_types.js';
+import type { CompletionMode, GenerationControlField, GenerationControlOutcome } from '../../completion_types.js';
 import { GenerationControlProber } from '../../probers/generation_control_prober.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -27,11 +27,17 @@ export class GenerationControlProbeCache {
 	 * @param repeats How many times a probe comparing repeated answers sends its prompt. Three is
 	 * what the de-risk gate of issue #151 used: two answers agreeing can be chance, three agreeing
 	 * where a high temperature gave three different answers cannot reasonably be.
+	 * @param mode Whether to ask for each probe's answer as it is written, or in one piece. An
+	 * endpoint that honours a control one way and ignores it the other is a real finding, and the
+	 * mode was fixed at `nostream` here until
+	 * [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which meant the
+	 * streamed half of that question was never asked.
 	 */
 	constructor(
 		private readonly client: OpenAI,
 		private readonly modelId: string,
 		private readonly repeats: number,
+		private readonly mode: CompletionMode,
 	) {}
 
 	/**
@@ -46,7 +52,7 @@ export class GenerationControlProbeCache {
 			this._outcomesPromise = GenerationControlProber.probeAll({
 				client: this.client,
 				modelId: this.modelId,
-				mode: 'nostream',
+				mode: this.mode,
 				repeats: this.repeats,
 			});
 		}

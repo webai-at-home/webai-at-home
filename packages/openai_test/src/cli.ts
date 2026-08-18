@@ -53,7 +53,11 @@ export class Cli {
 		const conformance = program
 			.command('conformance')
 			.description('Reports which parts of the OpenAI-compatible Chat Completions API one server actually honours.')
-			.option('-m, --model <name>', 'the model identifier to request', process.env.OPENAI_MODEL)
+			.option(
+				'-m, --model <name>',
+				'model identifier, a comma-separated list of identifiers, a pattern such as llm_*, all, or list to print the identifiers the endpoint serves',
+				process.env.OPENAI_MODEL,
+			)
 			.option('--profile <name>', `which group of tests to run: ${[...knownProfiles.keys()].join(', ')}`, 'core')
 			.option('-g, --group <name>', 'run only the tests of one group, such as streaming')
 			.option('-t, --test <id...>', 'run only the tests with these identifiers, such as chat.basic')
@@ -62,6 +66,7 @@ export class Cli {
 			.option('--verbose', 'print the detail of every test, including the ones that passed')
 			.option('--ci', 'exit 1 when any test failed, for a continuous integration run')
 			.option('-f, --format <format>', `output format: ${knownFormats.join(', ')}`, 'text');
+		SharedOptions.addModeOptions(conformance);
 		SharedOptions.addEndpointOptions(conformance);
 		conformance.action(async (rawOptions: RawConformanceOptions) => {
 			await ConformanceCommand.run(rawOptions, args, invokedName);

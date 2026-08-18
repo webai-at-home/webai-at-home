@@ -1,4 +1,5 @@
 // local imports
+import type { CompletionMode } from '../completion_types.js';
 import type { ConformanceTest, TestContext, TestResult } from './types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -15,6 +16,37 @@ export type TestRunRecord = {
 	readonly result: TestResult;
 	/** How long this one test took, in milliseconds. */
 	readonly durationMs: number;
+};
+
+/**
+ * One list of tests, run against one model, with the probes sent in one mode.
+ *
+ * A sweep produces more than one of these: one per model, and one more per extra mode for the
+ * tests a mode actually reaches.
+ */
+export type ConformanceRun = {
+	/** The model identifier every test in this run was sent to. */
+	readonly modelId: string;
+	/**
+	 * The mode the probe caches were given, or `undefined` when this run holds only tests no mode
+	 * reaches.
+	 *
+	 * The mode reaches the two probe caches and nothing else, so a run of the other groups is not a
+	 * run "in nostream mode" or "in streamed mode" — it is a run the mode has no bearing on, and
+	 * saying so is the difference between a report that measured something and one that repeated
+	 * itself.
+	 */
+	readonly mode: CompletionMode | undefined;
+	/** One record per test, in the order the tests were run. */
+	readonly records: readonly TestRunRecord[];
+};
+
+/** One model a sweep left out, and why. */
+export type SkippedModel = {
+	/** The model identifier that was left out. */
+	readonly modelId: string;
+	/** Why it was left out, in the endpoint's own words where it gave any. */
+	readonly reason: string;
 };
 
 /** Runs a list of conformance tests, in order, against one endpoint and one model. */

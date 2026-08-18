@@ -2,7 +2,7 @@
 import type OpenAI from 'openai';
 
 // local imports
-import type { ToolCallAbility, ToolCallOutcome } from '../../completion_types.js';
+import type { CompletionMode, ToolCallAbility, ToolCallOutcome } from '../../completion_types.js';
 import { ToolCallProber } from '../../probers/tool_call_prober.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -28,11 +28,16 @@ export class ToolCallProbeCache {
 	 * @param repeats How many times a probe needing a tool call sends its prompt before giving up
 	 * on getting one. Whether a model asks for a tool is a choice it makes afresh each time, so one
 	 * request that produced no call is weak evidence where one that produced a call is strong.
+	 * @param mode Whether to ask for each probe's answer as it is written, or in one piece. A model
+	 * that generates a tool call one way and not the other is a real finding, and the mode was
+	 * fixed at `nostream` here until [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208),
+	 * which meant the streamed half of that question was never asked.
 	 */
 	constructor(
 		private readonly client: OpenAI,
 		private readonly modelId: string,
 		private readonly repeats: number,
+		private readonly mode: CompletionMode,
 	) {}
 
 	/**
@@ -47,7 +52,7 @@ export class ToolCallProbeCache {
 			this._outcomesPromise = ToolCallProber.probeAll({
 				client: this.client,
 				modelId: this.modelId,
-				mode: 'nostream',
+				mode: this.mode,
 				repeats: this.repeats,
 			});
 		}
