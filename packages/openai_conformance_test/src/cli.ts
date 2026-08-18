@@ -117,7 +117,7 @@ export class Cli {
 		program.addOption(program.createOption('-p, --profile <name>', `which group of tests to run: ${[...knownProfiles.keys()].join(', ')}`).default('core'));
 		program.option('-g, --group <name>', 'run only the tests of one group, such as streaming');
 		program.option('-t, --test <id...>', 'run only the tests with these identifiers, such as chat.basic');
-		program.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '3');
+		program.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '5');
 		program.option('-o, --output <file>', 'write the report to this file rather than to standard output');
 		program.option('-v, --verbose', 'print each test as it starts and as it finishes, and print the detail of every test, including the ones that passed');
 		program.option('--ci', 'exit 1 when any test failed, for a continuous integration run');

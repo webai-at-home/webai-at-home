@@ -58,7 +58,7 @@ Every subcommand accepts these:
 | `--timeout_ms <number>` | `600000` | How long one request may take before it is given up on. |
 | `-f, --format <format>` | `text` | The output format: `text`, `markdown`, or `json`. |
 
-`completion`, `history`, `usage`, `generation_controls`, and `tool_calls` additionally accept `-s/--streamed` or `--nostream` to restrict the run to one mode; giving neither, or both, sweeps both modes. `completion` and `usage` also accept `-p/--prompt` to send one prompt instead of each model's own default prompt. `generation_controls` accepts `-r/--repeats` (`3`), how many times a probe that compares repeated answers sends its prompt; it sends its own prompts, chosen so the control under test visibly changes the answer, so it has no `-p/--prompt`. `tool_calls` accepts `-r/--repeats` (`3`) as well, how many times a probe that needs a tool call sends its prompt before giving up on getting one; it too sends its own prompts, chosen so that exactly one declared tool answers them.
+`completion`, `history`, `usage`, `generation_controls`, and `tool_calls` additionally accept `-s/--streamed` or `--nostream` to restrict the run to one mode; giving neither, or both, sweeps both modes. `completion` and `usage` also accept `-p/--prompt` to send one prompt instead of each model's own default prompt. `generation_controls` accepts `-r/--repeats` (`5`), how many times a probe that compares repeated answers sends its prompt; it sends its own prompts, chosen so the control under test visibly changes the answer, so it has no `-p/--prompt`. `tool_calls` accepts `-r/--repeats` (`5`) as well, how many times a probe that needs a tool call sends its prompt before giving up on getting one; it too sends its own prompts, chosen so that exactly one declared tool answers them.
 
 `benchmark` accepts neither mode flag, because it always asks for the answer in pieces: that is what lets it measure the Time to First Character apart from the Time to Last Character. It adds `-p/--prompt` (`Count up to 30`), `-r/--runs` (`10`), and `-w/--warmup_runs` (`1`).
 
@@ -213,7 +213,7 @@ Against the cluster every ability that needs a generated call is reported `unsup
 
 ### Results so far
 
-Measured on 11 August 2026, against LM Studio's server on `http://localhost:1234/v1`, in both modes, with `-r/--repeats` at its default of `3`.
+Measured on 11 August 2026, against LM Studio's server on `http://localhost:1234/v1`, in both modes, with `-r/--repeats` at `3`, the default of the time.
 
 | Model | Generates a call | Generates a call when forced | Fills in the arguments | Chooses among several tools | Reads a tool result back | Answers without a call when none is needed |
 | --- | --- | --- | --- | --- | --- | --- |

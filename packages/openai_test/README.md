@@ -45,7 +45,7 @@ Anything that reaches for the listing has every model it names proved usable fir
 - `--profile <name>` — `core`, `streaming`, `tools`, `parameters`, `structured_output`, `sdk`, `agent`, or `full`.
 - `-g/--group <name>` and `-t/--test <id...>` — run part of a profile.
 - `-s/--streamed` and `--nostream` — which request mode the tool call and generation control probes send in. Both given measures both, and reports them side by side.
-- `-r/--repeats <count>` — how many times a test that samples the model repeats before deciding. Defaults to `3`.
+- `-r/--repeats <count>` — how many times a test that samples the model repeats before deciding. Defaults to `5`.
 - `--verbose`, `--ci`.
 
 | Verdict | Meaning |

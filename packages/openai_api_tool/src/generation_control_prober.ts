@@ -34,9 +34,12 @@ export type GenerationControlProbeOptions = {
 	/** Whether to ask for the answer as it is written, or in one piece. */
 	readonly mode: CompletionMode;
 	/**
-	 * How many times a probe that compares repeated answers sends its prompt. Three is what the
+	 * How many times a probe that compares repeated answers sends its prompt. Three is the floor the
 	 * de-risk gate used: two answers agreeing can be chance, and three agreeing where a high
-	 * temperature gave three different answers cannot reasonably be.
+	 * temperature gave three different answers cannot reasonably be. The default is five, because
+	 * the same count decides the two tests that read one word out of an answer, and a model writing
+	 * that word three times in four still flipped their verdict about one run in sixty-four at
+	 * three ([issue #208](https://github.com/webai-at-home/webai-at-home/issues/208)).
 	 */
 	readonly repeats: number;
 };

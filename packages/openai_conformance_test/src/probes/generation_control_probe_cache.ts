@@ -25,8 +25,10 @@ export class GenerationControlProbeCache {
 	 * @param client The official `openai` Node.js package client, pointed at the endpoint under test.
 	 * @param modelId The model identifier to probe.
 	 * @param repeats How many times a probe comparing repeated answers sends its prompt. Three is
-	 * what the de-risk gate of issue #151 used: two answers agreeing can be chance, three agreeing
-	 * where a high temperature gave three different answers cannot reasonably be.
+	 * the floor the de-risk gate of issue #151 used: two answers agreeing can be chance, three
+	 * agreeing where a high temperature gave three different answers cannot reasonably be. The
+	 * default is five, raised for the two tests that read one word out of an answer, in
+	 * [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).
 	 */
 	constructor(
 		private readonly client: OpenAI,
