@@ -6,7 +6,7 @@ The single command line program published to the npm registry as `webai-at-home`
 
 ## Key Exports & Entry Points
 
-- `src/cli.ts`: the program, `Cli`. `gateway`, `consumer_openai`, `worker_openai`, `consumer_cli` and `openai_conformance_test` each run one wrapped program unchanged; anything else is an unknown command.
+- `src/cli.ts`: the program, `Cli`. `gateway`, `consumer_openai`, `worker_openai`, `consumer_cli` and `openai_test` each run one wrapped program unchanged; anything else is an unknown command.
 - `scripts/vendor_wrapped_programs.ts`: run by `prepack`. Copies every wrapped program's built files into `dist/vendor` and rewrites each package-name import in `dist/cli.js` into a relative path pointing there.
 
 ## Rules
@@ -22,6 +22,6 @@ The single command line program published to the npm registry as `webai-at-home`
 
 ## Background
 
-- This package comes from [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170), the invoked name from [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171), and `openai_conformance_test` from [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182).
+- This package comes from [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170), the invoked name from [issue #171](https://github.com/webai-at-home/webai-at-home/issues/171), and `openai_test` from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).
 - `scripts/vendor_wrapped_programs.ts` and `Cli.run` each carry a comment recording what was tried and dropped.
 - `@webai/consumer-cli` once ran as the fall-through for any unmatched first word; undoing that is why commander's help handling is off. See [issue #184](https://github.com/webai-at-home/webai-at-home/issues/184).

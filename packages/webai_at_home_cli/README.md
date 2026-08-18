@@ -1,6 +1,6 @@
 # `webai-at-home`
 
-The single command line program published to the npm registry as `webai-at-home`, so a user runs `npx webai-at-home <command>` to run one participant of the WebAI@Home cluster without cloning this repository. It dispatches to the other command line programs in this repository — [`@webai/gateway`](../gateway/README.md), [`@webai/consumer-openai`](../consumer_openai/README.md), [`@webai/worker-openai`](../worker_openai/README.md), [`@webai/consumer-cli`](../consumer_cli/README.md), [`@webai/openai-conformance-test`](../openai_conformance_test/README.md), and [`@webai/openai-test`](../openai_test/README.md) — rather than reimplementing any of them. See [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170).
+The single command line program published to the npm registry as `webai-at-home`, so a user runs `npx webai-at-home <command>` to run one participant of the WebAI@Home cluster without cloning this repository. It dispatches to the other command line programs in this repository — [`@webai/gateway`](../gateway/README.md), [`@webai/consumer-openai`](../consumer_openai/README.md), [`@webai/worker-openai`](../worker_openai/README.md), [`@webai/consumer-cli`](../consumer_cli/README.md), and [`@webai/openai-test`](../openai_test/README.md) — rather than reimplementing any of them. See [issue #170](https://github.com/webai-at-home/webai-at-home/issues/170).
 
 ## Run with `npx`
 
@@ -22,7 +22,6 @@ The first word of the command line decides:
 | `consumer_openai` | [`@webai/consumer-openai`](../consumer_openai/README.md), the OpenAI-compatible server |
 | `worker_openai` | [`@webai/worker-openai`](../worker_openai/README.md), the native worker |
 | `consumer_cli` | [`@webai/consumer-cli`](../consumer_cli/README.md), the command line client |
-| `openai_conformance_test` | [`@webai/openai-conformance-test`](../openai_conformance_test/README.md), the conformance test |
 | `openai_test` | [`@webai/openai-test`](../openai_test/README.md), which tests, measures, and talks to an OpenAI-compatible server |
 
 Anything else is reported as an unknown command. Each of the words above runs one program on whatever follows it, unchanged, and no program runs under any other name.
