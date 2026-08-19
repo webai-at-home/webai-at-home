@@ -2,25 +2,25 @@
 
 ## Summary
 
-- Passed: 40
-- Failed: 4
+- Passed: 44
+- Failed: 0
 - Skipped: 0
 - Warned: 0
 
-Compatibility: 90.9%
+Compatibility: 100.0%
 
 A skipped test is a capability the endpoint declared it does not support, and is left out of the percentage. A warned test behaved correctly in a way that may still break a client.
 
 ## Test Run
 
-- Generated: 2026-08-19T00:52:57.636Z
+- Generated: 2026-08-19T06:44:01.805Z
 - Endpoint: `http://localhost:11434/v1`
 - Model: `gemma4:e2b`
 
 ### Command Line
 
 ```bash
-openai_test conformance --base_url http://localhost:11434/v1 --model gemma4:e2b --profile full --format markdown --output data/conformance_reports/ollama_gemma4_e2b.md
+openai_test conformance --base_url http://localhost:11434/v1 --model gemma4:e2b --profile full --format markdown --output data/conformance_reports/ollama_gemma4_e2b.md -v
 ```
 
 ### Parameters
@@ -29,8 +29,10 @@ openai_test conformance --base_url http://localhost:11434/v1 --model gemma4:e2b 
 | --- | --- |
 | `--model` | gemma4:e2b |
 | `--profile` | full |
-| `--repeats` | 5 |
+| `--repeats` | 3 |
+| `--thinking` | off |
 | `--output` | data/conformance_reports/ollama_gemma4_e2b.md |
+| `--verbose` | true |
 | `--base_url` | http://localhost:11434/v1 |
 | `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |
@@ -123,9 +125,9 @@ openai_test conformance --base_url http://localhost:11434/v1 --model gemma4:e2b 
 | `parameters.temperature` (stream on) | ✅ |  |
 | `parameters.top_p` (stream off) | ✅ |  |
 | `parameters.top_p` (stream on) | ✅ |  |
-| `parameters.max_completion_tokens` (stream off) | ❌ | asking for at most 8 tokens gave 515 characters against 515 with no budget, and finish_reason was stop, and the older spelling max_tokens failed: the endpoint returned no answer text |
-| `parameters.max_completion_tokens` (stream on) | ❌ | asking for at most 8 tokens gave 515 characters against 515 with no budget, and finish_reason was stop, and the older spelling max_tokens failed: the endpoint returned no answer text |
-| `parameters.stop` (stream off) | ❌ | the endpoint returned no answer text |
-| `parameters.stop` (stream on) | ❌ | the endpoint returned no answer text |
+| `parameters.max_completion_tokens` (stream off) | ✅ |  |
+| `parameters.max_completion_tokens` (stream on) | ✅ |  |
+| `parameters.stop` (stream off) | ✅ |  |
+| `parameters.stop` (stream on) | ✅ |  |
 | `parameters.seed` (stream off) | ✅ |  |
 | `parameters.seed` (stream on) | ✅ |  |
