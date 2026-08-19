@@ -7,7 +7,7 @@ One stage helper per stage this native worker can run, the fixed list of them, a
 ## Key Exports & Entry Points
 
 - `stage_catalog.ts`: `StageCatalog`, the fixed list of every stage helper this worker carries.
-- `stage_helper_llm_llama3_2_1b_full.ts`, `stage_helper_llm_qwen3_5_0_8b_full.ts`: one complete model each, run by the local server.
+- `stage_helper_llm_gemma_4_e2b_full.ts`, `stage_helper_llm_llama3_2_1b_full.ts`, `stage_helper_llm_qwen3_5_0_8b_full.ts`: one complete model each, run by the local server.
 - `local_server_generation.ts`: `LocalServerGeneration`, reading one stage helper's answers from the local server, and `LocalModelReadiness`, whether that server holds the model at all.
 
 ## Rules

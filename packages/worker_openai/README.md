@@ -93,12 +93,13 @@ at all rather than accepting work it would fail, and says why in its own output.
 
 This worker carries one stage helper per stage it can run, in `src/stages/`:
 
+- `stage_llm_gemma_4_e2b_full`
 - `stage_llm_llama3_2_1b_full`
 - `stage_llm_qwen3_5_0_8b_full`
 
-Both are stages `@webai/worker-webpage`'s browser tab also offers, by downloading and running the
+All three are stages `@webai/worker-webpage`'s browser tab also offers, by downloading and running the
 model itself (see [`packages/worker_webpage/README.md`](../worker_webpage/README.md)). Either worker
-type can fulfil either stage: this worker forwards the prompt to a local server that already holds
+type can fulfil any of these stages: this worker forwards the prompt to a local server that already holds
 the model, and does not download anything itself. The gateway assigns the stage to whichever kind of
 worker offers it, and does not know which one a given assignment reaches.
 

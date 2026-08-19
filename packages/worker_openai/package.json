@@ -23,6 +23,8 @@
     "presample:lmstudio": "npm run build:dependencies",
     "sample:lmstudio:llama-3.2-1b-instruct": "npx tsx src/cli.ts --gateway-url ws://127.0.0.1:8787 --openai-base-url http://localhost:1234/v1 --openai-model llama-3.2-1b-instruct --stage-names stage_llm_llama3_2_1b_full --worker_name \"worker_openai lmstudio-llama3-2-1b\"",
     "sample:lmstudio:qwen_qwen3.5-0.8b": "npx tsx src/cli.ts --gateway-url ws://127.0.0.1:8787 --openai-base-url http://localhost:1234/v1 --openai-model qwen_qwen3.5-0.8b --stage-names stage_llm_qwen3_5_0_8b_full --worker_name \"worker_openai lmstudio-qwen_qwen3.5-0.8b\"",
+    "sample:lmstudio:gemma4_e2b": "npx tsx src/cli.ts --gateway-url ws://127.0.0.1:8787 --openai-base-url http://localhost:1234/v1 --openai-model google/gemma-4-e2b --stage-names stage_llm_gemma_4_e2b_full --worker_name \"worker_openai lmstudio-google/gemma-4-e2b\"",
+    "sample:ollama:gemma4_e2b": "npx tsx src/cli.ts --gateway-url ws://127.0.0.1:8787 --openai-base-url http://localhost:11434/v1 --openai-model gemma4:e2b --stage-names stage_llm_gemma_4_e2b_full --worker_name \"worker_openai ollama-gemma4:e2b\"",
     "lmstudio:server:start": "lms server start",
     "lmstudio:server:stop": "lms server stop",
     "lmstudio:server:status": "lms server status",

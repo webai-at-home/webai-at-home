@@ -1,4 +1,5 @@
 import type { GenerationSettings, LlmStagePayload } from '@webai/protocol';
+import { StageHelperLlmGemma4E2bFull } from './stage_helper_llm_gemma_4_e2b_full.js';
 import { StageHelperLlmLlama3_2_1bFull } from './stage_helper_llm_llama3_2_1b_full.js';
 import { StageHelperLlmQwen3_5_0_8bFull } from './stage_helper_llm_qwen3_5_0_8b_full.js';
 import type { OpenaiApiClient } from '../libs/openai_api_client.js';
@@ -66,6 +67,7 @@ export type StageHelper = {
 export class StageCatalog {
 	/** Every stage helper this worker carries. */
 	static readonly stageHelpers: readonly StageHelper[] = [
+		StageHelperLlmGemma4E2bFull,
 		StageHelperLlmLlama3_2_1bFull,
 		StageHelperLlmQwen3_5_0_8bFull,
 	];
