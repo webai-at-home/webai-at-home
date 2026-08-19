@@ -453,22 +453,6 @@ export class LocalServerGeneration {
 	}
 
 	/**
-	 * Turns the tool calls read from the local server's stream into the shape the protocol carries.
-	 *
-	 * The two interfaces disagree about the arguments, and this is where that is settled. The OpenAI
-	 * Chat Completions interface carries them as one string of JSON, while the protocol carries each
-	 * argument value as the text the model wrote, keyed by argument name — see `ToolCallSchema` in
-	 * `@webai/protocol` for why. Converting each value back into the type its tool declared belongs
-	 * to `packages/consumer_openai`, which is the one that knows the declared types and the one whose
-	 * interface asks for types at all.
-	 *
-	 * @param toolCalls The tool calls assembled while the stream was read, `undefined` when
-	 * generation never started.
-	 * @returns The tool calls to report, empty when the model asked for none.
-	 * @throws If a tool call's arguments are not a JSON object, since a call that could not be read
-	 * is a failed stage rather than a call passed on half-formed.
-	 */
-	/**
 	 * Fails the stage when the local server reached its output limit without ever writing any answer
 	 * text, rather than reporting the empty answer as a finished one.
 	 *
@@ -509,6 +493,22 @@ export class LocalServerGeneration {
 		throw new Error(`The model generated ${generated} without writing any answer text, and stopped because it ran out of room rather than because it had finished. A model that thinks before it answers can do this by never finishing thinking; asking for reasoning_effort "none" stops it.`);
 	}
 
+	/**
+	 * Turns the tool calls read from the local server's stream into the shape the protocol carries.
+	 *
+	 * The two interfaces disagree about the arguments, and this is where that is settled. The OpenAI
+	 * Chat Completions interface carries them as one string of JSON, while the protocol carries each
+	 * argument value as the text the model wrote, keyed by argument name — see `ToolCallSchema` in
+	 * `@webai/protocol` for why. Converting each value back into the type its tool declared belongs
+	 * to `packages/consumer_openai`, which is the one that knows the declared types and the one whose
+	 * interface asks for types at all.
+	 *
+	 * @param toolCalls The tool calls assembled while the stream was read, `undefined` when
+	 * generation never started.
+	 * @returns The tool calls to report, empty when the model asked for none.
+	 * @throws If a tool call's arguments are not a JSON object, since a call that could not be read
+	 * is a failed stage rather than a call passed on half-formed.
+	 */
 	private toolCallsOf(toolCalls: ChatCompletionStreamToolCalls | undefined): ToolCall[] {
 		if (toolCalls === undefined) {
 			return [];
