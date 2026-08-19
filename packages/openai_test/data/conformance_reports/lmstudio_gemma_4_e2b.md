@@ -2,18 +2,18 @@
 
 ## Summary
 
-- Passed: 38
-- Failed: 5
+- Passed: 37
+- Failed: 6
 - Skipped: 1
 - Warned: 0
 
-Compatibility: 88.4%
+Compatibility: 86.0%
 
 A skipped test is a capability the endpoint declared it does not support, and is left out of the percentage. A warned test behaved correctly in a way that may still break a client.
 
 ## Test Run
 
-- Generated: 2026-08-19T02:55:48.006Z
+- Generated: 2026-08-19T02:58:55.974Z
 - Endpoint: `http://localhost:1234/v1`
 - Model: `google/gemma-4-e2b`
 
@@ -62,7 +62,7 @@ openai_test conformance --base_url http://localhost:1234/v1 --model google/gemma
 
 | Test | Result | Detail |
 | --- | --- | --- |
-| `errors.unknown_model` | ❌ | expected an error status, got HTTP 200: {"id":"chatcmpl-of1h3xydxjno096ppt4s3","object":"chat.completion","created":1787108088,"model":"google/gemma-4-e2b","choices":[{"index":0,"message":{"role":"assistant","content":"Hello! How can I help you today?","reasoning_content":"\nThinking Process:\n\n1.  **Analyze the input:** The input is simply \"Hello\".\n2.  **Determine the intent:** The user is initiating a basic greeting or starting a conversation.\n3.  **Formulate the appropriate response:** The response should be friendly, acknowledge the greeting, and invite further interaction.\n4.  **Draft potential responses:**\n    *   \"Hello! How can I help you today?\" (Standard, helpful)\n    *   \"Hi there!\" (Casual)\n    *   \"Hello! What's on your mind?\" (Engaging)\n5.  **Select the best response:** A welcoming and open-ended question is usually best to prompt the user for their actual query or topic.\n\n**(Self-Correction/Refinement):** Keep it warm and professional/helpful.\n\n6.  **Final Output Generation.**","tool_calls":[]},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":17,"completion_tokens":195,"total_tokens":212,"completion_tokens_details":{"reasoning_tokens":182}},"stats":{},"system_fingerprint":"google/gemma-4-e2b"} |
+| `errors.unknown_model` | ❌ | expected an error status, got HTTP 200: {"id":"chatcmpl-h970st1xp659fg2iuuh95","object":"chat.completion","created":1787108273,"model":"google/gemma-4-e2b","choices":[{"index":0,"message":{"role":"assistant","content":"Hello! How can I help you today?","reasoning_content":"\nThinking Process:\n\n1.  **Analyze the input:** The input is \"Hello\".\n2.  **Determine the intent:** The user is initiating a friendly greeting or starting a conversation.\n3.  **Formulate an appropriate response:** The response should be polite, friendly, and acknowledge the greeting. It should also invite further interaction (if applicable).\n4.  **Draft potential responses:**\n    *   \"Hello! How can I help you today?\" (Standard, helpful)\n    *   \"Hi there!\" (Casual)\n    *   \"Hello! What's on your mind?\" (Engaging)\n5.  **Select the best response:** A warm acknowledgment followed by an open-ended question is usually ideal to prompt the user.\n\n6.  **Final Output Generation:** (Selecting a friendly, standard reply.)","tool_calls":[]},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":17,"completion_tokens":189,"total_tokens":206,"completion_tokens_details":{"reasoning_tokens":176}},"stats":{},"system_fingerprint":"google/gemma-4-e2b"} |
 | `errors.malformed_json` | ✅ |  |
 | `errors.missing_messages` | ❌ | HTTP 400 but no "error" object: {"error":"'messages' field is required"} |
 
@@ -124,7 +124,7 @@ openai_test conformance --base_url http://localhost:1234/v1 --model google/gemma
 | `parameters.temperature` (stream off) | ✅ |  |
 | `parameters.temperature` (stream on) | ✅ |  |
 | `parameters.top_p` (stream off) | ❌ | the answers still varied at temperature 1.6 with top_p 0.01, so the value changed nothing |
-| `parameters.top_p` (stream on) | ✅ |  |
+| `parameters.top_p` (stream on) | ❌ | the answers still varied at temperature 1.6 with top_p 0.01, so the value changed nothing |
 | `parameters.max_completion_tokens` (stream off) | ✅ |  |
 | `parameters.max_completion_tokens` (stream on) | ✅ |  |
 | `parameters.stop` (stream off) | ✅ |  |
