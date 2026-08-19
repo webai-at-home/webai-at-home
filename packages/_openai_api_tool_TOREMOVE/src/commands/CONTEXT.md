@@ -1,4 +1,4 @@
-# Directory Context: `/packages/openai_api_tool_TOREMOVE/src/commands`
+# Directory Context: `/packages/_openai_api_tool_TOREMOVE/src/commands`
 
 ## Purpose
 

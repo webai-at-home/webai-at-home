@@ -25,4 +25,4 @@ The `benchmark` subcommand: how long one OpenAI-compatible endpoint takes to ans
 
 ## Background
 
-- `benchmark_runner.ts` and `statistics_calculator.ts` come from [`packages/openai_api_tool_TOREMOVE`](../../../openai_api_tool_TOREMOVE/), proved to compute the same numbers in Milestone 5 of [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208). The markdown rendering, the progress listener, and `--thinking` were added there.
+- `benchmark_runner.ts` and `statistics_calculator.ts` come from [`packages/_openai_api_tool_TOREMOVE`](../../../_openai_api_tool_TOREMOVE/), proved to compute the same numbers in Milestone 5 of [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208). The markdown rendering, the progress listener, and `--thinking` were added there.

@@ -22,7 +22,7 @@ if the worker browser tab honours it too, and that tab hardcodes `enable_thinkin
   same runaway that issue #192 measured against LM Studio.
 
 Every phase asks the model the exact history
-[`multi_turn.ts`](../../../openai_conformance_test_TOREMOVE/src/tests/chat/multi_turn.ts) sends, because that is the
+[`multi_turn.ts`](../../../_openai_conformance_test_TOREMOVE/src/tests/chat/multi_turn.ts) sends, because that is the
 conformance test issue #192 reports as failing.
 
 ## Run

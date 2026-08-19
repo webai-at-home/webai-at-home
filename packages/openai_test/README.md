@@ -95,7 +95,7 @@ The `report:*` scripts of `package.json` write markdown reports into [`data/conf
 
 ## The examples
 
-Beside the three subcommands, [`examples/`](./examples) holds one short runnable program per task type and per calling style, each one written against the official `openai` package on npm rather than against this package's own client, and each one runnable on its own. They came here from [`packages/openai_api_tool_TOREMOVE`](../openai_api_tool_TOREMOVE/) when that package was frozen, so that every program sending a chat completion request from this repository lives in one package. Start with the development formula example, which needs no model download:
+Beside the three subcommands, [`examples/`](./examples) holds one short runnable program per task type and per calling style, each one written against the official `openai` package on npm rather than against this package's own client, and each one runnable on its own. They came here from [`packages/_openai_api_tool_TOREMOVE`](../_openai_api_tool_TOREMOVE/) when that package was frozen, so that every program sending a chat completion request from this repository lives in one package. Start with the development formula example, which needs no model download:
 
 ```sh
 npm run example:chat_completion_dev_formula --workspace @webai/openai-test
@@ -115,4 +115,4 @@ Every test starts its own local HTTP server where it needs an endpoint, so the s
 
 ## Where it came from
 
-This package merges [`packages/openai_api_tool_TOREMOVE`](../openai_api_tool_TOREMOVE/) and [`packages/openai_conformance_test_TOREMOVE`](../openai_conformance_test_TOREMOVE/), which measured the same server twice and shared two probers between them. Both of those remain, and both are frozen: bug fixes only. See [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).
+This package merges [`packages/_openai_api_tool_TOREMOVE`](../_openai_api_tool_TOREMOVE/) and [`packages/_openai_conformance_test_TOREMOVE`](../_openai_conformance_test_TOREMOVE/), which measured the same server twice and shared two probers between them. Both of those remain, and both are frozen: bug fixes only. See [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).

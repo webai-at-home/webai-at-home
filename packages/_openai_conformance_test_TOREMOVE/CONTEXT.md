@@ -1,4 +1,4 @@
-# Directory Context: `/packages/openai_conformance_test_TOREMOVE`
+# Directory Context: `/packages/_openai_conformance_test_TOREMOVE`
 
 ## Purpose
 
@@ -26,6 +26,6 @@ The OpenAI API Conformance Test command line program: it points at a server clai
 
 ## Background
 
-- The freeze comes from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which merged this package and `packages/openai_api_tool_TOREMOVE` into `packages/openai_test`. Both packages stay, and neither is deleted.
+- The freeze comes from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which merged this package and `packages/_openai_api_tool_TOREMOVE` into `packages/openai_test`. Both packages stay, and neither is deleted.
 - Whether a run counts as a failure is decided by the verdicts alone, never by `--ci`.
 - Each milestone's own findings are posted as comments on [#182](https://github.com/webai-at-home/webai-at-home/issues/182) rather than restated here.

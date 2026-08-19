@@ -105,7 +105,7 @@ worker offers it, and does not know which one a given assignment reaches.
 
 ## What a model behind LM Studio can do on its own
 
-What this worker offers to the cluster was decided from a measurement of what a model served by LM Studio can do on its own, rather than from a guess. Two programs, `examples/lmstudio_direct_history.ts` and `examples/lmstudio_direct_tools.ts`, talked to LM Studio directly through the OpenAI SDK — not through the gateway and not through this worker — and reported the model's own behaviour and nothing else. See [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119). Both programs have since been removed; the two-turn history check they ran is the `history` subcommand of [`@webai/openai-api-tool`](../openai_api_tool_TOREMOVE/README.md), which measures any server speaking the OpenAI-compatible API, LM Studio among them:
+What this worker offers to the cluster was decided from a measurement of what a model served by LM Studio can do on its own, rather than from a guess. Two programs, `examples/lmstudio_direct_history.ts` and `examples/lmstudio_direct_tools.ts`, talked to LM Studio directly through the OpenAI SDK — not through the gateway and not through this worker — and reported the model's own behaviour and nothing else. See [issue #119](https://github.com/webai-at-home/webai-at-home/issues/119). Both programs have since been removed; the two-turn history check they ran is the `history` subcommand of [`@webai/openai-api-tool`](../_openai_api_tool_TOREMOVE/README.md), which measures any server speaking the OpenAI-compatible API, LM Studio among them:
 
 ```sh
 npm run history:lm_studio:qwen_qwen3.5-0.8b --workspace @webai/openai-api-tool

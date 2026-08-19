@@ -24,5 +24,5 @@ This package's own automated test suite, split one file per part of the program,
 
 ## Background
 
-- The suite is merged from `packages/openai_api_tool_TOREMOVE/tests/index.test.ts` and `packages/openai_conformance_test_TOREMOVE/tests/index.test.ts` by Milestone 7 of [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208). The tests those two suites had for subcommands this package does not have — the `completion`, `usage`, and `history` sweep reports — did not come along, and neither did their renderers.
+- The suite is merged from `packages/_openai_api_tool_TOREMOVE/tests/index.test.ts` and `packages/_openai_conformance_test_TOREMOVE/tests/index.test.ts` by Milestone 7 of [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208). The tests those two suites had for subcommands this package does not have — the `completion`, `usage`, and `history` sweep reports — did not come along, and neither did their renderers.
 - The split into six files rather than one is the 600-line guideline: the merged suite is well past 2000 lines.
