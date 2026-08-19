@@ -1,4 +1,6 @@
 import { env, pipeline, TextStreamer, type TextGenerationPipeline } from '@huggingface/transformers';
+import { WebgpuRequirement, type AdapterReport } from './webgpu_requirement';
+import { CorrectnessCheck, type CorrectnessResult } from './correctness_check';
 
 type CacheEntry = {
 	body: ArrayBuffer;
@@ -189,6 +191,18 @@ app.innerHTML = `
         <div class="metric"><span>Backend</span><strong id="backend">—</strong></div>
       </div>
     </section>
+    <section class="test-panel" aria-labelledby="check-heading">
+      <div class="panel-heading">
+        <div><p class="section-label">Correctness</p><h2 id="check-heading">Questions whose answers are known.</h2></div>
+      </div>
+      <p class="intro">WebGPU can return wrong numbers without reporting an error, so a generation that runs to the end proves nothing on its own. These questions are asked before any figure on this page is believed.</p>
+      <div class="controls">
+        <button id="check-button" class="primary-button" type="button">Run the correctness check <span>↗</span></button>
+        <span class="hint">Greedy decoding · the same answer every time</span>
+      </div>
+      <ul id="check-results" class="check-results"></ul>
+      <p id="check-verdict" class="output-text placeholder">The check has not been run.</p>
+    </section>
     <p id="status" class="status">Ready. The first run downloads the ONNX weights; later page loads use IndexedDB.</p>
     <footer><span>ONNX Runtime Web + Transformers.js</span><span>Local inference · no prompt upload</span></footer>
   </main>
@@ -201,14 +215,22 @@ function getElement<T extends HTMLElement>(selector: string): T {
 }
 
 const button = getElement<HTMLButtonElement>('#run-button');
+const checkButton = getElement<HTMLButtonElement>('#check-button');
 const status = getElement<HTMLElement>('#status');
 const output = getElement<HTMLElement>('#output');
 const runtimeLabel = getElement<HTMLElement>('#runtime-label');
 const backend = getElement<HTMLElement>('#backend');
 
-const hasWebGPU = 'gpu' in navigator;
-runtimeLabel.textContent = hasWebGPU ? 'WebGPU available' : 'WebAssembly fallback';
-backend.textContent = hasWebGPU ? 'WebGPU' : 'WebAssembly';
+// Gemma 4 E2B is required to run on WebGPU here, so this page never falls back to WebAssembly. A WebAssembly
+// answer would look like a working experiment while proving nothing about the WebGPU path a worker browser tab
+// takes, which is the false green that killed issue #172 once already.
+let adapterReport: AdapterReport | undefined;
+runtimeLabel.textContent = 'Checking WebGPU';
+backend.textContent = 'WebGPU required';
+
+// Read the console before the first session is built. ONNX Runtime Web states a dropped execution provider there
+// and nowhere else, and it states it while the session is being created.
+WebgpuRequirement.watchForADroppedProvider();
 
 function setStatus(message: string): void {
 	status.textContent = message;
@@ -236,28 +258,47 @@ function loadModel(): Promise<TextGenerationPipeline> {
 	// Reapply this immediately before session creation. ONNX Runtime reads the
 	// setting when its WebAssembly runtime starts, not when the page is built.
 	configureOnnxLogging();
-	setStatus(`Downloading ${model.fullName}. This can take a while on the first run…`);
 	loadStartedAt = performance.now();
-	modelLoadPromise = pipeline('text-generation', model.id, {
-		device: hasWebGPU ? 'webgpu' : 'wasm',
-		dtype: model.dtype,
-		progress_callback: (progress) => {
-			if (progress.status === 'progress' && progress.file) {
-				const percent = Number.isFinite(progress.progress) ? ` ${Math.round(progress.progress)}%` : '';
-				setStatus(`Downloading ${progress.file}${percent}…`);
-			}
-		},
-	}).then((loadedGenerator) => {
+	modelLoadPromise = WebgpuRequirement.demandWebgpu().then((report) => {
+		adapterReport = report;
+		runtimeLabel.textContent = 'WebGPU required and present';
+		setStatus(`Downloading ${model.fullName}. This can take a while on the first run…`);
+		// Asked for without a fallback on purpose: a run that cannot use WebGPU must fail loudly here rather than
+		// answer from WebAssembly and be read as a passing gate.
+		return pipeline('text-generation', model.id, {
+			device: 'webgpu',
+			dtype: model.dtype,
+			progress_callback: (progress) => {
+				if (progress.status === 'progress' && progress.file) {
+					const percent = Number.isFinite(progress.progress) ? ` ${Math.round(progress.progress)}%` : '';
+					setStatus(`Downloading ${progress.file}${percent}…`);
+				}
+			},
+		});
+	}).then(async (loadedGenerator) => {
+		const verdict = await WebgpuRequirement.verdictAfterLoading();
+		backend.textContent = verdict.isWebgpu ? 'WebGPU' : 'NOT WebGPU';
+		runtimeLabel.textContent = verdict.explanation;
+		if (verdict.isWebgpu === false) {
+			throw new Error(verdict.explanation);
+		}
+
 		generator = loadedGenerator;
 		getElement<HTMLElement>('#load-time').textContent = `${((performance.now() - (loadStartedAt ?? performance.now())) / 1000).toFixed(1)} s`;
-		setStatus('Model ready. Enter a prompt and run inference.');
+		const adapterWords = [adapterReport?.vendor, adapterReport?.architecture, adapterReport?.description]
+			.filter((word) => word !== undefined && word !== '')
+			.join(' ');
+		setStatus(`Model ready on WebGPU${adapterWords === '' ? '' : ` (${adapterWords})`}. Run the correctness check before believing any figure.`);
 		button.disabled = false;
 		button.innerHTML = 'Run inference <span>↗</span>';
+		checkButton.disabled = false;
 		return loadedGenerator;
 	}).catch((error: unknown) => {
 		modelLoadPromise = undefined;
-		button.disabled = false;
-		button.innerHTML = 'Load model &amp; run inference <span>↗</span>';
+		button.disabled = true;
+		button.innerHTML = 'Cannot run without WebGPU';
+		runtimeLabel.textContent = 'WebGPU missing';
+		backend.textContent = 'none';
 		throw error;
 	});
 
@@ -310,7 +351,55 @@ button.addEventListener('click', async () => {
 	}
 });
 
+checkButton.addEventListener('click', async () => {
+	checkButton.disabled = true;
+	button.disabled = true;
+	const resultList = getElement<HTMLElement>('#check-results');
+	const verdictLine = getElement<HTMLElement>('#check-verdict');
+	resultList.replaceChildren();
+	verdictLine.classList.remove('placeholder');
+	verdictLine.textContent = '';
+
+	try {
+		const loadedGenerator = await loadModel();
+		const results = await CorrectnessCheck.run(loadedGenerator, (question) => {
+			setStatus(`Checking: ${question.prompt}`);
+		});
+		for (const result of results) {
+			resultList.appendChild(buildCheckResult(result));
+		}
+
+		const isEveryCheckPassed = CorrectnessCheck.isEveryCheckPassed(results);
+		const backendVerdict = await WebgpuRequirement.verdictAfterLoading();
+		verdictLine.textContent = isEveryCheckPassed
+			? `Every correctness check passed, on WebGPU. ${backendVerdict.explanation}`
+			: 'A correctness check failed. Do not believe any figure from this page: WebGPU is returning wrong numbers silently.';
+		setStatus(isEveryCheckPassed ? 'Correctness check passed.' : 'Correctness check FAILED.');
+	} catch (error: unknown) {
+		console.error(error);
+		verdictLine.textContent = `The correctness check could not finish: ${error instanceof Error ? error.message : 'unknown error'}`;
+		setStatus('The correctness check could not finish.');
+	} finally {
+		checkButton.disabled = false;
+		button.disabled = false;
+	}
+});
+
+function buildCheckResult(result: CorrectnessResult): HTMLLIElement {
+	const item = document.createElement('li');
+	item.className = result.isPassed ? 'check-result passed' : 'check-result failed';
+	const question = document.createElement('p');
+	question.className = 'check-question';
+	question.textContent = `${result.isPassed ? 'PASS' : 'FAIL'} · ${result.question.prompt}`;
+	const answer = document.createElement('p');
+	answer.className = 'check-answer';
+	answer.textContent = `Answered: ${result.answer === '' ? '(nothing)' : result.answer}  ·  had to hold: ${result.question.requiredText}`;
+	item.append(question, answer);
+	return item;
+}
+
 button.disabled = true;
+checkButton.disabled = true;
 button.innerHTML = 'Loading model… <span class="spinner"></span>';
 void loadModel().catch((error: unknown) => {
 	console.error(error);
