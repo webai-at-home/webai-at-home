@@ -16,7 +16,7 @@ Where the `report:*` scripts of `package.json` write the markdown reports this p
 - A report file's name says which endpoint and which model produced it, because a measurement of one model on one server says nothing about another.
 - A file in `conformance_reports/` ends in `.conformance_report.md`, and a file in `benchmark_reports/` ends in `.benchmark_report.md`, so a report carries which subcommand wrote it once the file is read outside its folder.
 - Every report carries its own command line and its generation date, written by the reporter, so a file found later says what produced it and when.
-- A `report:*` script names a real endpoint this project measures — LM Studio, this cluster's own `consumer_openai`, or `api.openai.com`. There is no Ollama script: this project stopped using Ollama, and `packages/openai_conformance_test/data/conformance_reports/` keeps the Ollama reports already written.
+- A `report:*` script names a real endpoint this project measures: LM Studio, Ollama, this cluster's own `consumer_openai`, or `api.openai.com`. Ollama is measured here alongside LM Studio, so the same model on two local servers can be compared, and `packages/openai_conformance_test/data/conformance_reports/` keeps the older reports of both, written before that package was frozen.
 
 ## Background
 
