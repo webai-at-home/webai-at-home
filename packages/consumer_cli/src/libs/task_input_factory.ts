@@ -45,24 +45,36 @@ export type TaskTypeNameAcceptingHistory = typeof taskTypeNamesAcceptingHistory[
  * chat template that has a slot for them, and then finds the tool call the model wrote and reads
  * it back out of the generated text.
  *
- * Only `llm_qwen3_5_0_8b_full` does both today, proved live against the real worker path in
- * milestone 0's de-risk gate for
- * [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115). `llm_llama3_2_1b_full`
- * accepts a history and is left out: neither of the two workers that can run it reads a tool
- * declaration, so declaring tools to it would be accepted and dropped, which is the worst of the
- * possible answers — the consumer would receive an answer generated as though it had declared
- * nothing, and be told nothing went wrong.
+ * Two task types do both today, and each was proved live on **both** kinds of worker before it was
+ * entered here. That is the bar, and it is not the same as the model being able to do tool calls:
+ * this list is a promise of the task type, a task may be assigned to either kind of worker, and the
+ * scheduler chooses. A task type must never promise what only one of its two workers can keep.
  *
- * `llm_gemma_4_e2b_full` is left out for exactly that reason too, and it is the case most likely to
- * be added by mistake. Its chat template really does carry tool macros, and an OpenAI-compatible
- * server really did pass every tool calling test for this model in
- * [issue #210](https://github.com/webai-at-home/webai-at-home/issues/210) — but that was a local
- * model server, and no worker in this project reaches this task type that way. Its worker browser
- * tab reads no tool call, so a declaration would be accepted and dropped. Adding it here needs its
- * own de-risk gate against the worker browser path first, the same way #115 gated
- * `llm_qwen3_5_0_8b_full`.
+ * - `llm_qwen3_5_0_8b_full`, from milestone 0's de-risk gate for
+ *   [issue #115](https://github.com/webai-at-home/webai-at-home/issues/115) on the worker browser
+ *   path, and [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190) on the native
+ *   worker path.
+ * - `llm_gemma_4_e2b_full`, from
+ *   [issue #216](https://github.com/webai-at-home/webai-at-home/issues/216): its milestone 0 gate
+ *   recorded the tool call this model really writes, character for character, in a worker browser
+ *   tab on WebGPU at the pinned revision, and its milestone 4 ran the same abilities through the
+ *   native worker against two local servers.
+ *
+ * `llm_llama3_2_1b_full` accepts a history and is left out: neither of the two workers that can run
+ * it reads a tool declaration, so declaring tools to it would be accepted and dropped, which is the
+ * worst of the possible answers — the consumer would receive an answer generated as though it had
+ * declared nothing, and be told nothing went wrong.
+ *
+ * What `llm_gemma_4_e2b_full` cost is worth remembering before the next name is added here. Its
+ * chat template carries tool macros and an OpenAI-compatible server passed every tool calling test
+ * for the model in [issue #210](https://github.com/webai-at-home/webai-at-home/issues/210) — and
+ * neither fact would have been enough. The format this model writes a tool call in is its own,
+ * shared with no other model this project runs, and its markers are special tokens that the
+ * decoding the worker browser tab had always used stripped before any reader could see them. Both
+ * were found by generating in the real browser tab and reading the raw text, and neither could have
+ * been found by reading the chat template or by trusting a local server.
  */
-export const taskTypeNamesAcceptingTools = ['llm_qwen3_5_0_8b_full'] as const;
+export const taskTypeNamesAcceptingTools = ['llm_qwen3_5_0_8b_full', 'llm_gemma_4_e2b_full'] as const;
 
 /** One of the task types whose history may declare tools. */
 export type TaskTypeNameAcceptingTools = typeof taskTypeNamesAcceptingTools[number];

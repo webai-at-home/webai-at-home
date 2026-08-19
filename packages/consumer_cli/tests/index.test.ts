@@ -4,7 +4,7 @@ import Os from 'node:os';
 import Path from 'node:path';
 import Test from 'node:test';
 import { ConsumerClient, type TaskSocket } from '../src/gateway_connection/consumer_client.js';
-import { TaskInputFactory, taskTypeNames, taskTypeNamesAcceptingHistory } from '../src/libs/task_input_factory.js';
+import { TaskInputFactory, taskTypeNames, taskTypeNamesAcceptingHistory, taskTypeNamesAcceptingTools } from '../src/libs/task_input_factory.js';
 import { DeviceAvailability } from '../src/cluster_capacity/device_availability.js';
 import { CapacityCalculator } from '../src/cluster_capacity/capacity_calculator.js';
 import { ClusterCapacityReader } from '../src/cluster_capacity/cluster_capacity_reader.js';
@@ -76,6 +76,26 @@ Test('accepts a whole history for the three task types whose worker can hand one
 	Assert.throws(() => TaskInputFactory.createTaskInput('llm_gemma_nano_chrome_full', history), /takes a single prompt, not a whole history/);
 	Assert.throws(() => TaskInputFactory.createTaskInput('llm_qwen3_0_6b_sharded', history), /takes a single prompt, not a whole history/);
 	Assert.throws(() => TaskInputFactory.createTaskInput('dev_formula', history), /takes a single prompt, not a whole history/);
+});
+
+Test('accepts tool declarations only for the task types both of whose workers were proved to read a tool call', () => {
+	// This list is a promise of the task type, not of one worker. A task may be assigned to a worker
+	// browser tab or to the native worker, the scheduler chooses, and a task type that promised what
+	// only one of them could keep would answer some requests as though no tool had been declared.
+	Assert.deepEqual(taskTypeNamesAcceptingTools, ['llm_qwen3_5_0_8b_full', 'llm_gemma_4_e2b_full']);
+	Assert.equal(TaskInputFactory.acceptsTools('llm_qwen3_5_0_8b_full'), true);
+	Assert.equal(TaskInputFactory.acceptsTools('llm_gemma_4_e2b_full'), true);
+	// Accepting a whole history and being able to do anything with a tool declared in it are two
+	// different abilities, and this task type has the first without the second: neither of its two
+	// workers reads a tool call, so a declaration would be accepted and dropped.
+	Assert.equal(TaskInputFactory.acceptsTools('llm_llama3_2_1b_full'), false);
+	Assert.equal(TaskInputFactory.acceptsTools('llm_qwen3_0_6b_sharded'), false);
+	Assert.equal(TaskInputFactory.acceptsTools('llm_gemma_nano_chrome_full'), false);
+	Assert.equal(TaskInputFactory.acceptsTools('dev_formula'), false);
+	// Every task type that accepts tools accepts a history, because a tool is declared on one.
+	for (const taskTypeName of taskTypeNamesAcceptingTools) {
+		Assert.equal(TaskInputFactory.acceptsHistory(taskTypeName), true);
+	}
 });
 
 Test('carries the generation settings a consumer asked for, and refuses one the task type cannot honour', () => {

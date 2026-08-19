@@ -212,10 +212,11 @@ type TaskGenerationState = {
  *   stops by itself.
  *
  * A history carrying a finished tool round trip renders back, since milestone 3 of the same issue —
- * see {@link Gemma4E2bHistoryMessages.of}, which is where the identifier this template
- * needs and the protocol does not carry is minted. Until milestone 5,
- * `task_type_llm_gemma_4_e2b_full` still refuses a request that declares a tool:
- * `taskTypeNamesAcceptingTools` in `packages/consumer_cli` is the gate, and that is where it opens.
+ * see {@link Gemma4E2bHistoryMessages.of}, which is where the identifier this template needs and the
+ * protocol does not carry is minted. `task_type_llm_gemma_4_e2b_full` accepts a request that
+ * declares a tool since milestone 5, which added it to `taskTypeNamesAcceptingTools` in
+ * `packages/consumer_cli` — a promise of the task type, kept by this worker and by the native one
+ * alike, so neither may stop keeping it on its own.
  *
  * The model is loaded once per page and shared by every task this browser runs. Only the generation
  * in progress is kept per task.
