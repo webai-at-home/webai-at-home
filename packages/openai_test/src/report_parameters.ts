@@ -36,6 +36,8 @@ export type ConformanceParameterSource = {
 	readonly profile: string;
 	/** How many times a tool call or generation control probe repeated its prompt, still as text. */
 	readonly repeats: string;
+	/** Whether the probes let the model think before it answered, still as text. */
+	readonly thinking: string;
 	/** The base URL of the endpoint reached. */
 	readonly base_url: string;
 	/** The bearer token sent to the endpoint, never written into a report as it stands. */
@@ -127,6 +129,7 @@ export class ReportParameters {
 			{ name: '--group', value: source.group },
 			{ name: '--test', value: source.test === undefined ? undefined : source.test.join(' ') },
 			{ name: '--repeats', value: source.repeats },
+			{ name: '--thinking', value: source.thinking },
 			{ name: '--output', value: source.output },
 			{ name: '--verbose', value: source.verbose === true ? 'true' : undefined },
 			{ name: '--ci', value: source.ci === true ? 'true' : undefined },

@@ -5,12 +5,15 @@ import type OpenAI from 'openai';
 import { CompletionSender } from '../clients/completion_sender.js';
 import type {
 	ChatCompletionToolCall,
+	GenerationControls,
 	StreamSetting,
+	ThinkingSetting,
 	ToolCallAbility,
 	ToolCallOutcome,
 	ToolChoice,
 	ToolDeclaration,
 } from '../completion_types.js';
+import type { AnswerLengthCap } from './answer_length_cap.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -25,10 +28,12 @@ import type {
 //	and never calls a tool looks exactly like an endpoint that supports tool calling, until a call
 //	is asked for and counted.
 //
-//	No probe here sends a generation control. This project's own `consumer_openai` server refuses a
-//	request asking a model for a control it cannot honour, so a `temperature: 0` added for
-//	determinism would turn every probe against the cluster into a refusal about temperature, which
-//	says nothing whatever about tool calls.
+//	The only generation control a probe here sends is the output budget of `AnswerLengthCap`, and it
+//	sends that one only after a request carrying it has come back with text. This project's own
+//	`consumer_openai` server refuses a request asking a model for a control it cannot honour, so a
+//	`temperature: 0` added for determinism would turn every probe against the cluster into a refusal
+//	about temperature, which says nothing whatever about tool calls. An unproved budget would do the
+//	same, which is why the budget is proved before it is used and dropped when it cannot be.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -60,6 +65,20 @@ export type ToolCallProbeOptions = {
 	 * afresh each time, which is why `_probeReadsAToolResultBack` repeats its prompt too.
 	 */
 	readonly repeats: number;
+	/**
+	 * Whether to let the model think before it answers. Left out to leave the decision to the
+	 * endpoint's own default, which is what every run sent before `conformance` took a
+	 * `--thinking` option.
+	 */
+	readonly thinkingSetting?: ThinkingSetting | undefined;
+	/**
+	 * The output budget every probe request carries, when the endpoint has proved it honours one.
+	 *
+	 * Every one of the six probes carries it, because the longest answer any of them reads is one
+	 * tool call naming a city and a unit, or one sentence stating a temperature, and the budget is
+	 * far larger than either. Left out to send every request with no budget at all.
+	 */
+	readonly answerLengthCap?: AnswerLengthCap | undefined;
 };
 
 /** One answer, or the failure that came instead of it. */
@@ -573,6 +592,8 @@ export class ToolCallProber {
 				modelId: options.modelId,
 				messages,
 				streamSetting: options.streamSetting,
+				thinkingSetting: options.thinkingSetting,
+				controls: await ToolCallProber._budgetOf(options),
 				tools,
 				toolChoice,
 			});
@@ -594,6 +615,21 @@ export class ToolCallProber {
 				failureParam: CompletionSender.failureParam(error),
 			};
 		}
+	}
+
+	/**
+	 * Reports the output budget every probe request adds to its controls.
+	 *
+	 * @param options The client, the model identifier, the stream setting, and the answer length cap
+	 * when this run has one.
+	 * @returns The budget to send as the request's controls, empty when this run has no cap or when
+	 * the endpoint did not answer a budgeted request with text.
+	 */
+	private static async _budgetOf(options: ToolCallProbeOptions): Promise<GenerationControls> {
+		if (options.answerLengthCap === undefined) {
+			return {};
+		}
+		return await options.answerLengthCap.controls();
 	}
 
 	/**

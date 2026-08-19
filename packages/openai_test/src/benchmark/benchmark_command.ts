@@ -1,6 +1,6 @@
 // local imports
 import { RawHttpClient } from '../clients/raw_http_client.js';
-import { reportFormats, thinkingSettings, type ThinkingSetting } from '../completion_types.js';
+import { reportFormats } from '../completion_types.js';
 import { EndpointReachability } from '../endpoint_reachability.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportParameters } from '../report_parameters.js';
@@ -86,7 +86,7 @@ export class BenchmarkCommand {
 			prompt: rawOptions.prompt,
 			runs: SharedOptions.positiveInteger(rawOptions.runs, '--runs'),
 			warmupRuns: SharedOptions.positiveInteger(rawOptions.warmup_runs, '--warmup_runs', true),
-			thinkingSetting: BenchmarkCommand._resolveThinkingSetting(rawOptions.thinking),
+			thinkingSetting: SharedOptions.readThinkingSetting(rawOptions.thinking),
 			...(rawOptions.verbose === true ? { listener: BenchmarkCommand._buildProgressListener() } : {}),
 		});
 		const markdownOptions: BenchmarkMarkdownOptions = {
@@ -102,21 +102,6 @@ export class BenchmarkCommand {
 	//	Private Helpers
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
-
-	/**
-	 * Reads what `--thinking` was given.
-	 *
-	 * @param thinking The option's value, exactly as it was typed.
-	 * @returns The setting it names.
-	 * @throws {Error} If it names neither `on` nor `off`.
-	 */
-	private static _resolveThinkingSetting(thinking: string): ThinkingSetting {
-		const wanted = thinking.trim().toLowerCase();
-		if ((thinkingSettings as readonly string[]).includes(wanted) === false) {
-			throw new Error(`--thinking must be one of ${thinkingSettings.join(', ')}, got "${thinking}"`);
-		}
-		return wanted as ThinkingSetting;
-	}
 
 	/**
 	 * Builds the listener that prints each request as it is sent and as it comes back, so that a

@@ -3,7 +3,8 @@ import type OpenAI from 'openai';
 
 // local imports
 import { CompletionSender } from '../clients/completion_sender.js';
-import type { StreamSetting, GenerationControlField, GenerationControlOutcome, GenerationControls } from '../completion_types.js';
+import type { StreamSetting, ThinkingSetting, GenerationControlField, GenerationControlOutcome, GenerationControls } from '../completion_types.js';
+import type { AnswerLengthCap } from './answer_length_cap.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -42,6 +43,23 @@ export type GenerationControlProbeOptions = {
 	 * three ([issue #208](https://github.com/webai-at-home/webai-at-home/issues/208)).
 	 */
 	readonly repeats: number;
+	/**
+	 * Whether to let the model think before it answers. Left out to leave the decision to the
+	 * endpoint's own default, which is what every run sent before `conformance` took a
+	 * `--thinking` option.
+	 */
+	readonly thinkingSetting?: ThinkingSetting | undefined;
+	/**
+	 * The output budget the three probes that compare whole answers carry, when the endpoint has
+	 * proved it honours one.
+	 *
+	 * The probes measuring `max_completion_tokens` and `stop` never carry it, since a budget is the
+	 * very thing one of them measures and a budget could cut an answer short before the other's stop
+	 * sequence was ever written. Neither does the request that asks about one control on its own,
+	 * which must name that control and nothing else. Left out to send every request with no budget
+	 * at all.
+	 */
+	readonly answerLengthCap?: AnswerLengthCap | undefined;
 };
 
 /** One answer, or the failure that came instead of it. */
@@ -189,12 +207,13 @@ export class GenerationControlProber {
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeTemperature(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
-		const cold = await GenerationControlProber._askRepeatedly(options, { temperature: 0 });
+		const budget = await GenerationControlProber._budgetOf(options);
+		const cold = await GenerationControlProber._askRepeatedly(options, { ...budget, temperature: 0 });
 		const failure = GenerationControlProber._failureOf(options, 'temperature', cold);
 		if (failure !== undefined) {
 			return failure;
 		}
-		const hot = await GenerationControlProber._askRepeatedly(options, { temperature: highTemperature });
+		const hot = await GenerationControlProber._askRepeatedly(options, { ...budget, temperature: highTemperature });
 		const hotFailure = GenerationControlProber._failureOf(options, 'temperature', hot, cold);
 		if (hotFailure !== undefined) {
 			return hotFailure;
@@ -227,7 +246,8 @@ export class GenerationControlProber {
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeTopP(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
-		const narrowed = await GenerationControlProber._askRepeatedly(options, { temperature: highTemperature, top_p: 0.01 });
+		const budget = await GenerationControlProber._budgetOf(options);
+		const narrowed = await GenerationControlProber._askRepeatedly(options, { ...budget, temperature: highTemperature, top_p: 0.01 });
 		const failure = GenerationControlProber._failureOf(options, 'top_p', narrowed);
 		if (failure !== undefined) {
 			return failure;
@@ -350,13 +370,14 @@ export class GenerationControlProber {
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeSeed(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
-		const first = await GenerationControlProber._ask(options, { temperature: highTemperature, seed: 42 }, prompts.openEnded);
+		const budget = await GenerationControlProber._budgetOf(options);
+		const first = await GenerationControlProber._ask(options, { ...budget, temperature: highTemperature, seed: 42 }, prompts.openEnded);
 		const failure = GenerationControlProber._failureOf(options, 'seed', [first]);
 		if (failure !== undefined) {
 			return failure;
 		}
-		const second = await GenerationControlProber._ask(options, { temperature: highTemperature, seed: 42 }, prompts.openEnded);
-		const other = await GenerationControlProber._ask(options, { temperature: highTemperature, seed: 43 }, prompts.openEnded);
+		const second = await GenerationControlProber._ask(options, { ...budget, temperature: highTemperature, seed: 42 }, prompts.openEnded);
+		const other = await GenerationControlProber._ask(options, { ...budget, temperature: highTemperature, seed: 43 }, prompts.openEnded);
 		const laterFailure = GenerationControlProber._failureOf(options, 'seed', [second, other], [first]);
 		if (laterFailure !== undefined) {
 			return laterFailure;
@@ -400,6 +421,7 @@ export class GenerationControlProber {
 					},
 				],
 				streamSetting: options.streamSetting,
+				thinkingSetting: options.thinkingSetting,
 				includeUsage: true,
 				controls,
 			});
@@ -421,6 +443,21 @@ export class GenerationControlProber {
 				failureCode: CompletionSender.failureCode(error),
 			};
 		}
+	}
+
+	/**
+	 * Reports the output budget the probes that compare whole answers add to their requests.
+	 *
+	 * @param options The client, the model identifier, the stream setting, and the answer length cap
+	 * when this run has one.
+	 * @returns The budget to spread into the controls, empty when this run has no cap or when the
+	 * endpoint did not answer a budgeted request with text.
+	 */
+	private static async _budgetOf(options: GenerationControlProbeOptions): Promise<GenerationControls> {
+		if (options.answerLengthCap === undefined) {
+			return {};
+		}
+		return await options.answerLengthCap.controls();
 	}
 
 	/**

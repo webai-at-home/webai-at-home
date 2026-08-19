@@ -1,11 +1,12 @@
 // local imports
 import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
-import { reportFormats, type StreamSetting, type CompletionTarget } from '../completion_types.js';
+import { reportFormats, type StreamSetting, type ThinkingSetting, type CompletionTarget } from '../completion_types.js';
 import { EndpointReachability } from '../endpoint_reachability.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportWriter } from '../report_writer.js';
 import { SharedOptions, type RawSharedOptions } from '../shared_options.js';
+import { AnswerLengthCap } from '../probers/answer_length_cap.js';
 import { GenerationControlProbeCache } from './probes/generation_control_probe_cache.js';
 import { ToolCallProbeCache } from './probes/tool_call_probe_cache.js';
 import { agentProfile } from './profiles/agent.js';
@@ -78,6 +79,8 @@ export type RawConformanceOptions = RawSharedOptions & {
 	profile: string;
 	/** How many times a tool call or generation control probe repeats its prompt, still as text. */
 	repeats: string;
+	/** The value `--thinking` was given, still unchecked against `thinkingSettings`. */
+	thinking: string;
 	/** Run only the tests of this group, when given. */
 	group?: string;
 	/** Run only the tests whose identifier is one of these, when given. */
@@ -134,12 +137,14 @@ export class ConformanceCommand {
 		const tests = ConformanceCommand._selectTests(profile, rawOptions);
 		const repeats = SharedOptions.positiveInteger(rawOptions.repeats, '--repeats');
 		const streamSettings = SharedOptions.resolveStreamSettings(rawOptions);
+		const thinkingSetting = SharedOptions.readThinkingSetting(rawOptions.thinking);
 
 		const runs = await ConformanceCommand._runModel(
 			tests,
 			SharedOptions.readOneModelId(rawOptions.model, 'conformance'),
 			streamSettings,
 			repeats,
+			thinkingSetting,
 			target,
 			ConformanceCommand._isProgressWanted(rawOptions),
 		);
@@ -167,6 +172,7 @@ export class ConformanceCommand {
 	 * @param modelId The one model identifier to run them against.
 	 * @param streamSettings The stream settings to send the probes in, in order.
 	 * @param repeats How many times a test comparing repeated answers sends its prompt.
+	 * @param thinkingSetting Whether the probes let the model think before it answers.
 	 * @param target The endpoint to send every request to.
 	 * @param isProgressWanted Whether each test is printed as it starts and as it finishes.
 	 * @returns One run for the tests no stream setting reaches, when there are any, followed by one run per
@@ -178,18 +184,27 @@ export class ConformanceCommand {
 		modelId: string,
 		streamSettings: readonly StreamSetting[],
 		repeats: number,
+		thinkingSetting: ThinkingSetting,
 		target: CompletionTarget,
 		isProgressWanted: boolean,
 	): Promise<ConformanceRun[]> {
 		const buildContext = (streamSetting: StreamSetting): TestContext => {
 			const openaiPackageClient = new OpenaiPackageClient(target);
+			// One cap for both probers of one stream setting, so the question of whether this
+			// endpoint answers a budgeted request is asked once per run rather than once per prober.
+			const answerLengthCap = new AnswerLengthCap({
+				client: openaiPackageClient.client,
+				modelId,
+				streamSetting,
+				thinkingSetting,
+			});
 			return {
 				rawHttpClient: new RawHttpClient(target),
 				openaiPackageClient,
 				modelId,
 				repeats,
-				toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, modelId, repeats, streamSetting),
-				generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, modelId, repeats, streamSetting),
+				toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, modelId, repeats, streamSetting, thinkingSetting, answerLengthCap),
+				generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, modelId, repeats, streamSetting, thinkingSetting, answerLengthCap),
 			};
 		};
 

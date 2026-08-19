@@ -2,7 +2,7 @@
 import type { Command } from 'commander';
 
 // local imports
-import { streamSettings, reportFormats, type StreamSetting, type CompletionTarget } from './completion_types.js';
+import { streamSettings, thinkingSettings, reportFormats, type StreamSetting, type ThinkingSetting, type CompletionTarget } from './completion_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,6 +83,39 @@ export class SharedOptions {
 			'--stream <on|off>',
 			'measure with streaming on only, or with streaming off only; both when this option is left out',
 		);
+	}
+
+	/**
+	 * Adds `--thinking` to one subcommand.
+	 *
+	 * `chat` does not accept it, because a person reading an answer in a terminal is reading what
+	 * the endpoint does by default, and a session that quietly turned thinking off would show them
+	 * something other than that.
+	 *
+	 * @param command The subcommand to add the option to.
+	 * @returns The same subcommand, so the call can be chained.
+	 */
+	static addThinkingOption(command: Command): Command {
+		return command.option(
+			'--thinking <on|off>',
+			'off sends reasoning_effort none, so a thinking model answers straight away; on leaves the decision to the endpoint',
+			'off',
+		);
+	}
+
+	/**
+	 * Reads what `--thinking` was given.
+	 *
+	 * @param thinking The option's value, exactly as it was typed.
+	 * @returns The setting it names.
+	 * @throws {Error} If it names neither `on` nor `off`.
+	 */
+	static readThinkingSetting(thinking: string): ThinkingSetting {
+		const wanted = thinking.trim().toLowerCase();
+		if ((thinkingSettings as readonly string[]).includes(wanted) === false) {
+			throw new Error(`--thinking must be one of ${thinkingSettings.join(', ')}, got "${thinking}"`);
+		}
+		return wanted as ThinkingSetting;
 	}
 
 	/**

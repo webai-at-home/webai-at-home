@@ -16,6 +16,7 @@ Runs each prober of `src/probers/` exactly once per run, and translates that pro
 - `ToolCallProber` and `GenerationControlProber` live in `src/probers/` and are read from here, never reimplemented here; see decision two of [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182).
 - A cache runs its prober once per run. `probeAll` sends several requests per ability, so a test calling it directly would multiply the whole run's cost by the number of tests in its group. A second tools test therefore sends no further request at all.
 - A cache is built with the stream setting its prober sends every request in, so one run can measure `--stream off` and `--stream on` separately rather than assuming the two behave alike.
+- A cache is built with the thinking setting `--thinking` asked for, and with the one `AnswerLengthCap` both caches of a stream setting share, so the question of whether the endpoint carries an output budget is asked once per run rather than once per prober.
 - `GenerationControlVerdict` reads `not_honoured` as `FAIL` where `ToolCallVerdict` reads `unsupported` as `WARN`. The two look alike and are not, and neither reading may be copied onto the other.
 
 ## Background

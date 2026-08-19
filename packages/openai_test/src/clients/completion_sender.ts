@@ -46,7 +46,7 @@ export type SendCompletionOptions = {
 	 * Whether to let the model think before it answers. Left out by every caller other than
 	 * `benchmark`, so `conformance` and `chat` keep sending the exact request they always have.
 	 */
-	readonly thinkingSetting?: ThinkingSetting;
+	readonly thinkingSetting?: ThinkingSetting | undefined;
 	/**
 	 * Called with each piece of the answer as it arrives, so a subcommand that shows the answer
 	 * to a person can write it out while it is being produced. Left out by the benchmark, which

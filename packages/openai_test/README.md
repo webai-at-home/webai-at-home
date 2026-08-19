@@ -43,6 +43,7 @@ All three subcommands work with one model. `conformance` and `benchmark` both ta
 - `-g/--group <name>` and `-t/--test <id...>` — run part of a profile.
 - `--stream <on|off>` — whether the tool call and generation control probes ask for the answer in pieces or in one response. Left out, both are measured, and the report says which row is which.
 - `-r/--repeats <count>` — how many times a test that samples the model repeats before deciding. Defaults to `3`.
+- `--thinking <on|off>` — whether the model may think before it answers the tool call and generation control probes. Defaults to `off`.
 - `-v/--verbose` — print each test as it starts and as it finishes, on standard error, and print the detail of every test rather than only the ones that did not pass.
 - `--ci` — print none of those lines, since a continuous integration log reads the report rather than the run.
 
@@ -52,6 +53,10 @@ All three subcommands work with one model. `conformance` and `benchmark` both ta
 | `FAIL` | The endpoint claims to support this and behaves incorrectly. |
 | `SKIP` | The endpoint said plainly that it does not support this. Left out of the compatibility percentage, because nothing was measured. |
 | `WARN` | Correct, but in a way that may still break a client — a stream that arrives in one piece, or JSON wrapped in a code fence. |
+
+`--thinking` and `--stream` both reach the tool call and generation control probes and nothing else, because every other test builds its own request with its own fixed shape. `--thinking off` sends `reasoning_effort: "none"` and is the default: measured against `google/gemma-4-e2b` on LM Studio 0.4.20, the full profile took 230 seconds with the model thinking and 66 seconds without, and `parameters.max_completion_tokens` and `parameters.stop` went from `FAIL` to `PASS`, because a thinking model spent an eight-token output budget on reasoning and answered with no text at all.
+
+Those probe requests also carry an output budget of 128 tokens, which bounds a model that answers a one-sentence question with six paragraphs. The budget is sent only after one request carrying it has come back with text, and never on a request whose verdict a budget could change: the `max_completion_tokens` probe, the `stop` probe, and the request that asks about one control on its own.
 
 One run is one report, however many stream settings the model was measured with: the runs are merged back into one list of records before any format sees them.
 

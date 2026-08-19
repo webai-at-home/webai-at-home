@@ -69,6 +69,16 @@ Test('SharedOptions refuses a --stream value that is neither on nor off, rather 
 	Assert.throws(() => SharedOptions.resolveStreamSettings(sharedOptionsWithStream('')), /--stream must be one of off, on/);
 });
 
+Test('SharedOptions reads --thinking for whichever subcommand declared it', () => {
+	Assert.equal(SharedOptions.readThinkingSetting('off'), 'off');
+	Assert.equal(SharedOptions.readThinkingSetting('on'), 'on');
+	Assert.equal(SharedOptions.readThinkingSetting(' ON '), 'on');
+});
+
+Test('SharedOptions refuses a --thinking value that is neither on nor off', () => {
+	Assert.throws(() => SharedOptions.readThinkingSetting('none'), /--thinking must be one of off, on, got "none"/);
+});
+
 ///////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////

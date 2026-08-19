@@ -9,6 +9,7 @@ import Test from 'node:test';
 import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
 import type { StreamSetting } from '../src/completion_types.js';
 import { RawHttpClient } from '../src/clients/raw_http_client.js';
+import { AnswerLengthCap } from '../src/probers/answer_length_cap.js';
 import { GenerationControlProbeCache } from '../src/conformance/probes/generation_control_probe_cache.js';
 import { GenerationControlVerdict } from '../src/conformance/probes/generation_control_verdict.js';
 import { JsonContentExtractor } from '../src/readers/json_content_extractor.js';
@@ -71,13 +72,19 @@ class TestFixtures {
 		}
 		const target = { baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: 'test-key', timeoutMs: 2_000 };
 		const openaiPackageClient = new OpenaiPackageClient(target);
+		const answerLengthCap = new AnswerLengthCap({
+			client: openaiPackageClient.client,
+			modelId: TestFixtures.modelId,
+			streamSetting: 'off',
+			thinkingSetting: 'off',
+		});
 		const context: TestContext = {
 			rawHttpClient: new RawHttpClient(target),
 			openaiPackageClient,
 			modelId: TestFixtures.modelId,
 			repeats: 1,
-			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
-			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
+			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off', 'off', answerLengthCap),
+			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off', 'off', answerLengthCap),
 		};
 		return {
 			context,
@@ -774,13 +781,19 @@ void Test('sdk.node.tools skips, rather than failing, when the endpoint refuses 
 void Test('Runner turns a request that never reaches a server into a FAIL result, not a thrown error', async () => {
 	const target = { baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'test-key', timeoutMs: 500 };
 	const openaiPackageClient = new OpenaiPackageClient(target);
+	const answerLengthCap = new AnswerLengthCap({
+		client: openaiPackageClient.client,
+		modelId: TestFixtures.modelId,
+		streamSetting: 'off',
+		thinkingSetting: 'off',
+	});
 	const context: TestContext = {
 		rawHttpClient: new RawHttpClient(target),
 		openaiPackageClient,
 		modelId: TestFixtures.modelId,
 		repeats: 1,
-		toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
-		generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
+		toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off', 'off', answerLengthCap),
+		generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off', 'off', answerLengthCap),
 	};
 	const records = await Runner.run([chatBasicTest], context);
 	Assert.equal(records.length, 1);
@@ -1010,6 +1023,7 @@ void Test('the report parameters list every option including the defaults, and n
 		model: 'a-model',
 		profile: 'full',
 		repeats: '3',
+		thinking: 'off',
 		base_url: 'https://api.openai.test/v1',
 		api_key: 'sk-a-real-secret-key',
 		timeout_ms: '600000',
@@ -1031,6 +1045,7 @@ void Test('the report parameters show the placeholder bearer token as it stands,
 		model: 'a-model',
 		profile: 'core',
 		repeats: '3',
+		thinking: 'off',
 		base_url: 'http://localhost:1234/v1',
 		api_key: placeholderApiKey,
 		timeout_ms: '600000',

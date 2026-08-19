@@ -66,6 +66,7 @@ export class Cli {
 			.option('--ci', 'exit 1 when any test failed, for a continuous integration run');
 		SharedOptions.addFormatOption(conformance);
 		SharedOptions.addStreamOption(conformance);
+		SharedOptions.addThinkingOption(conformance);
 		SharedOptions.addEndpointOptions(conformance);
 		conformance.action(async (rawOptions: RawConformanceOptions) => {
 			await ConformanceCommand.run(rawOptions, args, invokedName);
@@ -82,10 +83,10 @@ export class Cli {
 			.option('-p, --prompt <text>', 'the one prompt sent to the endpoint', BenchmarkCommand.defaultPrompt)
 			.option('-r, --runs <number>', 'measured requests per model', '1')
 			.option('-w, --warmup_runs <number>', 'unreported warm-up requests per model', '1')
-			.option('--thinking <on|off>', 'off sends reasoning_effort none, so a thinking model answers straight away; on leaves the decision to the endpoint', 'off')
 			.option('-o, --output <file>', 'write the report to this file rather than to standard output')
 			.option('-v, --verbose', 'print each warm-up and measured request as it is sent, and what it measured when it came back');
 		SharedOptions.addFormatOption(benchmark);
+		SharedOptions.addThinkingOption(benchmark);
 		SharedOptions.addEndpointOptions(benchmark);
 		benchmark.action(async (rawOptions: RawBenchmarkOptions) => {
 			await BenchmarkCommand.run(rawOptions, args, invokedName);

@@ -6,6 +6,7 @@ import Test from 'node:test';
 // local imports
 import { CompletionSender } from '../src/clients/completion_sender.js';
 import type { GenerationControlOutcome, ToolCallOutcome } from '../src/completion_types.js';
+import { AnswerLengthCap } from '../src/probers/answer_length_cap.js';
 import { GenerationControlProber } from '../src/probers/generation_control_prober.js';
 import { ToolCallProber } from '../src/probers/tool_call_prober.js';
 
@@ -210,6 +211,7 @@ Test('reports a control the endpoint says the model cannot honour as refused, no
 
 /** The parts of one chat completion request the tool call stand-in endpoints below read. */
 type ReceivedToolRequest = {
+	max_completion_tokens?: number;
 	tools?: { function: { name: string } }[];
 	tool_choice?: string;
 	stream?: boolean;
@@ -505,3 +507,138 @@ Test('reports an endpoint that will not take tool declarations at all as refused
 });
 
 
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	AnswerLengthCap
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** Every generation control a probe request may carry, so a test can read which ones one request carried. */
+const controlFieldNames = ['temperature', 'top_p', 'max_completion_tokens', 'max_tokens', 'stop', 'seed'] as const;
+
+/**
+ * Reads which generation controls one received request carried.
+ *
+ * @param body The request body received.
+ * @returns The control field names, sorted, so two requests carrying the same controls compare equal.
+ */
+function controlsOf(body: object): string[] {
+	return Object.keys(body).filter((key) => (controlFieldNames as readonly string[]).includes(key)).sort();
+}
+
+/**
+ * Builds the cap the tests below hand to a prober.
+ *
+ * @param baseUrl The stand-in endpoint's base URL.
+ * @param streamSetting Whether to ask for the answer as it is written, or in one piece.
+ * @returns The client to probe with, and the cap to probe with.
+ */
+function clientAndCap(baseUrl: string, streamSetting: 'off' | 'on'): { client: ReturnType<typeof CompletionSender.createClient>; answerLengthCap: AnswerLengthCap } {
+	const client = CompletionSender.createClient({
+		baseUrl: `${baseUrl}/v1`,
+		apiKey: 'insecure-benchmark-key',
+		timeoutMs: 5_000,
+	});
+	return {
+		client,
+		answerLengthCap: new AnswerLengthCap({
+			client,
+			modelId: 'stand-in',
+			streamSetting,
+			thinkingSetting: 'off',
+		}),
+	};
+}
+
+Test('the output budget reaches the probes that compare whole answers, and none of the requests a budget would change', async () => {
+	const bodies: ReceivedControls[] = [];
+	const server = await startCompletionServer((body) => {
+		bodies.push(body);
+		return honouringAnswer(body);
+	});
+	try {
+		const { client, answerLengthCap } = clientAndCap(server.baseUrl, 'off');
+		const outcomes = await GenerationControlProber.probeAll({
+			client,
+			modelId: 'stand-in',
+			streamSetting: 'off',
+			repeats: 3,
+			thinkingSetting: 'off',
+			answerLengthCap,
+		});
+		// A budget large enough to change nothing changes nothing: the same five verdicts as without one.
+		Assert.deepEqual(outcomes.map((outcome) => outcome.status), ['honoured', 'honoured', 'honoured', 'honoured', 'honoured']);
+
+		// Every control is still asked about on its own, with the budget kept out of that one request,
+		// so an endpoint refusing more than one control still names the control being probed.
+		for (const control of ['temperature', 'top_p', 'max_completion_tokens', 'stop', 'seed']) {
+			Assert.equal(bodies.some((body) => controlsOf(body).join() === control), true, `no request asked about ${control} on its own`);
+		}
+
+		// The stop sequence probe never carries a budget, which could cut the answer short before the
+		// stop sequence was ever written and report a stop sequence that was never honoured.
+		Assert.equal(bodies.some((body) => body.stop !== undefined && body.max_completion_tokens !== undefined), false);
+
+		// The three comparison probes carry it on every request: three at temperature 0, three at the
+		// high temperature, three narrowing top_p, and three seeded, after the one request that found
+		// out the endpoint carries a budget at all.
+		const capped = bodies.filter((body) => body.max_completion_tokens === AnswerLengthCap.tokenCount);
+		Assert.equal(capped.length, 1 + 12);
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('an endpoint that answers a budgeted request with no text is probed with no budget at all, and reaches the same verdicts', async () => {
+	const bodies: ReceivedControls[] = [];
+	// A thinking model spends the whole budget on reasoning and writes no answer, which is what
+	// `google/gemma-4-e2b` did on LM Studio 0.4.20 and what this endpoint reproduces.
+	const server = await startCompletionServer((body) => {
+		bodies.push(body);
+		if (body.max_completion_tokens === AnswerLengthCap.tokenCount) {
+			return { text: '', finishReason: 'length' };
+		}
+		return honouringAnswer(body);
+	});
+	try {
+		const { client, answerLengthCap } = clientAndCap(server.baseUrl, 'off');
+		const outcomes = await GenerationControlProber.probeAll({
+			client,
+			modelId: 'stand-in',
+			streamSetting: 'off',
+			repeats: 3,
+			thinkingSetting: 'off',
+			answerLengthCap,
+		});
+		Assert.deepEqual(outcomes.map((outcome) => outcome.status), ['honoured', 'honoured', 'honoured', 'honoured', 'honoured']);
+		// The one request carrying the budget is the one that found out it cannot be carried.
+		Assert.equal(bodies.filter((body) => body.max_completion_tokens === AnswerLengthCap.tokenCount).length, 1);
+	} finally {
+		await server.stop();
+	}
+});
+
+Test('every tool call probe request carries the output budget once the endpoint has answered a budgeted one', async () => {
+	const bodies: ReceivedToolRequest[] = [];
+	const server = await startToolCallServer((body) => {
+		bodies.push(body);
+		return callsToolsAnswer(body);
+	});
+	try {
+		const { client, answerLengthCap } = clientAndCap(server.baseUrl, 'off');
+		const outcomes = await ToolCallProber.probeAll({
+			client,
+			modelId: 'stand-in',
+			streamSetting: 'off',
+			repeats: 3,
+			thinkingSetting: 'off',
+			answerLengthCap,
+		});
+		Assert.deepEqual(new Set(outcomes.map((outcome) => outcome.status)), new Set(['supported']));
+		Assert.equal(bodies.length > 1, true);
+		Assert.equal(bodies.every((body) => body.max_completion_tokens === AnswerLengthCap.tokenCount), true);
+	} finally {
+		await server.stop();
+	}
+});
