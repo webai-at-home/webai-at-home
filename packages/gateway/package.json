@@ -14,7 +14,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "predev": "npm run build:dependencies",
     "dev": "tsx watch src/cli.ts --dev",
-    "test": "npx tsx --test tests/index.test.ts"
+    "test": "npm run typecheck && npx tsx --test tests/index.test.ts"
   },
   "dependencies": {
     "@huggingface/tokenizers": "^0.1.3",

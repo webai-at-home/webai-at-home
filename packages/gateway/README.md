@@ -7,8 +7,8 @@ connections, assigns pipeline stages, tracks task progress, persists task state
 when configured, and relays signalling messages. Its home page observes
 gateway activity without registering as a device. Built-in pipelines support
 the development formula, Qwen3-0.6B sharded inference, Chrome's Gemma Nano
-model, and complete Qwen3.5-0.8B and Llama 3.2 1B Instruct inference, each
-held on one worker.
+model, and complete Qwen3.5-0.8B, Llama 3.2 1B Instruct, and Gemma 4 E2B
+instruction-tuned inference, each held on one worker.
 
 ## Run
 
@@ -64,6 +64,7 @@ Each HTML page and its assets are stored in its own directory under `web/`. Brow
 - `/debug_iframe_llm_gemma_nano_chrome_full` — Gemma Nano debug page with one worker frame.
 - `/debug_iframe_llm_qwen3_5_0_8b_full` — Qwen3.5-0.8B full-model debug page with one worker frame.
 - `/debug_iframe_llm_llama3_2_1b_full` — Llama 3.2 1B Instruct full-model debug page with one worker frame.
+- `/debug_iframe_llm_gemma_4_e2b_full` — Gemma 4 E2B instruction-tuned full-model debug page with one worker frame. This stage needs a WebGPU adapter with `shader-f16` and about 3111 megabytes of free origin storage, and has no WebAssembly fallback, so it is the one stage `/debug_iframe_all_stages` deliberately leaves out.
 - `/health` — JSON health response with the current worker count.
 - `/diagnostics` — authenticated `POST` endpoint used by worker browsers to send diagnostic entries.
 - `/departure` — authenticated `POST` endpoint a worker browser page announces its own departure on while its tab is being closed.

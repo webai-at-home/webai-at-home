@@ -53,7 +53,7 @@ npm run dev --workspace @webai/consumer-cli -- submit --task_type dev_formula 5 
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-t, --task_type <type>` | — | Required. One of `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
+| `-t, --task_type <type>` | — | Required. One of `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, `llm_llama3_2_1b_full`, or `llm_gemma_4_e2b_full`. |
 | `-n, --consumer_name <name>` | `consumer` | Name registered with the gateway. |
 | `-s, --stream` | off | Ask a language-model task to return answer pieces while it runs. |
 | `--log-dir <path>` | `~/.webai-at-home/consumer_cli/logs` | Where this submission's message log is written. Never the directory the command was run from. |
@@ -67,6 +67,7 @@ Use `-t/--task_type` to choose the task type:
 - `llm_gemma_nano_chrome_full` takes free text, and is run by one worker browser tab using the Gemma Nano model built into Chrome.
 - `llm_qwen3_5_0_8b_full` takes free text, and is run by one worker browser tab that downloads and holds the complete Qwen3.5-0.8B model.
 - `llm_llama3_2_1b_full` takes free text or a whole history, and is run either by one worker browser tab that downloads and holds the complete Llama 3.2 1B Instruct model, or by a native worker that forwards the prompt to a local server already holding it.
+- `llm_gemma_4_e2b_full` takes free text or a whole history, and is run by one worker browser tab that downloads and holds the complete Gemma 4 E2B instruction-tuned model. That tab needs a WebGPU adapter carrying `shader-f16` and about 3111 megabytes of free origin storage, and has no WebAssembly fallback, so a tab without such an adapter does not offer the stage at all.
 
 ```sh
 npm run dev --workspace @webai/consumer-cli -- submit "hello there" --task_type llm_qwen3_0_6b_sharded
@@ -139,7 +140,7 @@ A run's stages can be spread across different workers, so capacity is set by whi
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `-t, --task_type <type>` | — | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, or `llm_llama3_2_1b_full`. |
+| `-t, --task_type <type>` | — | `dev_formula`, `llm_qwen3_0_6b_sharded`, `llm_gemma_nano_chrome_full`, `llm_qwen3_5_0_8b_full`, `llm_llama3_2_1b_full`, or `llm_gemma_4_e2b_full`. |
 | `-f, --format <format>` | `text` | `text`, `markdown`, or `json`. |
 | `--timeout <ms>` | `10000` | How long to wait for the central gateway to answer. |
 

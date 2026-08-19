@@ -21,21 +21,39 @@
 <body>
     <iframe class="home-frame" src="/monitor" title="WebAI gateway monitor page"></iframe>
 
-    <!-- No data-enabled-stages attribute is set, so this one worker browser frame offers every
-         stage whose computation it implements: the development formula stages, all three
-         Qwen3-0.6B shard stages, Chrome's built-in Gemma Nano language-model stage, the complete
-         Qwen3.5-0.8B language-model stage, and the complete Llama 3.2 1B Instruct language-model
-         stage. Offering the last two together means this one frame downloads both complete models
-         — about 1.65 gigabytes combined — and holds both in graphics memory at once once each has
-         run, so this page is a heavier way to exercise a worker browser than opening the two
-         single-stage debug pages separately. The allow="language-model" permission is what
-         lets the Gemma Nano stage run inside this frame at all; see debug_iframe_llm_gemma_nano_chrome_full/index.html.
-         The allow="screen-wake-lock" permission is what lets this frame's worker page hold the
-         screen wake lock instead of the browser refusing the request with a permissions policy
+    <!-- This one worker browser frame offers eight of the nine stages the gateway defines: the two
+         development formula stages, all three Qwen3-0.6B shard stages, Chrome's built-in Gemma Nano
+         language-model stage, the complete Qwen3.5-0.8B language-model stage, and the complete
+         Llama 3.2 1B Instruct language-model stage. Offering the last two together means this one
+         frame downloads both complete models — about 1.65 gigabytes combined — and holds both in
+         graphics memory at once once each has run, so this page is already a heavier way to
+         exercise a worker browser than opening the two single-stage debug pages separately.
+
+         stage_llm_gemma_4_e2b_full is the ninth stage and is deliberately left out, which is why
+         the eight are written out by hand instead of the attribute being omitted to offer
+         everything. The complete Gemma 4 E2B model is about 3111 megabytes on its own, so adding it
+         here would take this page to about 4.8 gigabytes of download and three complete models held
+         in graphics memory at once, and would make the page unusable on an ordinary machine for
+         every stage on it, not only for that one. Exercise that stage through
+         /debug_iframe_llm_gemma_4_e2b_full instead. This was decided in
+         https://github.com/webai-at-home/webai-at-home/issues/206.
+
+         Leaving the stage out has one cost worth knowing: this list no longer follows the gateway
+         on its own, so a stage added to the pipeline registry and not added here is not offered by
+         this page. That is the trade for the page staying usable.
+
+         The allow="language-model" permission is what lets the Gemma Nano stage run inside this
+         frame at all; see debug_iframe_llm_gemma_nano_chrome_full/index.html. The
+         allow="screen-wake-lock" permission is what lets this frame's worker page hold the screen
+         wake lock instead of the browser refusing the request with a permissions policy
          violation. -->
     <div class="worker-column">
         <iframe allow="language-model; screen-wake-lock" data-worker-name="worker-all-stages"
-            title="WebAI worker page offering every stage it can run"></iframe>
+            data-enabled-stages="stage_dev_formula_multiply stage_dev_formula_add
+                stage_llm_qwen3_0_6b_shard1of3 stage_llm_qwen3_0_6b_shard2of3
+                stage_llm_qwen3_0_6b_shard3of3 stage_llm_gemma_nano_chrome_full
+                stage_llm_qwen3_5_0_8b_full stage_llm_llama3_2_1b_full"
+            title="WebAI worker page offering every stage it can run except the complete Gemma 4 E2B model"></iframe>
     </div>
 
     <script type="module" src="/_shared/debug_iframe_worker_frames.ts"></script>

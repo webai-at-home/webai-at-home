@@ -404,7 +404,7 @@ It holds seven settings:
 
 Three counts of those settings are used below, and they are nested rather than in disagreement. There are **seven settings** in all. Six of them are **generation controls**: `isStreaming` is set aside, because it says how the answer is delivered rather than how it is generated. Five of those are **sampling controls**: `reasoningEffort` is set aside as well, because it budgets a model's thinking rather than steering the choice of the next token.
 
-Each of the six generation controls is carried exactly as the consumer asked for it and is never translated for the engine that will run the task. Which task type honours which control is written down once, in [`packages/protocol/src/task/generation_control_support.ts`](../packages/protocol/src/task/generation_control_support.ts), and what is written there is what a de-risk gate observed live rather than what an engine documents. `task_type_llm_qwen3_0_6b_sharded` honours all five of the sampling controls, because its sampler is written by hand over the logits; `task_type_llm_llama3_2_1b_full` honours `temperature`, `maximumOutputTokenCount`, and `stopSequences`, its `@huggingface/transformers` engine acting on neither `topP` nor a seed; `task_type_llm_qwen3_5_0_8b_full` honours those three and `reasoningEffort` besides, being the only task type whose model thinks before it answers on both of its workers; `task_type_llm_gemma_nano_chrome_full` honours none, being the one engine the gate could not reach. See [issue #180](https://github.com/webai-at-home/webai-at-home/issues/180), [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196), and [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
+Each of the six generation controls is carried exactly as the consumer asked for it and is never translated for the engine that will run the task. Which task type honours which control is written down once, in [`packages/protocol/src/task/generation_control_support.ts`](../packages/protocol/src/task/generation_control_support.ts), and what is written there is what a de-risk gate observed live rather than what an engine documents. `task_type_llm_qwen3_0_6b_sharded` honours all five of the sampling controls, because its sampler is written by hand over the logits; `task_type_llm_llama3_2_1b_full` honours `temperature`, `maximumOutputTokenCount`, and `stopSequences`, its `@huggingface/transformers` engine acting on neither `topP` nor a seed; `task_type_llm_qwen3_5_0_8b_full` honours those three and `reasoningEffort` besides, being the only task type whose model thinks before it answers on both of its workers; `task_type_llm_gemma_nano_chrome_full` honours none, being the one engine the gate could not reach; and `task_type_llm_gemma_4_e2b_full` honours none either, for a different reason — nothing about it has been measured yet, and the table holds only what a live run observed, so its row is empty until a gate widens it rather than being filled in from what `task_type_llm_qwen3_5_0_8b_full` does on the same library. See [issue #180](https://github.com/webai-at-home/webai-at-home/issues/180), [issue #196](https://github.com/webai-at-home/webai-at-home/issues/196), and [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
 
 The settings travel with the task input rather than beside it, so the gateway stores them once when the task is created and reads them off the stored task every time it places a stage. Every path that places a stage therefore sends the same settings without any of them having to pass the settings along: the first assignment, each round of a pipeline that repeats, a retry after a lease expires, and a task placed after waiting in the queue.
 
@@ -548,27 +548,30 @@ for the same reason: no run can arrive over a connection that is gone.
 
 ### The other complete-model flows
 
-Two further stages carry an answer the same way, in the same message shapes and
-under the same rules as the flow above, and neither needs a separate account
-here: `stage_llm_qwen3_5_0_8b_full`, which runs a model the worker browser tab
-downloads and holds itself, and `stage_llm_llama3_2_1b_full`, which either does
-the same or forwards the prompt to a language-model server running on the
-worker's own device, depending on which of the two kinds of worker this project
-can run it — a worker browser tab, or a native worker from
+Three further stages carry an answer the same way, in the same message shapes and
+under the same rules as the flow above, and none needs a separate account here:
+`stage_llm_qwen3_5_0_8b_full`, which runs a model the worker browser tab
+downloads and holds itself; `stage_llm_gemma_4_e2b_full`, which does the same
+with a far larger model and only on a WebGPU adapter carrying `shader-f16`,
+having no WebAssembly fallback at all; and `stage_llm_llama3_2_1b_full`, which
+either downloads and holds the model the same way or forwards the prompt to a
+language-model server running on the worker's own device, depending on which of
+the two kinds of worker this project can run it — a worker browser tab, or a
+native worker from
 [`packages/worker_openai`](../packages/worker_openai) — the gateway assigned it
 to.
 
-What differs between the three is only what holds the answer while it is being
+What differs between the four is only what holds the answer while it is being
 read. It is a browser-managed model session for the flow above, a loaded model in
-the tab's own memory for Qwen3.5-0.8B, and, for Llama 3.2 1B Instruct, a loaded
-model in the tab's own memory when a worker browser tab runs it or an open
-request to a local server when a native worker runs it instead. Each of these
-lives in the memory of the one worker producing it, which is why every one of
-these stages sets `prefersSameWorkerOnRetry`, and each is ended by a
+the tab's own memory for Qwen3.5-0.8B and for Gemma 4 E2B, and, for Llama 3.2 1B
+Instruct, a loaded model in the tab's own memory when a worker browser tab runs
+it or an open request to a local server when a native worker runs it instead.
+Each of these lives in the memory of the one worker producing it, which is why
+every one of these stages sets `prefersSameWorkerOnRetry`, and each is ended by a
 `stage.cancel`, by a failed stage, by the five-minute idle timeout, and by the
 connection to the gateway closing.
 
-`task_type_llm_llama3_2_3b_full` was a fourth such flow, forwarding the prompt
+`task_type_llm_llama3_2_3b_full` was a fifth such flow, forwarding the prompt
 to a local server the same way `stage_llm_llama3_2_1b_full` now can, until
 [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154) retired
 it.

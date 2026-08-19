@@ -51,11 +51,15 @@ export type GenerationControlName =
  *   not in it.
  * - `task_type_llm_gemma_4_e2b_full` honours none of the five, because nothing about it has been
  *   measured yet. It is entered empty on purpose: this table holds what a live run observed, and an
- *   unmeasured entry is the one thing it must never hold. Milestone 5 of
- *   [issue #211](https://github.com/webai-at-home/webai-at-home/issues/211) is where its controls
- *   are measured and this row is widened. Do not copy the `task_type_llm_qwen3_5_0_8b_full` row into
- *   it on the reasoning that both run on `@huggingface/transformers`: that would be a claim about
- *   the library standing in for a claim about the model, which is what the gate exists to stop.
+ *   unmeasured entry is the one thing it must never hold.
+ *   [Issue #211](https://github.com/webai-at-home/webai-at-home/issues/211) built and proved this
+ *   task type end to end but never measured its generation controls, and closed with this row still
+ *   empty, so widening it needs a live gate of its own against the worker browser path. Until that
+ *   gate runs, a consumer asking for any of the five is refused rather than answered as though it
+ *   had asked for nothing, which is the whole purpose of this table. Do not copy the
+ *   `task_type_llm_qwen3_5_0_8b_full` row into it on the reasoning that both run on
+ *   `@huggingface/transformers`: that would be a claim about the library standing in for a claim
+ *   about the model, which is what the gate exists to stop.
  * - `task_type_llm_qwen3_0_6b_sharded` honours all five, more than any other task type in this
  *   project, because its sampler is written by hand over the logits tensor rather than taken from
  *   a library: nothing there refuses a `topP`, and a seeded source of random numbers can be built

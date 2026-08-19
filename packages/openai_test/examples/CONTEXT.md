@@ -8,7 +8,8 @@ One short runnable program per task type and per calling style, each one showing
 
 - `list_models.ts`: the cheapest one, which reaches the server alone and needs neither a gateway nor a connected volunteer browser.
 - `chat_completion_dev_formula.ts`: the one to start with, because the development formula task type needs no model download.
-- `chat_completion_history_llm_qwen3_5_0_8b_full.ts`, `chat_completion_history_llm_llama3_2_1b_full.ts`: the two whose task type accepts a whole history rather than one prompt alone.
+- `chat_completion_history_llm_qwen3_5_0_8b_full.ts`, `chat_completion_history_llm_llama3_2_1b_full.ts`, `chat_completion_history_llm_gemma_4_e2b_full.ts`: the three whose task type accepts a whole history rather than one prompt alone.
+- `chat_completion_nostream_llm_gemma_4_e2b_full.ts`: the most demanding one, needing a WebGPU adapter with `shader-f16` and about 3111 megabytes of free origin storage, because its stage has no WebAssembly fallback.
 - Command to run one: `npm run example:chat_completion_dev_formula --workspace @webai/openai-test`
 
 ## Rules
