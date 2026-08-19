@@ -1,0 +1,14 @@
+target model: lmstudio
+codex version: codex-cli 0.145.0
+exit code: 0
+requests recorded: 6
+
+request 1 | /v1/responses | status 200 | 49788 bytes | ~12409 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 3 input items in 8747 characters | streamed: true | reported input tokens: 8630
+request 2 | /v1/responses | status 200 | 51361 bytes | ~12802 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 6 input items in 10320 characters | streamed: true | reported input tokens: 8966
+request 3 | /v1/responses | status 200 | 51979 bytes | ~12957 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 9 input items in 10938 characters | streamed: true | reported input tokens: 9090
+request 4 | /v1/responses | status 200 | 52559 bytes | ~13102 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 12 input items in 11518 characters | streamed: true | reported input tokens: 9208
+request 5 | /v1/responses | status 200 | 53200 bytes | ~13262 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 15 input items in 12159 characters | streamed: true | reported input tokens: 9335
+request 6 | /v1/responses | status 200 | 54088 bytes | ~13484 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 18 input items in 13047 characters | streamed: true | reported input tokens: 9514
+
+fields sent: client_metadata, include, input, instructions, model, parallel_tool_calls, prompt_cache_key, reasoning, store, stream, tool_choice, tools
+fields sent that are already recorded as failing: none

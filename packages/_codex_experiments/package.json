@@ -10,6 +10,10 @@
 		"exp_02_agent_loop_with_tool:lmstudio": "tsx src/exp_02_agent_loop_with_tool.ts lmstudio",
 		"exp_02_agent_loop_with_tool:ollama": "tsx src/exp_02_agent_loop_with_tool.ts ollama",
 		"exp_02_agent_loop_with_tool:webai_at_home": "tsx src/exp_02_agent_loop_with_tool.ts webai_at_home",
+		"exp_03_prompt_size_measure:lmstudio": "tsx src/exp_03_prompt_size_measure.ts lmstudio",
+		"exp_03_prompt_size_measure:ollama": "tsx src/exp_03_prompt_size_measure.ts ollama",
+		"exp_03_prompt_size_measure:webai_at_home": "tsx src/exp_03_prompt_size_measure.ts webai_at_home",
+		"ollama_context_ceiling_probe": "tsx src/ollama_context_ceiling_probe.ts",
 		"typecheck": "tsc -p tsconfig.json",
 		"test": "npm run typecheck"
 	},

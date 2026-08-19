@@ -6,3 +6,7 @@ codex_home/
 # One empty workspace per run of exp_02_agent_loop_with_tool, which is where the model writes the
 # file the task asks for. What the run produced is measured and recorded under data/ instead.
 workspaces/
+
+# The whole traffic recorded by the proxy of exp_03_prompt_size_measure. It runs to megabytes, so
+# what it answers is measured into data/ instead and only the measurements are committed.
+recordings/

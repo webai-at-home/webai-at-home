@@ -1,0 +1,50 @@
+{
+	"targetModelName": "ollama",
+	"codexVersion": "codex-cli 0.145.0",
+	"exitCode": 0,
+	"requests": [
+		{
+			"requestNumber": 1,
+			"path": "/v1/responses",
+			"bytes": 49764,
+			"characters": 49612,
+			"estimatedTokens": 12403,
+			"topLevelFields": [
+				"client_metadata",
+				"include",
+				"input",
+				"instructions",
+				"model",
+				"parallel_tool_calls",
+				"prompt_cache_key",
+				"reasoning",
+				"store",
+				"stream",
+				"tool_choice",
+				"tools"
+			],
+			"instructionsCharacters": 20751,
+			"toolCount": 10,
+			"toolsCharacters": 18587,
+			"inputItemCount": 3,
+			"inputCharacters": 8731,
+			"isStreamed": true,
+			"responseStatusCode": 200,
+			"reportedInputTokens": 2051
+		}
+	],
+	"allTopLevelFields": [
+		"client_metadata",
+		"include",
+		"input",
+		"instructions",
+		"model",
+		"parallel_tool_calls",
+		"prompt_cache_key",
+		"reasoning",
+		"store",
+		"stream",
+		"tool_choice",
+		"tools"
+	]
+}

@@ -92,7 +92,10 @@ export class CodexRun {
 	}
 
 	/**
-	 * Runs `codex exec` once against the generated `CODEX_HOME`, with the given arguments.
+	 * Runs `codex exec` once against the generated `CODEX_HOME`, with the given arguments, and blocks
+	 * this whole process until it is finished. Never use this while this process also has to answer
+	 * requests, such as when the recording proxy is listening: a blocked process answers nothing.
+	 * Use `executeWithoutBlocking` there.
 	 *
 	 * @param commandArguments The arguments given to `codex exec`, the prompt last.
 	 * @returns What the run produced, already timed.
@@ -116,6 +119,54 @@ export class CodexRun {
 			exitCode: codexRun.status ?? 1,
 			eventsText: codexRun.stdout ?? '',
 			standardErrorText: codexRun.stderr ?? '',
+			seconds: Math.round((finishedAt - startedAt) / 1000),
+		};
+	}
+
+	/**
+	 * Runs `codex exec` once against the generated `CODEX_HOME`, without blocking this process, so
+	 * that a server running here keeps answering while the Codex command-line program works. This is
+	 * what `exp_03_prompt_size_measure` uses, because its recording proxy listens in this very
+	 * process.
+	 *
+	 * @param commandArguments The arguments given to `codex exec`, the prompt last.
+	 * @returns What the run produced, already timed.
+	 */
+	static async executeWithoutBlocking(commandArguments: string[]): Promise<CodexRunResult> {
+		CodexRun.prepareCodexHome();
+
+		const startedAt = Date.now();
+		const codexProcess = ChildProcess.spawn('codex', ['exec', ...commandArguments], {
+			env: {
+				...process.env,
+				CODEX_HOME: CodexRun.codexHomeDirectory,
+			},
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+
+		const standardOutputChunks: Buffer[] = [];
+		const standardErrorChunks: Buffer[] = [];
+		codexProcess.stdout.on('data', (chunk: Buffer) => {
+			standardOutputChunks.push(chunk);
+		});
+		codexProcess.stderr.on('data', (chunk: Buffer) => {
+			standardErrorChunks.push(chunk);
+		});
+
+		const exitCode = await new Promise<number>((resolve, reject) => {
+			codexProcess.on('error', (error: Error) => {
+				reject(error);
+			});
+			codexProcess.on('close', (code: number | null) => {
+				resolve(code ?? 1);
+			});
+		});
+		const finishedAt = Date.now();
+
+		return {
+			exitCode: exitCode,
+			eventsText: Buffer.concat(standardOutputChunks).toString('utf8'),
+			standardErrorText: Buffer.concat(standardErrorChunks).toString('utf8'),
 			seconds: Math.round((finishedAt - startedAt) / 1000),
 		};
 	}

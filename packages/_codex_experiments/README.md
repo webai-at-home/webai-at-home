@@ -56,4 +56,30 @@ Four things are measured for every run: how many tool calls the model made, whet
 
 ## `exp_03_prompt_size_measure`
 
-Not started. It puts a recording proxy in front of the target model, measures the size of the prompt in tokens, and lists every request field the Codex command-line program sends. It also settles why Ollama reports the same input token count for every prompt.
+The same task again, with a recording proxy between the Codex command-line program and the target model, writing every request and every answer down.
+
+```bash
+npm run exp_03_prompt_size_measure:lmstudio --workspace @webai/codex-experiments
+```
+
+```bash
+npm run exp_03_prompt_size_measure:ollama --workspace @webai/codex-experiments
+```
+
+```bash
+npm run exp_03_prompt_size_measure:webai_at_home --workspace @webai/codex-experiments
+```
+
+The whole traffic goes to `recordings/<target model>/` and is not committed. What it answers is measured into `data/<target model>/exp_03_prompt_size_measure_measurements.json` and read in [`data/exp_03_prompt_size_measure_results.md`](data/exp_03_prompt_size_measure_results.md):
+
+- The first request of every run is about 49800 bytes: 20751 characters of standing instructions, 18587 characters of ten tool definitions, and the history. About 39000 characters of that are resent whole on every request.
+- Twelve fields go out and no others: `client_metadata`, `include`, `input`, `instructions`, `model`, `parallel_tool_calls`, `prompt_cache_key`, `reasoning`, `store`, `stream`, `tool_choice`, `tools`. None of the parameters recorded as failing in the conformance report is ever sent. Those twelve, on `POST /v1/responses`, are the whole specification the WebAI@Home gateway has to satisfy.
+- Ollama cuts the prompt at about 2048 tokens, which throws the ten tool definitions away, which is why its agent loop made no tool call.
+
+## `ollama_context_ceiling_probe`
+
+```bash
+npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments
+```
+
+Sends the real tools of the Codex command-line program to Ollama at three prompt sizes, and shows that the input token count it reports is a ceiling and not a count: 86 tokens for a small prompt with a tool call in the answer, then 2051 and no tool call for every larger one. Run `exp_03_prompt_size_measure:ollama` first, because the probe reads the real tools out of its recording.
