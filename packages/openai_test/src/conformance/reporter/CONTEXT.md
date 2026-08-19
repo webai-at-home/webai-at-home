@@ -7,7 +7,6 @@ One file per output format section 33 of issue #181 names with `-f/--format`, pl
 ## Key Exports & Entry Points
 
 - `report_summary.ts`: `ReportSummary`, the counts and the compatibility percentage every format shows.
-- `report_parameters.ts`: `ReportParameters`, which lists what a run was given and rebuilds its command line, both without the bearer token.
 - `terminal.ts`: `TerminalReporter`, the `text` format a person reads, including the feature matrix of section 31.
 - `json.ts`: `JsonReporter`, the `json` format another program reads.
 - `markdown.ts`: `MarkdownReporter`, the `markdown` format a report file holds.
@@ -23,7 +22,7 @@ One file per output format section 33 of issue #181 names with `-f/--format`, pl
 - No reporter counts verdicts itself; every one of them asks `ReportSummary`, so four formats of one run can never disagree about how many tests passed.
 - `SKIP` stays out of the compatibility percentage and `WARN` stays in it, because a skipped test measured nothing while a warned test measured something short of correct.
 - The compatibility percentage never replaces the per-test lines above it, per section 30 of issue #181.
-- The bearer token never reaches a reporter in readable form: `report_parameters.ts` replaces it first, because a markdown report is written to be published.
+- The bearer token never reaches a reporter in readable form: [`../../report_parameters.ts`](../../report_parameters.ts) replaces it first, because a markdown report is written to be published.
 - `markdown.ts` puts the summary above the group tables, and stamps every report with a generation date, so a report file found later says how old it is.
 - A format that builds a document with reserved characters escapes them itself — the vertical bar and the newline for `markdown.ts`, the five XML characters for `junit.ts` — because a test detail quotes whatever the endpoint sent back.
 - `junit.ts` writes `WARN` as a passing case carrying a note, never as `<failure>`, so a continuous integration run does not go red on a result this package deliberately does not call a failure.

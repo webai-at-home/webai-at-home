@@ -293,6 +293,19 @@ export type BenchmarkReport = {
 	readonly failures?: readonly BenchmarkFailure[];
 };
 
+/**
+ * One command line parameter a run was given, as it is written into the report.
+ *
+ * Shared by both reporting subcommands, because a `conformance` report and a `benchmark` report
+ * name what they were given in the same two-column table.
+ */
+export type ReportParameter = {
+	/** The option name, spelled the way the command line spells it, such as `--profile`. */
+	readonly name: string;
+	/** The value that option ended up with, after commander applied its default. */
+	readonly value: string;
+};
+
 /** The ways a report can be written out. */
 export type ReportFormat = 'text' | 'markdown' | 'json' | 'junit';
 

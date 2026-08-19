@@ -7,6 +7,7 @@ import { BenchmarkRunner, type BenchmarkOptions } from '../src/benchmark/benchma
 import { ReportRenderer } from '../src/benchmark/report_renderer.js';
 import { StatisticsCalculator } from '../src/benchmark/statistics_calculator.js';
 import { reportFormats, type CompletionResult, type CompletionTarget } from '../src/completion_types.js';
+import { ReportParameters } from '../src/report_parameters.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -187,6 +188,58 @@ Test('measures every named model one after the other, finishing one before start
 	Assert.equal(report.summaries[1].modelId, 'second-model');
 });
 
+Test('tells the listener about every warm-up and every measured request, in the order they were sent', async () => {
+	const announced: string[] = [];
+	await BenchmarkRunner.runBenchmark(
+		{
+			...options,
+			runs: 2,
+			warmupRuns: 1,
+			listener: {
+				onWarmupRequestStarted: (modelId, warmupRun, warmupRuns) => announced.push(`warm-up started ${modelId} ${warmupRun}/${warmupRuns}`),
+				onWarmupRequestFinished: (modelId) => announced.push(`warm-up finished ${modelId}`),
+				onMeasuredRequestStarted: (modelId, run, runs) => announced.push(`measured started ${modelId} ${run}/${runs}`),
+				onMeasuredRequestFinished: (modelId, sample) => announced.push(`measured finished ${modelId} ${sample.run} ${sample.outputCharacters}`),
+				onModelFailed: (modelId, reason) => announced.push(`failed ${modelId} ${reason}`),
+			},
+		},
+		async () => completionResult('the answer', 5, 50),
+	);
+
+	Assert.deepEqual(announced, [
+		'warm-up started a-model 1/1',
+		'warm-up finished a-model',
+		'measured started a-model 1/2',
+		'measured finished a-model 1 10',
+		'measured started a-model 2/2',
+		'measured finished a-model 2 10',
+	]);
+});
+
+Test('tells the listener about a model it could not measure, before carrying on to the next one', async () => {
+	const announced: string[] = [];
+	const listener = {
+		onWarmupRequestStarted: () => undefined,
+		onWarmupRequestFinished: () => undefined,
+		onMeasuredRequestStarted: (modelId: string) => announced.push(`measured ${modelId}`),
+		onMeasuredRequestFinished: () => undefined,
+		onModelFailed: (modelId: string, reason: string) => announced.push(`failed ${modelId}: ${reason}`),
+	};
+	await BenchmarkRunner.runBenchmark(
+		{ ...options, modelIds: ['failing-model', 'second-model'], runs: 1, warmupRuns: 0, listener },
+		async (modelId: string) => {
+			if (modelId === 'failing-model') {
+				throw new Error('this model answered as somebody else');
+			}
+			return completionResult('the answer', 5, 50);
+		},
+	);
+
+	Assert.equal(announced[0], 'measured failing-model');
+	Assert.match(announced[1] ?? '', /^failed failing-model: .*answered as somebody else/);
+	Assert.equal(announced[2], 'measured second-model');
+});
+
 Test('refuses request counts that are not whole numbers in range', async () => {
 	await Assert.rejects(async () => BenchmarkRunner.runBenchmark({ ...options, runs: 0 }, async () => completionResult('a', 1, 2)), /--runs/);
 	await Assert.rejects(async () => BenchmarkRunner.runBenchmark({ ...options, warmupRuns: -1 }, async () => completionResult('a', 1, 2)), /--warmup_runs/);
@@ -211,9 +264,10 @@ Test('writes the same benchmark report out as text, markdown, and JSON', async (
 	Assert.match(text, new RegExp(target.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
 	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
-	Assert.match(markdown, /^# OpenAI API benchmark/);
-	Assert.match(markdown, /\| Base URL \| Model \| Time to First Character \| Time to Last Character \| Output Characters per Second \| Input Characters \| Output Characters \|/);
-	Assert.match(markdown, new RegExp(`\\| ${target.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\|`));
+	Assert.match(markdown, /^# OpenAI API Benchmark Report/);
+	Assert.match(markdown, /## `a-model`/);
+	Assert.match(markdown, /\| Metric \| Average \| Median \| Minimum \| Maximum \|/);
+	Assert.match(markdown, new RegExp(`- Endpoint: \`${target.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\``));
 
 	const json = ReportRenderer.formatBenchmarkReport(report, 'json');
 	const parsed = JSON.parse(json);
@@ -222,14 +276,89 @@ Test('writes the same benchmark report out as text, markdown, and JSON', async (
 	Assert.equal(typeof parsed.summaries[0].timeToFirstCharacterMs.average, 'number');
 });
 
-Test('gives every measured model its own markdown row', async () => {
+Test('gives every measured model its own markdown section, and one row of the side by side table', async () => {
 	const report = await BenchmarkRunner.runBenchmark(
 		{ ...options, modelIds: ['first-model', 'second-model'], runs: 1, warmupRuns: 0 },
 		async () => completionResult('the answer', 5, 50),
 	);
 	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
-	Assert.match(markdown, /\| first-model \|/);
-	Assert.match(markdown, /\| second-model \|/);
+	Assert.match(markdown, /## `first-model`/);
+	Assert.match(markdown, /## `second-model`/);
+	Assert.match(markdown, /## Every Model Side By Side/);
+	Assert.match(markdown, /\| `first-model` \| 5\.00 ms \|/);
+	Assert.match(markdown, /\| `second-model` \| 5\.00 ms \|/);
+});
+
+Test('leaves the side by side table out when one model was measured, since its own section says it all already', async () => {
+	const report = await BenchmarkRunner.runBenchmark({ ...options, runs: 1, warmupRuns: 0 }, async () => completionResult('the answer', 5, 50));
+	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
+	Assert.equal(markdown.includes('## Every Model Side By Side'), false, markdown);
+	Assert.match(markdown, /## `a-model`/);
+});
+
+Test('the markdown report says what each measured figure means, and lists every measured request behind the averages', async () => {
+	const timings = [
+		[10, 110],
+		[30, 130],
+	];
+	let sent = 0;
+	const report = await BenchmarkRunner.runBenchmark({ ...options, runs: 2, warmupRuns: 1 }, async () => {
+		const timing = timings[Math.min(Math.max(sent - 1, 0), timings.length - 1)];
+		sent += 1;
+		return completionResult('0123456789', timing[0], timing[1]);
+	});
+	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
+
+	// What the run was, in words, so that a report file found months later needs nothing else read
+	// beside it to be understood.
+	Assert.match(markdown, /## What Was Measured/);
+	Assert.match(markdown, /Each model was sent the same prompt 2 times/);
+	Assert.match(markdown, /One warm-up request was sent first and its answer thrown away/);
+	Assert.match(markdown, /\| Time to First Character \| How long from sending the request/);
+	Assert.match(markdown, /None of the five is a token count\./);
+
+	// Every measured request of its own, because the spread between them is what says how much to
+	// trust the average above them.
+	Assert.match(markdown, /### Every Measured Request/);
+	Assert.match(markdown, /\| 1 \| 10\.00 ms \| 110\.00 ms \|/);
+	Assert.match(markdown, /\| 2 \| 30\.00 ms \| 130\.00 ms \|/);
+	Assert.match(markdown, /\| Time to First Character \| 20\.00 ms \| 20\.00 ms \| 10\.00 ms \| 30\.00 ms \|/);
+});
+
+Test('the markdown report carries the generation date, the parameters, and the command line it was given', async () => {
+	const report = await BenchmarkRunner.runBenchmark({ ...options, runs: 1, warmupRuns: 0 }, async () => completionResult('the answer', 5, 50));
+	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown', {
+		generatedAt: new Date('2026-08-19T00:00:00.000Z'),
+		parameters: ReportParameters.ofBenchmarkOptions({
+			model: 'a-model',
+			prompt: 'Count up to 30',
+			runs: '3',
+			warmup_runs: '1',
+			base_url: 'https://api.openai.test/v1',
+			api_key: 'sk-a-real-secret-key',
+			timeout_ms: '600000',
+			format: 'markdown',
+		}),
+		commandLine: 'openai_test benchmark --model a-model',
+	});
+
+	Assert.match(markdown, /- Generated: 2026-08-19T00:00:00\.000Z/);
+	Assert.match(markdown, /```bash\nopenai_test benchmark --model a-model\n```/);
+	Assert.match(markdown, /\| `--runs` \| 3 \|/);
+	Assert.match(markdown, /\| `--warmup_runs` \| 1 \|/);
+	Assert.match(markdown, /\| `--prompt` \| Count up to 30 \|/);
+	// The bearer token never reaches a report, in either the parameter list or the command line.
+	Assert.equal(markdown.includes('sk-a-real-secret-key'), false, markdown);
+	Assert.match(markdown, /\| `--api_key` \| <redacted> \|/);
+});
+
+Test('the markdown report stamps the moment it rendered when the caller offers no generation date', async () => {
+	const before = new Date();
+	const report = await BenchmarkRunner.runBenchmark({ ...options, runs: 1, warmupRuns: 0 }, async () => completionResult('the answer', 5, 50));
+	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
+	const stamped = /- Generated: (\S+)/.exec(markdown)?.[1];
+	Assert.notEqual(stamped, undefined, markdown);
+	Assert.equal(new Date(String(stamped)).getTime() >= before.getTime(), true, `stamped ${String(stamped)}`);
 });
 
 Test('accepts only the report formats it knows about', () => {

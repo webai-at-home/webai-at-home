@@ -1,5 +1,5 @@
 // local imports
-import type { ReportParameter } from './markdown.js';
+import type { ReportParameter } from './completion_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -9,6 +9,10 @@ import type { ReportParameter } from './markdown.js';
 //	everything this file produces is written on the assumption that it will be published. That is
 //	the whole reason the redaction lives here rather than in the reporter: the reporter formats
 //	what it is handed, and what it is handed must already be safe to publish.
+//
+//	It sits beside the subcommands rather than inside one of them because `conformance` and
+//	`benchmark` both write a report naming what they were given, and one bearer token redaction
+//	written twice is one redaction that will eventually be fixed in only one of the two places.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -19,13 +23,13 @@ import type { ReportParameter } from './markdown.js';
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * The command line options a report names, as this file reads them.
+ * The `conformance` command line options a report names, as this file reads them.
  *
- * Declared here rather than imported from `../conformance_command.ts` so that a reporter never
- * depends on the subcommand that happens to call it. `RawConformanceOptions` satisfies this shape
- * already.
+ * Declared here rather than imported from `./conformance/conformance_command.ts` so that this file
+ * never depends on the subcommand that happens to call it. `RawConformanceOptions` satisfies this
+ * shape already.
  */
-export type ReportParameterSource = {
+export type ConformanceParameterSource = {
 	/** The model identifier requested. */
 	readonly model: string;
 	/** Which profile was run. */
@@ -52,6 +56,35 @@ export type ReportParameterSource = {
 	readonly ci?: boolean | undefined;
 };
 
+/**
+ * The `benchmark` command line options a report names, as this file reads them.
+ *
+ * Declared here for the same reason as `ConformanceParameterSource`, and satisfied already by
+ * `RawBenchmarkOptions`.
+ */
+export type BenchmarkParameterSource = {
+	/** The model identifier requested. */
+	readonly model: string;
+	/** The one prompt sent to the endpoint. */
+	readonly prompt: string;
+	/** How many measured requests each model was sent, still as text. */
+	readonly runs: string;
+	/** How many unreported warm-up requests each model was sent, still as text. */
+	readonly warmup_runs: string;
+	/** The base URL of the endpoint reached. */
+	readonly base_url: string;
+	/** The bearer token sent to the endpoint, never written into a report as it stands. */
+	readonly api_key: string;
+	/** How long one request could take before it was given up on, still as text. */
+	readonly timeout_ms: string;
+	/** The output format. */
+	readonly format: string;
+	/** The file the report was written to, when `-o/--output` was given. */
+	readonly output?: string | undefined;
+	/** Set when `--verbose` was given. */
+	readonly verbose?: boolean | undefined;
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 //	ReportParameters
@@ -73,21 +106,20 @@ export const placeholderApiKey = 'no-key-required';
 /** Turns what a run was given into the parameters a report names. */
 export class ReportParameters {
 	/**
-	 * Lists every command line parameter one run was given, including the ones commander filled in
-	 * from a default.
+	 * Lists every command line parameter one `conformance` run was given, including the ones
+	 * commander filled in from a default.
 	 *
 	 * The defaults are listed rather than left out on purpose: a reader comparing two reports needs
 	 * to know that one ran three repeats and the other one, whether or not either of them typed
 	 * `--repeats`. An option that was never given and has no default is left out entirely, because
 	 * naming it would say it was set to nothing rather than that it was never set.
 	 *
-	 * @param source The command line options, exactly as commander parsed them.
+	 * @param source The `conformance` options, exactly as commander parsed them.
 	 * @returns The parameters, in the order the help text declares them, with the bearer token
 	 * replaced whenever a real one was given.
 	 */
-	static of(source: ReportParameterSource): readonly ReportParameter[] {
-		const apiKey = source.api_key === placeholderApiKey ? placeholderApiKey : redactedApiKey;
-		const candidates: readonly { name: string; value: string | undefined }[] = [
+	static ofConformanceOptions(source: ConformanceParameterSource): readonly ReportParameter[] {
+		return ReportParameters._present([
 			{ name: '--model', value: source.model },
 			{ name: '--profile', value: source.profile },
 			{ name: '--group', value: source.group },
@@ -97,20 +129,36 @@ export class ReportParameters {
 			{ name: '--verbose', value: source.verbose === true ? 'true' : undefined },
 			{ name: '--ci', value: source.ci === true ? 'true' : undefined },
 			{ name: '--base_url', value: source.base_url },
-			{ name: '--api_key', value: apiKey },
+			{ name: '--api_key', value: ReportParameters._shownApiKey(source.api_key) },
 			{ name: '--timeout_ms', value: source.timeout_ms },
 			{ name: '--format', value: source.format },
-		];
-		const parameters: ReportParameter[] = [];
-		for (const candidate of candidates) {
-			if (candidate.value !== undefined) {
-				parameters.push({
-					name: candidate.name,
-					value: candidate.value,
-				});
-			}
-		}
-		return parameters;
+		]);
+	}
+
+	/**
+	 * Lists every command line parameter one `benchmark` run was given, on the same terms as
+	 * `ofConformanceOptions`: the defaults are named, an option never given is left out, and the
+	 * bearer token is replaced.
+	 *
+	 * The prompt is among them because two benchmark reports measured with two different prompts
+	 * are not comparable, and the prompt is the one setting a reader cannot guess from the numbers.
+	 *
+	 * @param source The `benchmark` options, exactly as commander parsed them.
+	 * @returns The parameters, in the order the help text declares them.
+	 */
+	static ofBenchmarkOptions(source: BenchmarkParameterSource): readonly ReportParameter[] {
+		return ReportParameters._present([
+			{ name: '--model', value: source.model },
+			{ name: '--prompt', value: source.prompt },
+			{ name: '--runs', value: source.runs },
+			{ name: '--warmup_runs', value: source.warmup_runs },
+			{ name: '--output', value: source.output },
+			{ name: '--verbose', value: source.verbose === true ? 'true' : undefined },
+			{ name: '--base_url', value: source.base_url },
+			{ name: '--api_key', value: ReportParameters._shownApiKey(source.api_key) },
+			{ name: '--timeout_ms', value: source.timeout_ms },
+			{ name: '--format', value: source.format },
+		]);
 	}
 
 	/**
@@ -146,5 +194,41 @@ export class ReportParameters {
 			parts.push(argument);
 		}
 		return parts.join(' ');
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	Private Helpers
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Keeps the candidates that carry a value, so that an option never given is absent from the
+	 * report rather than named with an empty value.
+	 *
+	 * @param candidates Every parameter the subcommand could name, in help text order.
+	 * @returns The ones that were actually set.
+	 */
+	private static _present(candidates: readonly { name: string; value: string | undefined }[]): readonly ReportParameter[] {
+		const parameters: ReportParameter[] = [];
+		for (const candidate of candidates) {
+			if (candidate.value !== undefined) {
+				parameters.push({
+					name: candidate.name,
+					value: candidate.value,
+				});
+			}
+		}
+		return parameters;
+	}
+
+	/**
+	 * Decides what a report shows in place of the bearer token that was sent.
+	 *
+	 * @param apiKey The bearer token the run was given.
+	 * @returns The placeholder as it stands when no key was given, and the redaction otherwise.
+	 */
+	private static _shownApiKey(apiKey: string): string {
+		return apiKey === placeholderApiKey ? placeholderApiKey : redactedApiKey;
 	}
 }

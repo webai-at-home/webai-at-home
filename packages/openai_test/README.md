@@ -63,8 +63,11 @@ One model is one report, however many stream settings it was measured with. Seve
 Every request is streamed, because Time to First Character and Time to Last Character are two separate numbers only while the answer arrives in pieces. No two requests are ever in flight at once.
 
 - `-p/--prompt <text>` — the one prompt sent. Defaults to `Count up to 30`.
-- `-r/--runs <count>` — measured requests per model. Defaults to `10`.
+- `-r/--runs <count>` — measured requests per model. Defaults to `3`.
 - `-w/--warmup_runs <count>` — unreported warm-up requests per model, so the first measured request is not the one that loaded the model. Defaults to `1`.
+- `-v/--verbose` — print each warm-up and measured request as it is sent, and what it measured when it came back, on standard error.
+
+The markdown report is laid out the way the `conformance` report is: the headline numbers first, then the command line and the parameters that produced them, then what each of the five measured figures means, then one section per model. Each model's section lists every measured request behind its averages, because the spread between three requests of the same model against the same endpoint is what says how much to trust the average of them.
 
 ## `chat`
 

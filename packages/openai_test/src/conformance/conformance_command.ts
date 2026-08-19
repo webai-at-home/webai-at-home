@@ -21,7 +21,7 @@ import { JunitReporter } from './reporter/junit.js';
 import { MarkdownReporter } from './reporter/markdown.js';
 import { MatrixReporter } from './reporter/matrix.js';
 import { MergedRecords } from './reporter/merged_records.js';
-import { ReportParameters } from './reporter/report_parameters.js';
+import { ReportParameters } from '../report_parameters.js';
 import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
 import { Runner, type ConformanceRun, type RunnerProgressListener, type SkippedModel } from './runner.js';
@@ -412,7 +412,7 @@ export class ConformanceCommand {
 				return MarkdownReporter.render(records, {
 					...options,
 					generatedAt: new Date(),
-					parameters: ReportParameters.of(rawOptions),
+					parameters: ReportParameters.ofConformanceOptions(rawOptions),
 					commandLine,
 				});
 			case 'junit':

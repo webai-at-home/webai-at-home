@@ -24,7 +24,7 @@ import { JsonReporter } from '../src/conformance/reporter/json.js';
 import { JunitReporter } from '../src/conformance/reporter/junit.js';
 import { MarkdownReporter } from '../src/conformance/reporter/markdown.js';
 import { MergedRecords } from '../src/conformance/reporter/merged_records.js';
-import { ReportParameters, placeholderApiKey, redactedApiKey } from '../src/conformance/reporter/report_parameters.js';
+import { ReportParameters, placeholderApiKey, redactedApiKey } from '../src/report_parameters.js';
 import { ReportSummary } from '../src/conformance/reporter/report_summary.js';
 import { TerminalReporter } from '../src/conformance/reporter/terminal.js';
 import { Runner, type ConformanceRun, type TestRunRecord } from '../src/conformance/runner.js';
@@ -1006,7 +1006,7 @@ void Test('the markdown reporter stamps the moment it rendered when the caller o
 });
 
 void Test('the report parameters list every option including the defaults, and never the bearer token', () => {
-	const parameters = ReportParameters.of({
+	const parameters = ReportParameters.ofConformanceOptions({
 		model: 'a-model',
 		profile: 'full',
 		repeats: '3',
@@ -1027,7 +1027,7 @@ void Test('the report parameters list every option including the defaults, and n
 });
 
 void Test('the report parameters show the placeholder bearer token as it stands, since it is not a secret', () => {
-	const parameters = ReportParameters.of({
+	const parameters = ReportParameters.ofConformanceOptions({
 		model: 'a-model',
 		profile: 'core',
 		repeats: '3',

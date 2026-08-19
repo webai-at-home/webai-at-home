@@ -31,6 +31,26 @@ import { StatisticsCalculator } from './statistics_calculator.js';
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+/**
+ * What one benchmark run tells its caller as it happens, so that `-v/--verbose` can print a line
+ * per request rather than leaving a run against a slow endpoint silent for minutes.
+ *
+ * Every method is called from the runner and returns nothing. A run given no listener at all
+ * measures exactly the same numbers, since nothing here is measured inside a listener.
+ */
+export type BenchmarkProgressListener = {
+	/** Called before each warm-up request is sent, with the one-based warm-up number and the total. */
+	readonly onWarmupRequestStarted: (modelId: string, warmupRun: number, warmupRuns: number) => void;
+	/** Called once that warm-up request has come back, whatever it answered. */
+	readonly onWarmupRequestFinished: (modelId: string) => void;
+	/** Called before each measured request is sent, with the one-based request number and the total. */
+	readonly onMeasuredRequestStarted: (modelId: string, run: number, runs: number) => void;
+	/** Called once that measured request has come back, with what it measured. */
+	readonly onMeasuredRequestFinished: (modelId: string, sample: BenchmarkSample) => void;
+	/** Called when a model could not be measured at all, before the run carries on to the next model. */
+	readonly onModelFailed: (modelId: string, reason: string) => void;
+};
+
 /** The options that control one benchmark run. */
 export type BenchmarkOptions = {
 	/** The endpoint to measure. */
@@ -43,6 +63,8 @@ export type BenchmarkOptions = {
 	readonly runs: number;
 	/** The number of unreported warm-up requests per model. */
 	readonly warmupRuns: number;
+	/** Told what the run is doing as it happens, when the caller asked for progress lines. */
+	readonly listener?: BenchmarkProgressListener;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -89,9 +111,11 @@ export class BenchmarkRunner {
 			try {
 				summaries.push(await BenchmarkRunner._measureModel(modelId, options, requester));
 			} catch (error: unknown) {
+				const reason = CompletionSender.describeFailure(error);
+				options.listener?.onModelFailed(modelId, reason);
 				failures.push({
 					modelId,
-					reason: CompletionSender.describeFailure(error),
+					reason,
 				});
 			}
 		}
@@ -183,13 +207,18 @@ export class BenchmarkRunner {
 	 * @returns The aggregate measurements for that model.
 	 */
 	private static async _measureModel(modelId: string, options: BenchmarkOptions, requester: CompletionRequester): Promise<BenchmarkSummary> {
-		for (let warmup = 0; warmup < options.warmupRuns; warmup += 1) {
+		for (let warmupRun = 1; warmupRun <= options.warmupRuns; warmupRun += 1) {
+			options.listener?.onWarmupRequestStarted(modelId, warmupRun, options.warmupRuns);
 			await requester(modelId, options.prompt);
+			options.listener?.onWarmupRequestFinished(modelId);
 		}
 		const samples: BenchmarkSample[] = [];
 		for (let run = 1; run <= options.runs; run += 1) {
+			options.listener?.onMeasuredRequestStarted(modelId, run, options.runs);
 			const result = await requester(modelId, options.prompt);
-			samples.push(BenchmarkRunner._buildSample(run, options.prompt, result));
+			const sample = BenchmarkRunner._buildSample(run, options.prompt, result);
+			options.listener?.onMeasuredRequestFinished(modelId, sample);
+			samples.push(sample);
 		}
 		return BenchmarkRunner.summarizeSamples(options.target.baseUrl, modelId, samples);
 	}

@@ -1,4 +1,5 @@
 // local imports
+import type { ReportParameter } from '../../completion_types.js';
 import type { TestRunRecord } from '../runner.js';
 import type { Verdict } from '../types.js';
 import { ReportSummary } from './report_summary.js';
@@ -8,14 +9,6 @@ import { ReportSummary } from './report_summary.js';
 //	MarkdownReporter — the report of section 28 of issue #181, for a GitHub issue or a CI artifact
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-
-/** One command line parameter this run was given, as it is written into the report. */
-export type ReportParameter = {
-	/** The option name, spelled the way the command line spells it, such as `--profile`. */
-	readonly name: string;
-	/** The value that option ended up with, after commander applied its default. */
-	readonly value: string;
-};
 
 /** What `MarkdownReporter.render` needs beyond the run records themselves. */
 export type MarkdownReportOptions = {
