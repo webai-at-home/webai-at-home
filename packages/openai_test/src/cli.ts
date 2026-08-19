@@ -65,7 +65,7 @@ export class Cli {
 			.option('-v, --verbose', 'print each test as it starts and as it finishes, and print the detail of every test, including the ones that passed')
 			.option('--ci', 'exit 1 when any test failed, for a continuous integration run');
 		SharedOptions.addFormatOption(conformance);
-		SharedOptions.addModeOptions(conformance);
+		SharedOptions.addStreamOption(conformance);
 		SharedOptions.addEndpointOptions(conformance);
 		conformance.action(async (rawOptions: RawConformanceOptions) => {
 			await ConformanceCommand.run(rawOptions, args, invokedName);

@@ -51,7 +51,7 @@ export class JsonReporter {
 	 *
 	 * The single-model document is not nested inside this one: a reader of either has to know which
 	 * they are looking at anyway, and a sweep carries two things a single run has no place for — the
-	 * mode each run's probes were sent in, and the models the sweep never measured.
+	 * stream setting each run's probes were sent in, and the models the sweep never measured.
 	 *
 	 * @param runs Every run of the sweep, in the order they were run.
 	 * @param endpoint The endpoint's base URL.
@@ -66,7 +66,7 @@ export class JsonReporter {
 					const summary = ReportSummary.of(run.records);
 					return {
 						model: run.modelId,
-						mode: run.mode ?? null,
+						streamSetting: run.streamSetting ?? null,
 						summary: {
 							passed: summary.passedCount,
 							failed: summary.failedCount,
@@ -104,6 +104,7 @@ export class JsonReporter {
 		return records.map((record) => ({
 			id: record.test.id,
 			group: record.test.group,
+			...(record.streamSetting === undefined ? {} : { stream: record.streamSetting }),
 			status: record.result.verdict.toLowerCase(),
 			durationMs: record.durationMs,
 			...(record.result.verdict === 'PASS' ? {} : { detail: record.result.detail }),

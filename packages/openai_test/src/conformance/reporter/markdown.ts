@@ -95,7 +95,8 @@ export class MarkdownReporter {
 			lines.push(`## ${MarkdownReporter._groupHeadings.get(group) ?? group}`, '', '| Test | Result | Detail |', '| --- | --- | --- |');
 			for (const record of records.filter((candidate) => candidate.test.group === group)) {
 				const detail = record.result.verdict === 'PASS' ? '' : MarkdownReporter._escapeTableCell(record.result.detail);
-				lines.push(`| \`${record.test.id}\` | ${MarkdownReporter._icon(record.result.verdict)} | ${detail} |`);
+				const streamSetting = record.streamSetting === undefined ? '' : ` (stream ${record.streamSetting})`;
+				lines.push(`| \`${record.test.id}\`${streamSetting} | ${MarkdownReporter._icon(record.result.verdict)} | ${detail} |`);
 			}
 			lines.push('');
 		}

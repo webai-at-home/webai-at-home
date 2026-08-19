@@ -19,7 +19,7 @@ import { ReportRenderer } from './report_renderer.js';
 //
 //	Every request is streamed, because Time to First Character and Time to Last Character are two
 //	separate numbers only while the answer arrives in pieces. This is why `benchmark` takes neither
-//	`-s/--streamed` nor `--nostream`: there is nothing to choose.
+//	`--stream`: there is nothing to choose.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 

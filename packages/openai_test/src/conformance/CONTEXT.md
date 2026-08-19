@@ -24,7 +24,7 @@ The `conformance` subcommand: it reports which parts of the OpenAI-compatible Ch
 - A test reaches an endpoint through `../clients/` only.
 - One `GET /models` runs before the first test; only a thrown error stops the run, since any HTTP status at all means something is listening.
 - `runner.ts` never prints; it tells an optional listener when each test starts and finishes, and `conformance_command.ts` writes those lines to standard error under `-v/--verbose`.
-- A second request mode reruns `parameters` and `tools` alone, the groups a probe cache backs.
+- A second stream setting reruns `parameters` and `tools` alone, the groups a probe cache backs.
 - `conformance_tests/` holds the shipped program; `tests/` at the package root holds this package's own suite. Neither imports the other.
 
 ## Background

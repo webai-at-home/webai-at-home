@@ -73,7 +73,7 @@ Test('reads Time to First and Time to Last Character from a real server-sent eve
 					content: 'say hello',
 				},
 			],
-			mode: 'streamed',
+			streamSetting: 'on',
 			writePiece: (piece) => pieces.push(piece),
 		});
 		Assert.equal(result.answer, 'Hello, world');
@@ -92,7 +92,7 @@ Test('reads Time to First and Time to Last Character from a real server-sent eve
 	}
 });
 
-Test('reads the cluster generation-time header the streamed mode names, and leaves the whole-answer one unset', async () => {
+Test('reads the cluster generation-time header a streamed answer names, and leaves the whole-answer one unset', async () => {
 	const server = await startTestServer((request, response) => {
 		response.writeHead(200, {
 			'Content-Type': 'text/event-stream; charset=utf-8',
@@ -113,7 +113,7 @@ Test('reads the cluster generation-time header the streamed mode names, and leav
 			client,
 			modelId: 'irrelevant-to-this-test',
 			messages: [{ role: 'user', content: 'say hi' }],
-			mode: 'streamed',
+			streamSetting: 'on',
 		});
 		Assert.equal(result.clusterTimeToFirstPieceMs, 42);
 		Assert.equal(result.clusterGenerationTimeMs, undefined);
@@ -122,7 +122,7 @@ Test('reads the cluster generation-time header the streamed mode names, and leav
 	}
 });
 
-Test('reads the cluster generation-time header the whole-answer mode names, and leaves the streamed one unset', async () => {
+Test('reads the cluster generation-time header a whole answer names, and leaves the streamed one unset', async () => {
 	const server = await startTestServer((request, response) => {
 		response.writeHead(200, {
 			'Content-Type': 'application/json',
@@ -140,7 +140,7 @@ Test('reads the cluster generation-time header the whole-answer mode names, and 
 			client,
 			modelId: 'irrelevant-to-this-test',
 			messages: [{ role: 'user', content: 'say hi' }],
-			mode: 'nostream',
+			streamSetting: 'off',
 		});
 		Assert.equal(result.clusterGenerationTimeMs, 99);
 		Assert.equal(result.clusterTimeToFirstPieceMs, undefined);
@@ -166,7 +166,7 @@ Test('reports no cluster generation time at all against an endpoint that sends n
 			client,
 			modelId: 'irrelevant-to-this-test',
 			messages: [{ role: 'user', content: 'say hi' }],
-			mode: 'nostream',
+			streamSetting: 'off',
 		});
 		Assert.equal(result.clusterGenerationTimeMs, undefined);
 		Assert.equal(result.clusterTimeToFirstPieceMs, undefined);
@@ -207,7 +207,7 @@ Test('falls back to one whole request when the endpoint ignores the streaming re
 					content: 'say hello',
 				},
 			],
-			mode: 'streamed',
+			streamSetting: 'on',
 		});
 		Assert.equal(result.answer, 'whole answer, no streaming');
 		Assert.equal(result.timeToFirstCharacterMs, result.timeToLastCharacterMs);
@@ -240,7 +240,7 @@ Test('reports an endpoint that answered with no text at all as a failure', async
 						content: 'say hello',
 					},
 				],
-				mode: 'nostream',
+				streamSetting: 'off',
 			}),
 			/no answer text/,
 		);
@@ -269,7 +269,7 @@ Test('reads usage and finish_reason straight from the nostream response body', a
 			client,
 			modelId: 'irrelevant-to-this-test',
 			messages: [{ role: 'user', content: 'say hi' }],
-			mode: 'nostream',
+			streamSetting: 'off',
 		});
 		Assert.deepEqual(result.usage, { promptTokens: 7, completionTokens: 3, totalTokens: 10 });
 		Assert.equal(result.finishReason, 'stop');
@@ -295,7 +295,7 @@ Test('leaves usage undefined when the nostream response body carries none', asyn
 			client,
 			modelId: 'irrelevant-to-this-test',
 			messages: [{ role: 'user', content: 'say hi' }],
-			mode: 'nostream',
+			streamSetting: 'off',
 		});
 		Assert.equal(result.usage, undefined);
 	} finally {
@@ -332,7 +332,7 @@ Test('asks for and reads usage from the final, choice-less streamed chunk only w
 			client,
 			modelId: 'irrelevant-to-this-test',
 			messages: [{ role: 'user', content: 'say hi' }],
-			mode: 'streamed',
+			streamSetting: 'on',
 			includeUsage: true,
 		});
 		Assert.deepEqual(requestedStreamOptions, [{ include_usage: true }]);
@@ -371,7 +371,7 @@ Test('sends no stream_options at all when includeUsage is left out, exactly as c
 			client,
 			modelId: 'irrelevant-to-this-test',
 			messages: [{ role: 'user', content: 'say hi' }],
-			mode: 'streamed',
+			streamSetting: 'on',
 		});
 		Assert.deepEqual(requestedStreamOptions, [undefined]);
 		Assert.equal(result.usage, undefined);
@@ -404,7 +404,7 @@ Test('reports a refusal from the endpoint in words rather than as a stack trace'
 						content: 'say hello',
 					},
 				],
-				mode: 'nostream',
+				streamSetting: 'off',
 			});
 			Assert.fail('the request should have been refused');
 		} catch (error: unknown) {
@@ -553,7 +553,7 @@ Test('CompletionSender.send, streamed, against a local server streams every piec
 					content: 'What is the capital of France?',
 				},
 			],
-			mode: 'streamed',
+			streamSetting: 'on',
 			writePiece: (piece: string) => pieces.push(piece),
 		});
 		Assert.equal(result.answer, 'Paris');
@@ -579,7 +579,7 @@ Test('CompletionSender.send, streamed, against a local server fails the request 
 							content: 'What is the capital of France?',
 						},
 					],
-					mode: 'streamed',
+					streamSetting: 'on',
 				}),
 			/a-substitute-model/,
 		);

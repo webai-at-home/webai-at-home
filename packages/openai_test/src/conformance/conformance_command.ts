@@ -1,7 +1,7 @@
 // local imports
 import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
-import { reportFormats, type CompletionMode, type CompletionTarget } from '../completion_types.js';
+import { reportFormats, type StreamSetting, type CompletionTarget } from '../completion_types.js';
 import { EndpointReachability } from '../endpoint_reachability.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportWriter } from '../report_writer.js';
@@ -20,6 +20,7 @@ import { JsonReporter } from './reporter/json.js';
 import { JunitReporter } from './reporter/junit.js';
 import { MarkdownReporter } from './reporter/markdown.js';
 import { MatrixReporter } from './reporter/matrix.js';
+import { MergedRecords } from './reporter/merged_records.js';
 import { ReportParameters } from './reporter/report_parameters.js';
 import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
@@ -61,11 +62,11 @@ export const knownProfiles: ReadonlyMap<string, readonly ConformanceTest[]> = ne
 ]);
 
 /**
- * The groups whose verdicts depend on which mode the requests behind them were sent in.
+ * The groups whose verdicts depend on which stream setting the requests behind them were sent in.
  *
- * These two are the groups backed by a probe cache, and a probe cache is the only thing a mode
+ * These two are the groups backed by a probe cache, and a probe cache is the only thing a stream setting
  * reaches. Every other test builds its own request with its own fixed shape — `streaming/` always
- * streams, `chat/` never does — so sending it a second time under a second mode would repeat a
+ * streams, `chat/` never does — so sending it a second time under a second stream setting would repeat a
  * measurement rather than make a new one.
  */
 const probeBackedGroups: readonly string[] = ['parameters', 'tools'];
@@ -135,10 +136,10 @@ export class ConformanceCommand {
 
 		const tests = ConformanceCommand._selectTests(profile, rawOptions);
 		const repeats = SharedOptions.positiveInteger(rawOptions.repeats, '--repeats');
-		const modes = SharedOptions.resolveModes(rawOptions);
+		const streamSettings = SharedOptions.resolveStreamSettings(rawOptions);
 		const selection = await ModelResolver.resolve(rawOptions.model, rawHttpClient);
 
-		const isSweep = selection.modelIds.length > 1 || modes.length > 1;
+		const isSweep = selection.modelIds.length > 1 || streamSettings.length > 1;
 		const progressPrinter = ConformanceCommand._isProgressWanted(rawOptions);
 		const runs: ConformanceRun[] = [];
 		const skippedModels: SkippedModel[] = [];
@@ -154,7 +155,7 @@ export class ConformanceCommand {
 					continue;
 				}
 			}
-			runs.push(...(await ConformanceCommand._runOneModel(tests, modelId, modes, repeats, target, progressPrinter, isSweep)));
+			runs.push(...(await ConformanceCommand._runOneModel(tests, modelId, streamSettings, repeats, target, progressPrinter, isSweep)));
 		}
 		if (runs.length === 0) {
 			throw new Error(`no model was measured. ${ConformanceCommand._describeSkipped(skippedModels)}`);
@@ -171,78 +172,78 @@ export class ConformanceCommand {
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
-	 * Runs the chosen tests against one model, once per mode for the tests a mode reaches and once
+	 * Runs the chosen tests against one model, once per stream setting for the tests a stream setting reaches and once
 	 * for every other test.
 	 *
-	 * The mode reaches the two probe caches and nothing else, so re-running `chat.basic` under a
-	 * second mode would send the identical request and record the identical answer under a heading
-	 * that says it measured something new. The tests of `probeBackedGroups` are the ones a mode
-	 * genuinely changes, and they are the only ones a second mode runs again.
+	 * The stream setting reaches the two probe caches and nothing else, so re-running `chat.basic` under a
+	 * second stream setting would send the identical request and record the identical answer under a heading
+	 * that says it measured something new. The tests of `probeBackedGroups` are the ones a stream setting
+	 * genuinely changes, and they are the only ones a second stream setting runs again.
 	 *
 	 * @param tests The tests to run, in the order to run and report them.
 	 * @param modelId The model identifier to run them against.
-	 * @param modes The modes to send the probes in, in order.
+	 * @param streamSettings The stream settings to send the probes in, in order.
 	 * @param repeats How many times a test comparing repeated answers sends its prompt.
 	 * @param target The endpoint to send every request to.
-	 * @returns One run for the tests no mode reaches, when there are any, followed by one run per
-	 * mode for the tests a mode does reach. A single mode collapses both into one run, so a
-	 * single-model, single-mode invocation produces exactly one run and exactly today's report.
+	 * @returns One run for the tests no stream setting reaches, when there are any, followed by one run per
+	 * stream setting for the tests a stream setting does reach. A single stream setting collapses both into one run, so a
+	 * single-model, single-setting invocation produces exactly one run and exactly today's report.
 	 */
 	private static async _runOneModel(
 		tests: readonly ConformanceTest[],
 		modelId: string,
-		modes: readonly CompletionMode[],
+		streamSettings: readonly StreamSetting[],
 		repeats: number,
 		target: CompletionTarget,
 		isProgressWanted: boolean,
 		isSweep: boolean,
 	): Promise<ConformanceRun[]> {
-		const buildContext = (mode: CompletionMode): TestContext => {
+		const buildContext = (streamSetting: StreamSetting): TestContext => {
 			const openaiPackageClient = new OpenaiPackageClient(target);
 			return {
 				rawHttpClient: new RawHttpClient(target),
 				openaiPackageClient,
 				modelId,
 				repeats,
-				toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, modelId, repeats, mode),
-				generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, modelId, repeats, mode),
+				toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, modelId, repeats, streamSetting),
+				generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, modelId, repeats, streamSetting),
 			};
 		};
 
-		const listenerFor = (mode: CompletionMode | undefined): RunnerProgressListener | undefined => {
+		const listenerFor = (streamSetting: StreamSetting | undefined): RunnerProgressListener | undefined => {
 			if (isProgressWanted === false) {
 				return undefined;
 			}
-			const prefix = ConformanceCommand._progressPrefix(modelId, mode, isSweep);
+			const prefix = ConformanceCommand._progressPrefix(modelId, streamSetting, isSweep);
 			return ConformanceCommand._buildProgressListener(prefix);
 		};
 
-		const firstMode = modes[0] ?? 'nostream';
-		if (modes.length === 1) {
+		const firstSetting = streamSettings[0] ?? 'off';
+		if (streamSettings.length === 1) {
 			return [
 				{
 					modelId,
-					mode: firstMode,
-					records: await Runner.run(tests, buildContext(firstMode), listenerFor(firstMode)),
+					streamSetting: firstSetting,
+					records: await Runner.run(tests, buildContext(firstSetting), listenerFor(firstSetting)),
 				},
 			];
 		}
 
 		const modeReached = tests.filter((test) => probeBackedGroups.includes(test.group) === true);
-		const modeUnreached = tests.filter((test) => probeBackedGroups.includes(test.group) === false);
+		const streamingUnreached = tests.filter((test) => probeBackedGroups.includes(test.group) === false);
 		const runs: ConformanceRun[] = [];
-		if (modeUnreached.length > 0) {
+		if (streamingUnreached.length > 0) {
 			runs.push({
 				modelId,
-				mode: undefined,
-				records: await Runner.run(modeUnreached, buildContext(firstMode), listenerFor(undefined)),
+				streamSetting: undefined,
+				records: await Runner.run(streamingUnreached, buildContext(firstSetting), listenerFor(undefined)),
 			});
 		}
-		for (const mode of modeReached.length > 0 ? modes : []) {
+		for (const streamSetting of modeReached.length > 0 ? streamSettings : []) {
 			runs.push({
 				modelId,
-				mode,
-				records: await Runner.run(modeReached, buildContext(mode), listenerFor(mode)),
+				streamSetting,
+				records: await Runner.run(modeReached, buildContext(streamSetting), listenerFor(streamSetting)),
 			});
 		}
 		return runs;
@@ -263,22 +264,22 @@ export class ConformanceCommand {
 
 	/**
 	 * Builds what every progress line of one run is written behind, so a sweep says which model and
-	 * which mode reached a verdict rather than printing the same test identifier several times over.
+	 * which stream setting reached a verdict rather than printing the same test identifier several times over.
 	 *
 	 * @param modelId The model identifier this run measures.
-	 * @param mode The mode this run's probes are sent in, `undefined` for the tests no mode reaches.
+	 * @param streamSetting The stream setting this run's probes are sent in, `undefined` for the tests no stream setting reaches.
 	 * @param isSweep Whether more than one run is expected. A single run needs no prefix at all,
 	 * because there is nothing to tell its lines apart from.
 	 * @returns The prefix, empty when there is nothing to distinguish.
 	 */
-	private static _progressPrefix(modelId: string, mode: CompletionMode | undefined, isSweep: boolean): string {
+	private static _progressPrefix(modelId: string, streamSetting: StreamSetting | undefined, isSweep: boolean): string {
 		if (isSweep === false) {
 			return '';
 		}
-		if (mode === undefined) {
+		if (streamSetting === undefined) {
 			return `${modelId} `;
 		}
-		return `${modelId} ${mode} `;
+		return `${modelId} ${streamSetting} `;
 	}
 
 	/**
@@ -353,9 +354,14 @@ export class ConformanceCommand {
 	 * not say when it was measured or what it was measured with says very little; the other three
 	 * are read by a program or by the person who just typed the command.
 	 *
-	 * A run that produced one set of records is reported exactly as it always was. More than one set
-	 * is a sweep, and a sweep is a different document: the matrix, where a reader compares models by
-	 * reading across a row, which a stack of separate reports never lets them do.
+	 * One model is reported exactly as it always was, however many runs it took: the summary, what
+	 * was run, and one table per group carrying the detail of everything that did not pass. Several
+	 * models is a sweep, and a sweep is a different document: the matrix, where a reader compares
+	 * models by reading across a row, which a stack of separate reports never lets them do.
+	 *
+	 * The count that decides this is the models, never the runs. One model measured with streaming
+	 * both on and off produces three runs and is still one model, and printing a one-column matrix
+	 * for it would drop every failure reason the report exists to carry.
 	 *
 	 * @param runs Every run this invocation produced.
 	 * @param skippedModels The models the sweep left out before measuring them.
@@ -374,7 +380,8 @@ export class ConformanceCommand {
 		invokedName: string,
 	): string {
 		const commandLine = ReportParameters.commandLine(args, invokedName);
-		if (runs.length > 1) {
+		const measuredModelIds = new Set(runs.map((run) => run.modelId));
+		if (measuredModelIds.size > 1) {
 			const matrixOptions = {
 				endpoint,
 				skippedModels,
@@ -393,7 +400,7 @@ export class ConformanceCommand {
 			}
 		}
 
-		const records = runs[0]?.records ?? [];
+		const records = MergedRecords.of(runs);
 		const options = {
 			endpoint,
 			modelId: runs[0]?.modelId ?? rawOptions.model,

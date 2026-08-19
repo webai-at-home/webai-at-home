@@ -103,7 +103,8 @@ export class TerminalReporter {
 	 * @returns The line to print, colored by verdict.
 	 */
 	private static _testLine(record: TestRunRecord, verbose: boolean): string {
-		const line = `${TerminalReporter._statusWord(record.result.verdict)} ${record.test.name}`;
+		const streamSetting = record.streamSetting === undefined ? '' : ` (stream ${record.streamSetting})`;
+		const line = `${TerminalReporter._statusWord(record.result.verdict)} ${record.test.name}${streamSetting}`;
 		const colored = TerminalReporter._colorByVerdict(record.result.verdict, line);
 		if (record.result.verdict === 'PASS' && verbose === false) {
 			return colored;

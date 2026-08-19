@@ -138,7 +138,7 @@ export class BenchmarkRunner {
 						content: prompt,
 					},
 				],
-				mode: 'streamed',
+				streamSetting: 'on',
 			});
 		};
 	}

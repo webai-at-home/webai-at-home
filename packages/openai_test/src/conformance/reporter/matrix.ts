@@ -37,7 +37,7 @@ type MatrixRow = {
 	readonly testId: string;
 	/** The group the test belongs to. */
 	readonly group: string;
-	/** The verdicts this test reached, keyed by model identifier and then by mode. */
+	/** The verdicts this test reached, keyed by model identifier and then by stream setting. */
 	readonly verdictsByModel: Map<string, Map<string, Verdict>>;
 };
 
@@ -69,8 +69,8 @@ export class MatrixReporter {
 	 * Renders a sweep as the markdown document a reader pastes into an issue or commits beside the
 	 * code: one column per model, one row per test.
 	 *
-	 * A cell holding two symbols is a test the mode reaches, written `nostream / streamed`. A cell
-	 * holding one is a test no mode reaches, measured once.
+	 * A cell holding two symbols is a test the stream setting reaches, written `stream off / stream on`. A cell
+	 * holding one is a test no stream setting reaches, measured once.
 	 *
 	 * @param runs Every run of the sweep, in the order they were run.
 	 * @param options The endpoint, the models left out, and what to stamp the report with.
@@ -79,7 +79,7 @@ export class MatrixReporter {
 	static renderMarkdown(runs: readonly ConformanceRun[], options: MatrixReportOptions): string {
 		const modelIds = MatrixReporter._orderedModelIds(runs);
 		const rows = MatrixReporter._rows(runs);
-		const modes = MatrixReporter._orderedModes(runs);
+		const streamSettings = MatrixReporter._orderedModes(runs);
 
 		const lines: string[] = ['# OpenAI API Conformance Test', ''];
 		lines.push(`- Endpoint: ${options.endpoint}`);
@@ -93,26 +93,26 @@ export class MatrixReporter {
 
 		lines.push('## Verdict matrix', '');
 		lines.push(`Legend: ✅ PASS, ❌ FAIL, ⚠️ WARN, ⏭️ SKIP.`);
-		if (modes.length > 1) {
-			lines.push('', `A cell holding two verdicts is a test the request mode reaches, written \`${modes.join(' / ')}\`. Every other test is measured once, because the mode reaches the generation control and tool call probes and nothing else.`);
+		if (streamSettings.length > 1) {
+			lines.push('', `A cell holding two verdicts is a test the request streamSetting reaches, written \`${streamSettings.join(' / ')}\`. Every other test is measured once, because the streamSetting reaches the generation control and tool call probes and nothing else.`);
 		}
 		lines.push('');
 		lines.push(`| Test | ${modelIds.map((modelId) => MatrixReporter._escape(modelId)).join(' | ')} |`);
 		lines.push(`| --- | ${modelIds.map(() => '---').join(' | ')} |`);
 		for (const row of rows) {
-			const cells = modelIds.map((modelId) => MatrixReporter._cell(row, modelId, modes, MatrixReporter._symbols));
+			const cells = modelIds.map((modelId) => MatrixReporter._cell(row, modelId, streamSettings, MatrixReporter._symbols));
 			lines.push(`| \`${row.testId}\` | ${cells.join(' | ')} |`);
 		}
 		lines.push('');
 
 		lines.push('## Summary', '');
-		lines.push('| Model | Mode | Passed | Failed | Warned | Skipped | Compatibility |');
+		lines.push('| Model | StreamSetting | Passed | Failed | Warned | Skipped | Compatibility |');
 		lines.push('| --- | --- | --- | --- | --- | --- | --- |');
 		for (const run of runs) {
 			const summary = ReportSummary.of(run.records);
-			const mode = run.mode ?? 'not mode-dependent';
+			const streamSetting = run.streamSetting ?? 'not streamSetting-dependent';
 			lines.push(
-				`| ${MatrixReporter._escape(run.modelId)} | ${mode} | ${summary.passedCount} | ${summary.failedCount} | ${summary.warnedCount} | ${summary.skippedCount} | ${summary.compatibilityPercent.toFixed(1)}% |`,
+				`| ${MatrixReporter._escape(run.modelId)} | ${streamSetting} | ${summary.passedCount} | ${summary.failedCount} | ${summary.warnedCount} | ${summary.skippedCount} | ${summary.compatibilityPercent.toFixed(1)}% |`,
 			);
 		}
 		lines.push('');
@@ -142,18 +142,18 @@ export class MatrixReporter {
 	static renderText(runs: readonly ConformanceRun[], options: MatrixReportOptions): string {
 		const modelIds = MatrixReporter._orderedModelIds(runs);
 		const rows = MatrixReporter._rows(runs);
-		const modes = MatrixReporter._orderedModes(runs);
+		const streamSettings = MatrixReporter._orderedModes(runs);
 		const testColumnWidth = Math.max(4, ...rows.map((row) => row.testId.length));
-		const columnWidths = modelIds.map((modelId) => Math.max(modelId.length, modes.length > 1 ? 17 : 7));
+		const columnWidths = modelIds.map((modelId) => Math.max(modelId.length, streamSettings.length > 1 ? 17 : 7));
 
 		const lines: string[] = ['OpenAI API Conformance Test', `Endpoint: ${options.endpoint}`, `Models measured: ${modelIds.length}`, ''];
-		if (modes.length > 1) {
-			lines.push(`A cell holding two verdicts is a test the request mode reaches, written ${modes.join(' / ')}.`, '');
+		if (streamSettings.length > 1) {
+			lines.push(`A cell holding two verdicts is a test the request streamSetting reaches, written ${streamSettings.join(' / ')}.`, '');
 		}
 		lines.push(`${'Test'.padEnd(testColumnWidth)}  ${modelIds.map((modelId, index) => modelId.padEnd(columnWidths[index] ?? modelId.length)).join('  ')}`);
 		for (const row of rows) {
 			const cells = modelIds.map((modelId, index) =>
-				MatrixReporter._cell(row, modelId, modes, MatrixReporter._words).padEnd(columnWidths[index] ?? 0),
+				MatrixReporter._cell(row, modelId, streamSettings, MatrixReporter._words).padEnd(columnWidths[index] ?? 0),
 			);
 			lines.push(`${row.testId.padEnd(testColumnWidth)}  ${cells.join('  ')}`);
 		}
@@ -161,9 +161,9 @@ export class MatrixReporter {
 
 		for (const run of runs) {
 			const summary = ReportSummary.of(run.records);
-			const mode = run.mode ?? 'not mode-dependent';
+			const streamSetting = run.streamSetting ?? 'not streamSetting-dependent';
 			lines.push(
-				`${run.modelId} (${mode}): ${summary.passedCount} passed, ${summary.failedCount} failed, ${summary.warnedCount} warned, ${summary.skippedCount} skipped, ${summary.compatibilityPercent.toFixed(1)}%`,
+				`${run.modelId} (${streamSetting}): ${summary.passedCount} passed, ${summary.failedCount} failed, ${summary.warnedCount} warned, ${summary.skippedCount} skipped, ${summary.compatibilityPercent.toFixed(1)}%`,
 			);
 		}
 
@@ -200,19 +200,19 @@ export class MatrixReporter {
 	}
 
 	/**
-	 * Lists every mode the sweep sent its probes in, in the order it first used one.
+	 * Lists every stream setting the sweep sent its probes in, in the order it first used one.
 	 *
 	 * @param runs Every run of the sweep.
-	 * @returns The mode names, first-seen order, leaving out the runs no mode reached.
+	 * @returns The stream setting names, first-seen order, leaving out the runs no stream setting reached.
 	 */
 	private static _orderedModes(runs: readonly ConformanceRun[]): string[] {
-		const modes: string[] = [];
+		const streamSettings: string[] = [];
 		for (const run of runs) {
-			if (run.mode !== undefined && modes.includes(run.mode) === false) {
-				modes.push(run.mode);
+			if (run.streamSetting !== undefined && streamSettings.includes(run.streamSetting) === false) {
+				streamSettings.push(run.streamSetting);
 			}
 		}
-		return modes;
+		return streamSettings;
 	}
 
 	/**
@@ -231,9 +231,9 @@ export class MatrixReporter {
 					rowsByTestId.set(record.test.id, row);
 					rows.push(row);
 				}
-				const byMode = row.verdictsByModel.get(run.modelId) ?? new Map<string, Verdict>();
-				byMode.set(run.mode ?? '', record.result.verdict);
-				row.verdictsByModel.set(run.modelId, byMode);
+				const bySetting = row.verdictsByModel.get(run.modelId) ?? new Map<string, Verdict>();
+				bySetting.set(run.streamSetting ?? '', record.result.verdict);
+				row.verdictsByModel.set(run.modelId, bySetting);
 			}
 		}
 		return rows;
@@ -254,25 +254,25 @@ export class MatrixReporter {
 	}
 
 	/**
-	 * Renders one cell: what one model made of one test, in every mode that reached it.
+	 * Renders one cell: what one model made of one test, in every stream setting that reached it.
 	 *
 	 * @param row The test's row.
 	 * @param modelId The model whose column this cell is in.
-	 * @param modes Every mode the sweep used, in order.
+	 * @param streamSettings Every stream setting the sweep used, in order.
 	 * @param faces How to write each verdict, as symbols or as words.
 	 * @returns The cell's text, empty when this model never ran this test.
 	 */
-	private static _cell(row: MatrixRow, modelId: string, modes: readonly string[], faces: Readonly<Record<Verdict, string>>): string {
-		const byMode = row.verdictsByModel.get(modelId);
-		if (byMode === undefined) {
+	private static _cell(row: MatrixRow, modelId: string, streamSettings: readonly string[], faces: Readonly<Record<Verdict, string>>): string {
+		const bySetting = row.verdictsByModel.get(modelId);
+		if (bySetting === undefined) {
 			return '';
 		}
-		const modeless = byMode.get('');
-		if (modeless !== undefined) {
-			return faces[modeless];
+		const settingless = bySetting.get('');
+		if (settingless !== undefined) {
+			return faces[settingless];
 		}
-		return modes.map((mode) => {
-			const verdict = byMode.get(mode);
+		return streamSettings.map((streamSetting) => {
+			const verdict = bySetting.get(streamSetting);
 			return verdict === undefined ? '' : faces[verdict];
 		}).join(' / ');
 	}

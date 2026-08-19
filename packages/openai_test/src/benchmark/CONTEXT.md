@@ -14,7 +14,7 @@ The `benchmark` subcommand: it measures how long one OpenAI-compatible endpoint 
 
 ## Rules
 
-- Every request is streamed. Time to First Character and Time to Last Character are two separate numbers only while the answer arrives in pieces, which is why this subcommand accepts neither `-s/--streamed` nor `--nostream`: there is nothing to choose.
+- Every request is streamed. Time to First Character and Time to Last Character are two separate numbers only while the answer arrives in pieces, which is why this subcommand does not accept `--stream`: there is nothing to choose.
 - No two requests are ever in flight at once. `parallelism` is the constant `1` in the report because a second request in flight changes what the first one measured.
 - A warm-up request is never reported. It exists so that the first measured request is not the one that loaded the model.
 - A model that cannot be measured is recorded as a failure and the sweep carries on. Only a run in which no model at all could be measured throws, because a report of nothing but failures measured nothing.

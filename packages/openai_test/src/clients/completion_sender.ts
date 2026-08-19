@@ -5,7 +5,7 @@ import OpenAI, { APIError } from 'openai';
 import type {
 	ChatCompletionToolCall,
 	ChatCompletionUsage,
-	CompletionMode,
+	StreamSetting,
 	CompletionResult,
 	CompletionTarget,
 	GenerationControls,
@@ -40,7 +40,7 @@ export type SendCompletionOptions = {
 	/** The full list of messages to send. */
 	readonly messages: OpenAI.ChatCompletionMessageParam[];
 	/** Whether to ask for the answer as it is written, or in one piece. */
-	readonly mode: CompletionMode;
+	readonly streamSetting: StreamSetting;
 	/**
 	 * Called with each piece of the answer as it arrives, so a subcommand that shows the answer
 	 * to a person can write it out while it is being produced. Left out by the benchmark, which
@@ -48,10 +48,10 @@ export type SendCompletionOptions = {
 	 */
 	readonly writePiece?: (piece: string) => void;
 	/**
-	 * Whether to ask the streamed mode for its final, choice-less usage chunk with
+	 * Whether to ask a streamed answer for its final, choice-less usage chunk with
 	 * `stream_options: { include_usage: true }`. Left out by every caller other than the `usage`
 	 * subcommand, so `completion`, `history`, and `benchmark` keep sending the exact request they
-	 * always have. Has no effect in the nostream mode, which reports `usage` in its response body
+	 * always have. Has no effect with streaming off, which reports `usage` in its response body
 	 * regardless of this option.
 	 */
 	readonly includeUsage?: boolean;
@@ -106,10 +106,10 @@ export class CompletionSender {
 	}
 
 	/**
-	 * Sends one chat completion request in the requested mode and measures when its first and
+	 * Sends one chat completion request in the requested stream setting and measures when its first and
 	 * last character arrived.
 	 *
-	 * @param options The client, the model identifier, the messages, the mode, and where to write
+	 * @param options The client, the model identifier, the messages, the stream setting, and where to write
 	 * each piece of the answer as it arrives.
 	 * @returns The answer and when its characters arrived.
 	 * @throws {Error} If the endpoint returned no answer text at all, or if it answered as a model
@@ -117,7 +117,7 @@ export class CompletionSender {
 	 */
 	static async send(options: SendCompletionOptions): Promise<CompletionResult> {
 		let result: CompletionResult;
-		if (options.mode === 'streamed') {
+		if (options.streamSetting === 'on') {
 			result = await CompletionSender._sendStreamed(options);
 		} else {
 			result = await CompletionSender._sendNostream(options);

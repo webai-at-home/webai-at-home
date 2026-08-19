@@ -9,7 +9,7 @@ import { RawHttpClient } from '../src/clients/raw_http_client.js';
 import type { CompletionTarget } from '../src/completion_types.js';
 import { EndpointReachability } from '../src/endpoint_reachability.js';
 import { ModelResolver } from '../src/model_resolver.js';
-import { SharedOptions } from '../src/shared_options.js';
+import { SharedOptions, type RawSharedOptions } from '../src/shared_options.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -38,15 +38,36 @@ Test('SharedOptions names the option at fault when a numeric option cannot be re
 	Assert.throws(() => SharedOptions.positiveInteger('not-a-number', '--timeout_ms'), /--timeout_ms/);
 });
 
-Test('SharedOptions sweeps both modes when neither mode flag was given', () => {
-	const modes = SharedOptions.resolveModes({
+/**
+ * Builds the shared options every `--stream` test below starts from.
+ *
+ * @param stream What `--stream` was given, or `undefined` when the option was left out.
+ * @returns The options, ready to hand to `SharedOptions.resolveStreamSettings`.
+ */
+function sharedOptionsWithStream(stream: string | undefined): RawSharedOptions {
+	return {
 		model: 'a-model',
 		base_url: 'http://localhost:1234/v1',
 		api_key: 'no-key-required',
 		timeout_ms: '600000',
 		format: 'text',
-	});
-	Assert.deepEqual(modes, ['nostream', 'streamed']);
+		...(stream === undefined ? {} : { stream }),
+	};
+}
+
+Test('SharedOptions measures both stream settings when --stream was left out', () => {
+	Assert.deepEqual(SharedOptions.resolveStreamSettings(sharedOptionsWithStream(undefined)), ['off', 'on']);
+});
+
+Test('SharedOptions measures only the setting --stream names, whichever of the two it is', () => {
+	Assert.deepEqual(SharedOptions.resolveStreamSettings(sharedOptionsWithStream('on')), ['on']);
+	Assert.deepEqual(SharedOptions.resolveStreamSettings(sharedOptionsWithStream('off')), ['off']);
+	Assert.deepEqual(SharedOptions.resolveStreamSettings(sharedOptionsWithStream(' ON ')), ['on']);
+});
+
+Test('SharedOptions refuses a --stream value that is neither on nor off, rather than measuring both', () => {
+	Assert.throws(() => SharedOptions.resolveStreamSettings(sharedOptionsWithStream('true')), /--stream must be one of off, on, got "true"/);
+	Assert.throws(() => SharedOptions.resolveStreamSettings(sharedOptionsWithStream('')), /--stream must be one of off, on/);
 });
 
 ///////////////////////////////////////////////////////////////////////////////

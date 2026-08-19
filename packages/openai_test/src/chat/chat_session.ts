@@ -125,7 +125,7 @@ export class ChatSession {
 				client,
 				modelId,
 				messages: [...messages],
-				mode: 'streamed',
+				streamSetting: 'on',
 				writePiece,
 			});
 		};

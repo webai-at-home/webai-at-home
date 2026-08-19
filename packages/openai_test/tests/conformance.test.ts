@@ -7,6 +7,7 @@ import Test from 'node:test';
 
 // local imports
 import { OpenaiPackageClient } from '../src/clients/openai_package_client.js';
+import type { StreamSetting } from '../src/completion_types.js';
 import { RawHttpClient } from '../src/clients/raw_http_client.js';
 import { GenerationControlProbeCache } from '../src/conformance/probes/generation_control_probe_cache.js';
 import { GenerationControlVerdict } from '../src/conformance/probes/generation_control_verdict.js';
@@ -22,10 +23,11 @@ import { toolsProfile } from '../src/conformance/profiles/tools.js';
 import { JsonReporter } from '../src/conformance/reporter/json.js';
 import { JunitReporter } from '../src/conformance/reporter/junit.js';
 import { MarkdownReporter } from '../src/conformance/reporter/markdown.js';
+import { MergedRecords } from '../src/conformance/reporter/merged_records.js';
 import { ReportParameters, placeholderApiKey, redactedApiKey } from '../src/conformance/reporter/report_parameters.js';
 import { ReportSummary } from '../src/conformance/reporter/report_summary.js';
 import { TerminalReporter } from '../src/conformance/reporter/terminal.js';
-import { Runner, type TestRunRecord } from '../src/conformance/runner.js';
+import { Runner, type ConformanceRun, type TestRunRecord } from '../src/conformance/runner.js';
 import { SseEventReader } from '../src/readers/sse_event_reader.js';
 import { ToolCallProbeCache } from '../src/conformance/probes/tool_call_probe_cache.js';
 import { chatBasicTest } from '../src/conformance/conformance_tests/chat/basic.js';
@@ -74,8 +76,8 @@ class TestFixtures {
 			openaiPackageClient,
 			modelId: TestFixtures.modelId,
 			repeats: 1,
-			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'nostream'),
-			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'nostream'),
+			toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
+			generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
 		};
 		return {
 			context,
@@ -594,7 +596,7 @@ void Test('streaming.headers fails when a streamed request is answered with one 
 ///////////////////////////////////////////////////////////////////////////////
 
 void Test("ToolCallVerdict maps ToolCallProber's five statuses onto the four conformance verdicts", () => {
-	const outcome = { modelId: 'a-model', mode: 'nostream', ability: 'generates_a_call', observation: 'what was seen', answers: [] } as const;
+	const outcome = { modelId: 'a-model', streamSetting: 'off', ability: 'generates_a_call', observation: 'what was seen', answers: [] } as const;
 	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'supported' }, 'generates_a_call').verdict, 'PASS');
 	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'refused' }, 'generates_a_call').verdict, 'SKIP');
 	Assert.equal(ToolCallVerdict.fromOutcome({ ...outcome, status: 'unsupported' }, 'generates_a_call').verdict, 'WARN');
@@ -717,7 +719,7 @@ void Test('structured_output.json_schema skips, rather than failing, when the en
 ///////////////////////////////////////////////////////////////////////////////
 
 void Test("GenerationControlVerdict reads a control accepted and quietly ignored as FAIL, not WARN", () => {
-	const outcome = { modelId: 'a-model', mode: 'nostream', control: 'temperature', observation: 'what was seen', answers: [] } as const;
+	const outcome = { modelId: 'a-model', streamSetting: 'off', control: 'temperature', observation: 'what was seen', answers: [] } as const;
 	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'honoured' }, 'temperature').verdict, 'PASS');
 	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'refused' }, 'temperature').verdict, 'SKIP');
 	Assert.equal(GenerationControlVerdict.fromOutcome({ ...outcome, status: 'not_honoured' }, 'temperature').verdict, 'FAIL');
@@ -777,8 +779,8 @@ void Test('Runner turns a request that never reaches a server into a FAIL result
 		openaiPackageClient,
 		modelId: TestFixtures.modelId,
 		repeats: 1,
-		toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'nostream'),
-		generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'nostream'),
+		toolCallProbeCache: new ToolCallProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
+		generationControlProbeCache: new GenerationControlProbeCache(openaiPackageClient.client, TestFixtures.modelId, 1, 'off'),
 	};
 	const records = await Runner.run([chatBasicTest], context);
 	Assert.equal(records.length, 1);
@@ -1109,4 +1111,80 @@ void Test('Runner runs exactly as it always did when no progress listener is giv
 	} finally {
 		await stop();
 	}
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	One model's runs, merged back into the one report a single model has always earned
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Builds one run of one model, so a merge test reads as a list of runs rather than as a wall of
+ * object literals.
+ *
+ * @param streamSetting Whether streaming was on, off, or has no bearing on these tests.
+ * @param records The records the run produced.
+ * @returns The run.
+ */
+function conformanceRun(streamSetting: StreamSetting | undefined, records: readonly TestRunRecord[]): ConformanceRun {
+	return {
+		modelId: 'a-model',
+		streamSetting,
+		records,
+	};
+}
+
+void Test('one model measured both ways is merged into one list, with the two records of a test side by side', () => {
+	const merged = MergedRecords.of([
+		conformanceRun(undefined, [ReporterFixtures.record('chat.basic', 'chat', 'PASS')]),
+		conformanceRun('off', [ReporterFixtures.record('parameters.stop', 'parameters', 'FAIL', 'no answer text')]),
+		conformanceRun('on', [ReporterFixtures.record('parameters.stop', 'parameters', 'PASS')]),
+	]);
+
+	Assert.deepEqual(
+		merged.map((record) => `${record.test.id} ${record.streamSetting ?? 'both'}`),
+		['chat.basic both', 'parameters.stop off', 'parameters.stop on'],
+	);
+});
+
+void Test('one model measured one way names no stream setting anywhere, so its report is the report as it always was', () => {
+	const merged = MergedRecords.of([
+		conformanceRun(undefined, [ReporterFixtures.record('chat.basic', 'chat', 'PASS')]),
+		conformanceRun('off', [ReporterFixtures.record('parameters.stop', 'parameters', 'PASS')]),
+	]);
+
+	Assert.deepEqual(merged.map((record) => record.streamSetting), [undefined, undefined]);
+});
+
+void Test('the stream setting reaches every one of the four formats, and stays off the rows no setting was written on', () => {
+	const records = MergedRecords.of([
+		conformanceRun(undefined, [ReporterFixtures.record('chat.basic', 'chat', 'PASS')]),
+		conformanceRun('off', [ReporterFixtures.record('parameters.stop', 'parameters', 'FAIL', 'no answer text')]),
+		conformanceRun('on', [ReporterFixtures.record('parameters.stop', 'parameters', 'PASS')]),
+	]);
+	const options = {
+		endpoint: 'http://example.test/v1',
+		modelId: 'a-model',
+	};
+
+	const markdown = MarkdownReporter.render(records, options);
+	Assert.match(markdown, /\| `parameters\.stop` \(stream off\) \| ❌ \| no answer text \|/);
+	Assert.match(markdown, /\| `parameters\.stop` \(stream on\) \| ✅ \|/);
+	// The test streaming has no bearing on carries no setting, rather than an arbitrary one.
+	Assert.match(markdown, /\| `chat\.basic` \| ✅ \|/);
+
+	const terminal = TerminalReporter.render(records, options);
+	Assert.match(terminal, /parameters\.stop \(stream off\)/);
+	Assert.match(terminal, /parameters\.stop \(stream on\)/);
+
+	const junit = JunitReporter.render(records, options);
+	Assert.match(junit, /name="parameters\.stop \(stream off\)"/);
+	Assert.match(junit, /name="parameters\.stop \(stream on\)"/);
+
+	const json = JSON.parse(JsonReporter.render(records, options)) as { tests: { id: string; stream?: string }[] };
+	Assert.deepEqual(
+		json.tests.map((entry) => `${entry.id} ${entry.stream ?? 'none'}`),
+		['chat.basic none', 'parameters.stop off', 'parameters.stop on'],
+	);
 });

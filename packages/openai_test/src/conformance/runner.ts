@@ -1,5 +1,5 @@
 // local imports
-import type { CompletionMode } from '../completion_types.js';
+import type { StreamSetting } from '../completion_types.js';
 import type { ConformanceTest, TestContext, TestResult } from './types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,27 +16,36 @@ export type TestRunRecord = {
 	readonly result: TestResult;
 	/** How long this one test took, in milliseconds. */
 	readonly durationMs: number;
+	/**
+	 * Whether streaming was on or off for this record, written on by `MergedRecords` and never by
+	 * the runner itself.
+	 *
+	 * Present only when one model was measured both ways, where the report holds two records of the
+	 * same test and has to say which is which. A report of one stream setting leaves it `undefined`
+	 * on every record and names no setting anywhere.
+	 */
+	readonly streamSetting?: StreamSetting;
 };
 
 /**
- * One list of tests, run against one model, with the probes sent in one mode.
+ * One list of tests, run against one model, with the probes sent in one stream setting.
  *
- * A sweep produces more than one of these: one per model, and one more per extra mode for the
- * tests a mode actually reaches.
+ * A sweep produces more than one of these: one per model, and one more per extra stream setting for the
+ * tests a stream setting actually reaches.
  */
 export type ConformanceRun = {
 	/** The model identifier every test in this run was sent to. */
 	readonly modelId: string;
 	/**
-	 * The mode the probe caches were given, or `undefined` when this run holds only tests no mode
+	 * The stream setting the probe caches were given, or `undefined` when this run holds only tests no stream setting
 	 * reaches.
 	 *
-	 * The mode reaches the two probe caches and nothing else, so a run of the other groups is not a
-	 * run "in nostream mode" or "in streamed mode" — it is a run the mode has no bearing on, and
+	 * The stream setting reaches the two probe caches and nothing else, so a run of the other groups is not a
+	 * run "with streaming off" or "with streaming on" — it is a run streaming has no bearing on, and
 	 * saying so is the difference between a report that measured something and one that repeated
 	 * itself.
 	 */
-	readonly mode: CompletionMode | undefined;
+	readonly streamSetting: StreamSetting | undefined;
 	/** One record per test, in the order the tests were run. */
 	readonly records: readonly TestRunRecord[];
 };

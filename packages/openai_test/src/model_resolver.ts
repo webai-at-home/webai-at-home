@@ -172,7 +172,7 @@ export class ModelResolver {
 						content: ModelResolver._probePrompt,
 					},
 				],
-				mode: 'nostream',
+				streamSetting: 'off',
 			});
 			return undefined;
 		} catch (error: unknown) {

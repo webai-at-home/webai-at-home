@@ -10,11 +10,17 @@
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-/** One mode a chat completion request can be sent in. */
-export type CompletionMode = 'nostream' | 'streamed';
+/**
+ * Whether one chat completion request asks for the answer in pieces or in one response.
+ *
+ * `on` sends `stream: true` and reads the answer as server-sent events; `off` sends no `stream`
+ * field at all and reads the whole answer out of one response. This is what `--stream on` and
+ * `--stream off` choose between.
+ */
+export type StreamSetting = 'off' | 'on';
 
-/** Every mode a subcommand can sweep through, in the order they run for one model. */
-export const completionModes: readonly CompletionMode[] = ['nostream', 'streamed'];
+/** Both stream settings, in the order a subcommand measures them for one model. */
+export const streamSettings: readonly StreamSetting[] = ['off', 'on'];
 
 /** The endpoint one request is sent to. */
 export type CompletionTarget = {
@@ -41,11 +47,11 @@ export type ChatCompletionUsage = {
 
 /** What sending one request, given a full list of messages, produced. */
 export type CompletionResult = {
-	/** The complete assistant answer, concatenated from every streamed piece in the streamed mode. */
+	/** The complete assistant answer, concatenated from every streamed piece when streaming is on. */
 	readonly answer: string;
 	/**
 	 * The model identifier the endpoint itself named in its answer, read from the response body's own
-	 * `model` field, or from the streamed chunks' `model` field in the streamed mode.
+	 * `model` field, or from the streamed chunks' `model` field when streaming is on.
 	 *
 	 * This is not always the model identifier that was requested, and the difference is the whole
 	 * reason this field exists. LM Studio 0.4.20 answers a request naming a model it cannot serve —
@@ -58,7 +64,7 @@ export type CompletionResult = {
 	readonly reportedModelId: string | undefined;
 	/**
 	 * Elapsed time, in milliseconds, from the request being sent until the first character
-	 * arrived. Equal to `timeToLastCharacterMs` in the nostream mode, and equal to it as well
+	 * arrived. Equal to `timeToLastCharacterMs` with streaming off, and equal to it as well
 	 * when the endpoint ignored the streaming request and answered in one piece.
 	 */
 	readonly timeToFirstCharacterMs: number;
@@ -67,7 +73,7 @@ export type CompletionResult = {
 	/**
 	 * How much of `timeToLastCharacterMs` was spent generating the whole answer inside the
 	 * cluster, read from the `X-Webai-Generation-Time-Ms` response header, rather than measured
-	 * by this tool's own stopwatch. Set only in the nostream mode, since only a whole-answer
+	 * by this tool's own stopwatch. Set only with streaming off, since only a whole-answer
 	 * response can carry it — a streamed response sends its headers before the cluster has
 	 * finished generating the rest of the answer. `undefined` when the endpoint sent no such
 	 * header, which every endpoint other than this project's own `consumer_openai` server does.
@@ -76,14 +82,14 @@ export type CompletionResult = {
 	/**
 	 * How much of `timeToFirstCharacterMs` was spent inside the cluster before its first piece
 	 * was ready, read from the `X-Webai-Time-To-First-Piece-Ms` response header. Set only in the
-	 * streamed mode. `undefined` when the endpoint sent no such header.
+	 * streaming on. `undefined` when the endpoint sent no such header.
 	 */
 	readonly clusterTimeToFirstPieceMs: number | undefined;
 	/**
-	 * The answer's token usage, read straight from the response body in the nostream mode, or from
-	 * the final, choice-less streamed chunk when the streamed mode asked for it with `stream_options:
+	 * The answer's token usage, read straight from the response body with streaming off, or from
+	 * the final, choice-less streamed chunk when the request asked for it with `stream_options:
 	 * { include_usage: true }`. `undefined` when the worker that produced the answer reported no
-	 * usage, or when the streamed mode did not ask for it.
+	 * usage, or when the request did not ask for it.
 	 */
 	readonly usage: ChatCompletionUsage | undefined;
 	/**
@@ -93,7 +99,7 @@ export type CompletionResult = {
 	readonly finishReason: string | undefined;
 	/**
 	 * The tool calls the model asked for, in the order the endpoint reported them, assembled from
-	 * the streamed fragments in the streamed mode. Empty when the model answered in words instead,
+	 * the streamed fragments when streaming is on. Empty when the model answered in words instead,
 	 * which is every request that declared no tool at all.
 	 */
 	readonly toolCalls: readonly ChatCompletionToolCall[];
@@ -105,7 +111,7 @@ export type CompletionResult = {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-/** How one swept model and mode pair turned out. */
+/** How one swept model and stream setting pair turned out. */
 export type SweepStatus = 'ok' | 'failed' | 'skipped';
 
 /** One message of a history `history` sent, in the order it was sent. */
@@ -116,12 +122,12 @@ export type SweepTurn = {
 	readonly content: string;
 };
 
-/** What sweeping one model and one mode produced, for `completion` and `history`. */
+/** What sweeping one model and one stream setting produced, for `completion` and `history`. */
 export type SweepOutcome = {
 	/** The model identifier swept. */
 	readonly modelId: string;
-	/** The mode swept. */
-	readonly mode: CompletionMode;
+	/** The stream setting swept. */
+	readonly streamSetting: StreamSetting;
 	/**
 	 * `ok` once the model answered with usable text, `failed` once it did not, and `skipped`
 	 * for a pairing known ahead of the request not to work, such as `dev_formula` asked to
@@ -131,7 +137,7 @@ export type SweepOutcome = {
 	readonly status: SweepStatus;
 	/**
 	 * Elapsed time, in milliseconds, from the request being sent until the first character
-	 * arrived. Equal to `timeToLastCharacterMs` in the nostream mode. `0` when skipped.
+	 * arrived. Equal to `timeToLastCharacterMs` with streaming off. `0` when skipped.
 	 */
 	readonly timeToFirstCharacterMs: number;
 	/** Elapsed time, in milliseconds, from the request being sent until the final character arrived. `0` when skipped. */
@@ -143,13 +149,13 @@ export type SweepOutcome = {
 	/**
 	 * How much of `timeToLastCharacterMs` the cluster reported spending on generation, carried
 	 * over from `CompletionResult.clusterGenerationTimeMs`. Set only for an `ok` pairing in the
-	 * nostream mode, against an endpoint that sent the header. `undefined` otherwise.
+	 * streaming off, against an endpoint that sent the header. `undefined` otherwise.
 	 */
 	readonly clusterGenerationTimeMs?: number | undefined;
 	/**
 	 * How much of `timeToFirstCharacterMs` the cluster reported spending before its first piece
 	 * was ready, carried over from `CompletionResult.clusterTimeToFirstPieceMs`. Set only for an
-	 * `ok` pairing in the streamed mode, against an endpoint that sent the header. `undefined`
+	 * `ok` pairing with streaming on, against an endpoint that sent the header. `undefined`
 	 * otherwise.
 	 */
 	readonly clusterTimeToFirstPieceMs?: number | undefined;
@@ -164,12 +170,12 @@ export type SweepOutcome = {
 	readonly turns?: readonly SweepTurn[];
 };
 
-/** What sweeping one model and one mode produced, for `usage`. */
+/** What sweeping one model and one stream setting produced, for `usage`. */
 export type UsageOutcome = {
 	/** The model identifier swept. */
 	readonly modelId: string;
-	/** The mode swept. */
-	readonly mode: CompletionMode;
+	/** The stream setting swept. */
+	readonly streamSetting: StreamSetting;
 	/**
 	 * `ok` once the model answered with usable text, `failed` once it did not, and `skipped`
 	 * for a pairing known ahead of the request not to work, such as `dev_formula` asked to
@@ -335,7 +341,7 @@ export const generationControlFields = ['temperature', 'top_p', 'max_completion_
 export type GenerationControlField = typeof generationControlFields[number];
 
 /**
- * What probing one generation control against one model and one mode concluded.
+ * What probing one generation control against one model and one stream setting concluded.
  *
  * - `honoured` — the answers changed in the way the control is supposed to change them.
  * - `not_honoured` — the endpoint accepted the control and the answers did not change, which is
@@ -351,15 +357,15 @@ export type GenerationControlField = typeof generationControlFields[number];
  */
 export const generationControlStatuses = ['honoured', 'not_honoured', 'refused', 'inconclusive', 'failed'] as const;
 
-/** What probing one generation control against one model and one mode concluded. */
+/** What probing one generation control against one model and one stream setting concluded. */
 export type GenerationControlStatus = typeof generationControlStatuses[number];
 
-/** What probing one generation control against one model and one mode produced. */
+/** What probing one generation control against one model and one stream setting produced. */
 export type GenerationControlOutcome = {
 	/** The model identifier probed. */
 	readonly modelId: string;
-	/** The mode probed. */
-	readonly mode: CompletionMode;
+	/** The stream setting probed. */
+	readonly streamSetting: StreamSetting;
 	/** The control probed, named as the request field it was sent in. */
 	readonly control: GenerationControlField;
 	/** What the probe concluded. */
@@ -462,7 +468,7 @@ export const toolCallAbilities = [
 export type ToolCallAbility = typeof toolCallAbilities[number];
 
 /**
- * What probing one tool call ability against one model and one mode concluded.
+ * What probing one tool call ability against one model and one stream setting concluded.
  *
  * - `supported` — the model did what the ability names.
  * - `unsupported` — the endpoint accepted the request and the model did not. This is the finding
@@ -477,15 +483,15 @@ export type ToolCallAbility = typeof toolCallAbilities[number];
  */
 export const toolCallStatuses = ['supported', 'unsupported', 'refused', 'inconclusive', 'failed'] as const;
 
-/** What probing one tool call ability against one model and one mode concluded. */
+/** What probing one tool call ability against one model and one stream setting concluded. */
 export type ToolCallStatus = typeof toolCallStatuses[number];
 
-/** What probing one tool call ability against one model and one mode produced. */
+/** What probing one tool call ability against one model and one stream setting produced. */
 export type ToolCallOutcome = {
 	/** The model identifier probed. */
 	readonly modelId: string;
-	/** The mode probed. */
-	readonly mode: CompletionMode;
+	/** The stream setting probed. */
+	readonly streamSetting: StreamSetting;
 	/** The ability probed. */
 	readonly ability: ToolCallAbility;
 	/** What the probe concluded. */

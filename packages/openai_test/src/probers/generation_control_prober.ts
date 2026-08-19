@@ -3,7 +3,7 @@ import type OpenAI from 'openai';
 
 // local imports
 import { CompletionSender } from '../clients/completion_sender.js';
-import type { CompletionMode, GenerationControlField, GenerationControlOutcome, GenerationControls } from '../completion_types.js';
+import type { StreamSetting, GenerationControlField, GenerationControlOutcome, GenerationControls } from '../completion_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -32,7 +32,7 @@ export type GenerationControlProbeOptions = {
 	/** The model identifier to request. */
 	readonly modelId: string;
 	/** Whether to ask for the answer as it is written, or in one piece. */
-	readonly mode: CompletionMode;
+	readonly streamSetting: StreamSetting;
 	/**
 	 * How many times a probe that compares repeated answers sends its prompt. Three is the floor the
 	 * de-risk gate used: two answers agreeing can be chance, and three agreeing where a high
@@ -140,14 +140,14 @@ export class GenerationControlProber {
 	];
 
 	/**
-	 * Probes all five generation controls against one model and one mode, in the order they are
+	 * Probes all five generation controls against one model and one stream setting, in the order they are
 	 * declared, and reports what each probe concluded.
 	 *
 	 * The probes run one after another rather than together, because two of them read the same
 	 * model at a high temperature and a shared endpoint answering both at once would make neither
 	 * measurement mean anything.
 	 *
-	 * @param options The client, the model identifier, the mode, and how many times a repeated
+	 * @param options The client, the model identifier, the stream setting, and how many times a repeated
 	 * probe sends its prompt.
 	 * @returns One outcome per control, in the order the controls are declared.
 	 */
@@ -185,7 +185,7 @@ export class GenerationControlProber {
 	 * the same. Either half alone proves nothing: a model can be deterministic for reasons that
 	 * have nothing to do with the temperature it was given.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeTemperature(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
@@ -223,7 +223,7 @@ export class GenerationControlProber {
 	 * `temperature` probe already found the high temperature produced identical answers, because
 	 * then there was no variation for `top_p` to remove.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeTopP(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
@@ -247,7 +247,7 @@ export class GenerationControlProber {
 	 * stopped because the budget ran out. A shorter answer alone is accepted as evidence only
 	 * when the endpoint reports no finish reason at all.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeMaximumOutputTokenCount(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
@@ -318,7 +318,7 @@ export class GenerationControlProber {
 	 * it does. The second half is what makes the first mean anything: a model that never wrote
 	 * the sequence in the first place proves nothing.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeStop(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
@@ -346,7 +346,7 @@ export class GenerationControlProber {
 	 * that answers identically whatever seed it is given is reported as inconclusive rather than
 	 * as honouring the seed, because that is what an ignored seed looks like too.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeSeed(options: GenerationControlProbeOptions): Promise<GenerationControlOutcome> {
@@ -383,7 +383,7 @@ export class GenerationControlProber {
 	 * Sends one prompt with one set of controls, and turns a failure into an answer rather than
 	 * throwing, so that a refusal can be read as the endpoint's answer about the control.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * @param options The client, the model identifier, and the stream setting.
 	 * @param controls The controls to ask for.
 	 * @param prompt The prompt to send. Defaults to the open-ended one every repeated probe uses.
 	 * @returns The answer, or the failure that came instead of it.
@@ -399,7 +399,7 @@ export class GenerationControlProber {
 						content: prompt,
 					},
 				],
-				mode: options.mode,
+				streamSetting: options.streamSetting,
 				includeUsage: true,
 				controls,
 			});
@@ -429,7 +429,7 @@ export class GenerationControlProber {
 	 * Stops at the first failure rather than sending the rest, because one failed request already
 	 * decides the outcome and the remaining ones would only cost time.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @param controls The controls to ask for on every request.
 	 * @returns The answers, in the order they were sent.
 	 */
@@ -452,7 +452,7 @@ export class GenerationControlProber {
 	 * model cannot honour the control, which is a conclusion rather than a fault, so it becomes
 	 * `refused`. Every other failure becomes `failed`, because the control was never tested.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * @param options The client, the model identifier, and the stream setting.
 	 * @param control The control being probed.
 	 * @param newAnswers The answers this step produced.
 	 * @param earlierAnswers The answers earlier steps of the same probe produced, so a failure
@@ -489,7 +489,7 @@ export class GenerationControlProber {
 	/**
 	 * Builds one probe outcome.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * @param options The client, the model identifier, and the stream setting.
 	 * @param control The control probed.
 	 * @param status What the probe concluded.
 	 * @param observation What was observed, in words.
@@ -505,7 +505,7 @@ export class GenerationControlProber {
 	): GenerationControlOutcome {
 		return {
 			modelId: options.modelId,
-			mode: options.mode,
+			streamSetting: options.streamSetting,
 			control,
 			status,
 			observation,

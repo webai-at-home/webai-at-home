@@ -37,7 +37,7 @@ export class JunitReporter {
 	 * Renders a sweep across several models as one `<testsuites>` element holding one `<testsuite>`
 	 * per run, which is the shape JUnit already has for exactly this.
 	 *
-	 * A suite is named `openai_test.<model>` and, where the mode reached its tests, `.<mode>` after
+	 * A suite is named `openai_test.<model>` and, where the stream setting reached its tests, `.<streamSetting>` after
 	 * that, so a continuous integration run that shows one suite per line names the model rather
 	 * than showing the same name several times over.
 	 *
@@ -54,7 +54,7 @@ export class JunitReporter {
 					endpoint,
 					modelId: run.modelId,
 				},
-				run.mode === undefined ? `.${run.modelId}` : `.${run.modelId}.${run.mode}`,
+				run.streamSetting === undefined ? `.${run.modelId}` : `.${run.modelId}.${run.streamSetting}`,
 			);
 			lines.push(...suiteLines.map((line) => `\t${line}`));
 		}
@@ -104,7 +104,9 @@ export class JunitReporter {
 	 */
 	private static _testCaseLines(record: TestRunRecord): string[] {
 		const durationSeconds = (record.durationMs / 1000).toFixed(3);
-		const openingTag = `\t<testcase classname="${JunitReporter._escape(record.test.group)}" name="${JunitReporter._escape(record.test.id)}" time="${durationSeconds}">`;
+		const streamSetting = record.streamSetting === undefined ? '' : ` (stream ${record.streamSetting})`;
+		const name = JunitReporter._escape(record.test.id + streamSetting);
+		const openingTag = `\t<testcase classname="${JunitReporter._escape(record.test.group)}" name="${name}" time="${durationSeconds}">`;
 		const detail = JunitReporter._escape(record.result.detail);
 		switch (record.result.verdict) {
 			case 'PASS':

@@ -44,7 +44,7 @@ Anything that reaches for the listing has every model it names proved usable fir
 
 - `--profile <name>` — `core`, `streaming`, `tools`, `parameters`, `structured_output`, `sdk`, `agent`, or `full`.
 - `-g/--group <name>` and `-t/--test <id...>` — run part of a profile.
-- `-s/--streamed` and `--nostream` — which request mode the tool call and generation control probes send in. Both given measures both, and reports them side by side.
+- `--stream <on|off>` — whether the tool call and generation control probes ask for the answer in pieces or in one response. Left out, both are measured, and the report says which row is which.
 - `-r/--repeats <count>` — how many times a test that samples the model repeats before deciding. Defaults to `3`.
 - `-v/--verbose` — print each test as it starts and as it finishes, on standard error, and print the detail of every test rather than only the ones that did not pass.
 - `--ci` — print none of those lines, since a continuous integration log reads the report rather than the run.
@@ -56,7 +56,7 @@ Anything that reaches for the listing has every model it names proved usable fir
 | `SKIP` | The endpoint said plainly that it does not support this. Left out of the compatibility percentage, because nothing was measured. |
 | `WARN` | Correct, but in a way that may still break a client — a stream that arrives in one piece, or JSON wrapped in a code fence. |
 
-More than one model, or both request modes, is reported as one verdict matrix rather than as several reports.
+One model is one report, however many stream settings it was measured with. Several models is one verdict matrix instead, where a reader compares models by reading across a row.
 
 ## `benchmark`
 

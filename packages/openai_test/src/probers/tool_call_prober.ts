@@ -5,7 +5,7 @@ import type OpenAI from 'openai';
 import { CompletionSender } from '../clients/completion_sender.js';
 import type {
 	ChatCompletionToolCall,
-	CompletionMode,
+	StreamSetting,
 	ToolCallAbility,
 	ToolCallOutcome,
 	ToolChoice,
@@ -45,7 +45,7 @@ export type ToolCallProbeOptions = {
 	/** The model identifier to request. */
 	readonly modelId: string;
 	/** Whether to ask for the answer as it is written, or in one piece. */
-	readonly mode: CompletionMode;
+	readonly streamSetting: StreamSetting;
 	/**
 	 * How many times a probe that needs a tool call, or that needs the answer to carry a particular
 	 * word, sends its prompt before giving up on getting one.
@@ -169,14 +169,14 @@ const prompts = {
 /** Proves, one ability at a time, whether a model really calls tools through an OpenAI-compatible endpoint. */
 export class ToolCallProber {
 	/**
-	 * Probes all six tool call abilities against one model and one mode, in the order they are
+	 * Probes all six tool call abilities against one model and one stream setting, in the order they are
 	 * declared, and reports what each probe concluded.
 	 *
 	 * The probes run one after another rather than together, because a shared endpoint answering
 	 * several at once would queue them behind each other anyway, and a model held on one device can
 	 * only generate one answer at a time.
 	 *
-	 * @param options The client, the model identifier, the mode, and how many times a probe that
+	 * @param options The client, the model identifier, the stream setting, and how many times a probe that
 	 * needs a tool call sends its prompt before giving up on getting one.
 	 * @returns One outcome per ability, in the order the abilities are declared.
 	 */
@@ -220,7 +220,7 @@ export class ToolCallProber {
 	 * Supported once any one of the requests produced a call, and the observation names how many of
 	 * them did, so a model that calls tools unreliably is not recorded as a model that cannot.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeGeneratesACall(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
@@ -257,7 +257,7 @@ export class ToolCallProber {
 	 * to. It is exactly the request that settled the de-risk gate of
 	 * [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78).
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeGeneratesACallWhenForced(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
@@ -293,7 +293,7 @@ export class ToolCallProber {
 	 * A tool call naming the right tool and filled in with the wrong city is worse than no tool call
 	 * at all, because the calling program would run it and answer confidently about the wrong place.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeFillsInTheArguments(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
@@ -371,7 +371,7 @@ export class ToolCallProber {
 	 * Probes whether the model picks the right tool: three tools declared, and a question only one
 	 * of them answers.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeChoosesAmongSeveralTools(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
@@ -429,7 +429,7 @@ export class ToolCallProber {
 	 * as absent about one run in four
 	 * ([issue #208](https://github.com/webai-at-home/webai-at-home/issues/208)).
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeReadsAToolResultBack(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
@@ -512,7 +512,7 @@ export class ToolCallProber {
 	 * [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78): the wire format was
 	 * never the obstacle.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * @param options The client, the model identifier, and the stream setting.
 	 * @returns What the probe concluded.
 	 */
 	private static async _probeAnswersWithoutACallWhenNoneIsNeeded(options: ToolCallProbeOptions): Promise<ToolCallOutcome> {
@@ -555,7 +555,7 @@ export class ToolCallProber {
 	 * rather than throwing, so that a refusal can be read as the endpoint's answer about tool
 	 * calling.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * @param options The client, the model identifier, and the stream setting.
 	 * @param tools The tools to declare.
 	 * @param toolChoice How much choice to leave the model.
 	 * @param messages The whole history to send.
@@ -572,7 +572,7 @@ export class ToolCallProber {
 				client: options.client,
 				modelId: options.modelId,
 				messages,
-				mode: options.mode,
+				streamSetting: options.streamSetting,
 				tools,
 				toolChoice,
 			});
@@ -602,7 +602,7 @@ export class ToolCallProber {
 	 * Every request is sent, rather than stopping at the first that produced a call, because how
 	 * many of them produced one is the finding.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @param tools The tools to declare on every request.
 	 * @param toolChoice How much choice to leave the model.
 	 * @param prompt The question to ask every time.
@@ -639,7 +639,7 @@ export class ToolCallProber {
 	 * unreliably is still measured on the call it did produce instead of being reported as
 	 * inconclusive because the first try happened not to produce one.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @param tools The tools to declare on every request.
 	 * @param toolChoice How much choice to leave the model.
 	 * @param prompt The question to ask every time.
@@ -676,7 +676,7 @@ export class ToolCallProber {
 	 * prompt. This one takes the whole history instead, because the probe that uses it has to put a
 	 * tool call and that tool's result in front of the model before it can ask anything.
 	 *
-	 * @param options The client, the model identifier, the mode, and the repeat count.
+	 * @param options The client, the model identifier, the stream setting, and the repeat count.
 	 * @param tools The tools to declare on every request.
 	 * @param toolChoice How much choice to leave the model.
 	 * @param messages The whole history to send every time.
@@ -723,7 +723,7 @@ export class ToolCallProber {
 	 * a fault in this run, so it becomes `refused`. Every other failure becomes `failed`, because
 	 * the ability was never tested.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * @param options The client, the model identifier, and the stream setting.
 	 * @param ability The ability being probed.
 	 * @param answers The answers this probe produced.
 	 * @returns The outcome to report, or `undefined` when every request succeeded.
@@ -770,7 +770,7 @@ export class ToolCallProber {
 	 * Builds one probe outcome, recording every answer as the text the model wrote or as the tool
 	 * call it asked for instead.
 	 *
-	 * @param options The client, the model identifier, and the mode.
+	 * @param options The client, the model identifier, and the stream setting.
 	 * @param ability The ability probed.
 	 * @param status What the probe concluded.
 	 * @param observation What was observed, in words.
@@ -786,7 +786,7 @@ export class ToolCallProber {
 	): ToolCallOutcome {
 		return {
 			modelId: options.modelId,
-			mode: options.mode,
+			streamSetting: options.streamSetting,
 			ability,
 			status,
 			observation,

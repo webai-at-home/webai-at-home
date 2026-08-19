@@ -131,7 +131,7 @@ async function probeStatuses(baseUrl: string): Promise<Record<string, string>> {
 	const outcomes = await GenerationControlProber.probeAll({
 		client,
 		modelId: 'stand-in',
-		mode: 'nostream',
+		streamSetting: 'off',
 		repeats: 3,
 	});
 	return Object.fromEntries(outcomes.map((outcome) => [outcome.control, outcome.status]));
@@ -248,7 +248,7 @@ function carriesAToolResult(body: ReceivedToolRequest): boolean {
 
 /**
  * Starts a stand-in endpoint that answers every chat completion request through one function, in
- * whichever mode the request asked for.
+ * whichever stream setting the request asked for.
  *
  * A streamed answer sends its tool calls the way this interface really does — the name once, then
  * the arguments a fragment at a time, each carrying the index of the call it belongs to — so that
@@ -347,10 +347,10 @@ function callsToolsAnswer(body: ReceivedToolRequest): StandInAnswer {
  * Probes one stand-in endpoint and returns what each ability's probe concluded.
  *
  * @param baseUrl The stand-in endpoint's base URL.
- * @param mode Whether to ask for the answer as it is written, or in one piece.
+ * @param streamSetting Whether to ask for the answer as it is written, or in one piece.
  * @returns The status of each of the six probes, keyed by the ability's name.
  */
-async function probeToolCallStatuses(baseUrl: string, mode: 'nostream' | 'streamed'): Promise<Record<string, string>> {
+async function probeToolCallStatuses(baseUrl: string, streamSetting: 'off' | 'on'): Promise<Record<string, string>> {
 	const client = CompletionSender.createClient({
 		baseUrl: `${baseUrl}/v1`,
 		apiKey: 'insecure-benchmark-key',
@@ -359,7 +359,7 @@ async function probeToolCallStatuses(baseUrl: string, mode: 'nostream' | 'stream
 	const outcomes = await ToolCallProber.probeAll({
 		client,
 		modelId: 'stand-in',
-		mode,
+		streamSetting,
 		repeats: 3,
 	});
 	return Object.fromEntries(outcomes.map((outcome) => [outcome.ability, outcome.status]));
@@ -368,7 +368,7 @@ async function probeToolCallStatuses(baseUrl: string, mode: 'nostream' | 'stream
 Test('finds every ability supported against a model that really calls tools', async () => {
 	const server = await startToolCallServer(callsToolsAnswer);
 	try {
-		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'off'), {
 			generates_a_call: 'supported',
 			generates_a_call_when_forced: 'supported',
 			fills_in_the_arguments: 'supported',
@@ -381,10 +381,10 @@ Test('finds every ability supported against a model that really calls tools', as
 	}
 });
 
-Test('assembles a tool call streamed a fragment at a time, so the streamed mode reaches the same conclusions', async () => {
+Test('assembles a tool call streamed a fragment at a time, so streaming reaches the same conclusions', async () => {
 	const server = await startToolCallServer(callsToolsAnswer);
 	try {
-		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'streamed'), {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'on'), {
 			generates_a_call: 'supported',
 			generates_a_call_when_forced: 'supported',
 			fills_in_the_arguments: 'supported',
@@ -409,7 +409,7 @@ Test('reads a streamed tool call back as one call, with its name and its whole a
 			client,
 			modelId: 'stand-in',
 			messages: [{ role: 'user', content: 'What is the current weather in Paris?' }],
-			mode: 'streamed',
+			streamSetting: 'on',
 			tools: [{
 				type: 'function',
 				function: {
@@ -440,7 +440,7 @@ Test('finds tool calling unsupported against an endpoint that accepts the declar
 		toolCalls: [],
 	}));
 	try {
-		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'off'), {
 			generates_a_call: 'unsupported',
 			generates_a_call_when_forced: 'unsupported',
 			fills_in_the_arguments: 'inconclusive',
@@ -462,7 +462,7 @@ Test('finds the wrong tool, unusable arguments, and a call nobody asked for, eac
 		toolCalls: [{ name: 'get_stock_price', argumentsJson: 'city=Paris' }],
 	}));
 	try {
-		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'off'), {
 			generates_a_call: 'supported',
 			generates_a_call_when_forced: 'supported',
 			fills_in_the_arguments: 'unsupported',
@@ -491,7 +491,7 @@ Test('reports an endpoint that will not take tool declarations at all as refused
 		});
 	});
 	try {
-		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'nostream'), {
+		Assert.deepEqual(await probeToolCallStatuses(server.baseUrl, 'off'), {
 			generates_a_call: 'refused',
 			generates_a_call_when_forced: 'refused',
 			fills_in_the_arguments: 'refused',

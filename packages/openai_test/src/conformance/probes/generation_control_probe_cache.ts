@@ -2,7 +2,7 @@
 import type OpenAI from 'openai';
 
 // local imports
-import type { CompletionMode, GenerationControlField, GenerationControlOutcome } from '../../completion_types.js';
+import type { StreamSetting, GenerationControlField, GenerationControlOutcome } from '../../completion_types.js';
 import { GenerationControlProber } from '../../probers/generation_control_prober.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,9 +29,9 @@ export class GenerationControlProbeCache {
 	 * agreeing where a high temperature gave three different answers cannot reasonably be. The
 	 * default is five, raised for the two tests that read one word out of an answer, in
 	 * [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).
-	 * @param mode Whether to ask for each probe's answer as it is written, or in one piece. An
+	 * @param streamSetting Whether to ask for each probe's answer as it is written, or in one piece. An
 	 * endpoint that honours a control one way and ignores it the other is a real finding, and the
-	 * mode was fixed at `nostream` here until
+	 * stream setting was fixed at `--stream off` here until
 	 * [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which meant the
 	 * streamed half of that question was never asked.
 	 */
@@ -39,7 +39,7 @@ export class GenerationControlProbeCache {
 		private readonly client: OpenAI,
 		private readonly modelId: string,
 		private readonly repeats: number,
-		private readonly mode: CompletionMode,
+		private readonly streamSetting: StreamSetting,
 	) {}
 
 	/**
@@ -54,7 +54,7 @@ export class GenerationControlProbeCache {
 			this._outcomesPromise = GenerationControlProber.probeAll({
 				client: this.client,
 				modelId: this.modelId,
-				mode: this.mode,
+				streamSetting: this.streamSetting,
 				repeats: this.repeats,
 			});
 		}

@@ -2,7 +2,7 @@
 import type { Command } from 'commander';
 
 // local imports
-import { completionModes, reportFormats, type CompletionMode, type CompletionTarget } from './completion_types.js';
+import { streamSettings, reportFormats, type StreamSetting, type CompletionTarget } from './completion_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -21,7 +21,7 @@ import { completionModes, reportFormats, type CompletionMode, type CompletionTar
  *
  * All three subcommands accept these, `chat` included, which is why they are named apart from
  * `RawSharedOptions`: `chat` is a terminal session rather than a report, so it accepts no
- * `-f/--format` and no mode flags.
+ * `-f/--format` and no stream setting flags.
  */
 export type RawEndpointOptions = {
 	/** The base URL of the OpenAI-compatible API to reach, without `/chat/completions`. */
@@ -36,10 +36,8 @@ export type RawEndpointOptions = {
 export type RawSharedOptions = RawEndpointOptions & {
 	/** One model identifier, a comma-separated list, a pattern such as `llm_*`, `all`, or `list`. */
 	model: string;
-	/** Set when `-s/--streamed` was given. */
-	streamed?: boolean;
-	/** Set when `--nostream` was given. */
-	nostream?: boolean;
+	/** The value `--stream` was given, still unchecked against `streamSettings`. */
+	stream?: string;
 	/** The output format, still unchecked against `reportFormats`. */
 	format: string;
 };
@@ -72,18 +70,19 @@ export class SharedOptions {
 	}
 
 	/**
-	 * Adds `-s/--streamed` and `--nostream` to one subcommand.
+	 * Adds `--stream` to one subcommand.
 	 *
-	 * The benchmark does not accept either one, because it always asks for the answer in pieces:
-	 * that is what lets it measure Time to First Character apart from Time to Last Character.
+	 * The benchmark does not accept it, because it always asks for the answer in pieces: that is
+	 * what lets it measure Time to First Character apart from Time to Last Character.
 	 *
-	 * @param command The subcommand to add the options to.
+	 * @param command The subcommand to add the option to.
 	 * @returns The same subcommand, so the call can be chained.
 	 */
-	static addModeOptions(command: Command): Command {
-		return command
-			.option('-s, --streamed', 'sweep the streamed mode only')
-			.option('--nostream', 'sweep the nostream mode only');
+	static addStreamOption(command: Command): Command {
+		return command.option(
+			'--stream <on|off>',
+			'measure with streaming on only, or with streaming off only; both when this option is left out',
+		);
 	}
 
 	/**
@@ -112,21 +111,21 @@ export class SharedOptions {
 	}
 
 	/**
-	 * Resolves which modes to sweep from `-s/--streamed` and `--nostream`.
+	 * Resolves which stream settings to measure from `--stream`.
 	 *
 	 * @param rawOptions The subcommand's options, exactly as commander parsed them.
-	 * @returns Both modes when neither flag is given, or when both are; otherwise the one flag given.
+	 * @returns The one setting `--stream` names, or both settings when the option was left out.
+	 * @throws {Error} If `--stream` was given anything other than `on` or `off`.
 	 */
-	static resolveModes(rawOptions: RawSharedOptions): readonly CompletionMode[] {
-		const streamedOnly = rawOptions.streamed === true && rawOptions.nostream !== true;
-		const nostreamOnly = rawOptions.nostream === true && rawOptions.streamed !== true;
-		if (streamedOnly === true) {
-			return ['streamed'];
+	static resolveStreamSettings(rawOptions: RawSharedOptions): readonly StreamSetting[] {
+		if (rawOptions.stream === undefined) {
+			return streamSettings;
 		}
-		if (nostreamOnly === true) {
-			return ['nostream'];
+		const wanted = rawOptions.stream.trim().toLowerCase();
+		if ((streamSettings as readonly string[]).includes(wanted) === false) {
+			throw new Error(`--stream must be one of ${streamSettings.join(', ')}, got "${rawOptions.stream}"`);
 		}
-		return completionModes;
+		return [wanted as StreamSetting];
 	}
 
 	/**
