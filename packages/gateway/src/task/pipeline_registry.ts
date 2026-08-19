@@ -177,4 +177,31 @@ export const builtinPipelineSpecifications: PipelineSpecification[] = [
 			{ name: 'stage_llm_llama3_2_1b_full', computation: 'llm_llama3_2_1b_full', inputSchemaId: 'llm@1', outputSchemaId: 'llm@1', encoding: 'inline-json', leaseMs: 60_000, prefersSameWorkerOnRetry: true },
 		],
 	},
+	{
+		// Gemma 4 E2B is held complete on one device, so this pipeline follows the shape of the two
+		// full-model pipelines above: the worker is asked for an answer once and it is read back in
+		// pieces or in one piece depending on what the consumer asked for, the pipeline repeats until
+		// a stage result reports generation finished, and prefersSameWorkerOnRetry keeps a retried
+		// attempt on the device already holding the downloaded model and the generation state.
+		//
+		// Unlike task_type_llm_llama3_2_1b_full, only one kind of worker can run this: a worker
+		// browser tab on WebGPU. There is no native worker forwarding to a local server, and there is
+		// no WebAssembly fallback — WebAssembly is far too slow to carry a model meant to become the
+		// default in https://github.com/webai-at-home/webai-at-home/issues/210, and a WebAssembly run
+		// would prove nothing about the WebGPU path anyway. See
+		// https://github.com/webai-at-home/webai-at-home/issues/211.
+		//
+		// The lease matches the two pipelines above, and the reason is stronger here than for either
+		// of them: this model is about 3111 megabytes at q4f16, several times what Qwen3.5-0.8B moves,
+		// and a first load was measured at 153.8 seconds warm on the machine of this repository during
+		// milestone 0 of issue #211 — with the files already in IndexedDB, so a cold first load is
+		// longer and has not been measured yet. No lease is sized for that, and none should be: what
+		// carries a load that outlasts the lease is the stage heartbeats the worker browser sends
+		// while it is downloading, loading, or generating. A true cold measurement on real hardware is
+		// owed, the same debt the Llama 3.2 1B pipeline below records.
+		pipelineId: 'llm_gemma_4_e2b_full', version: 1, taskType: 'task_type_llm_gemma_4_e2b_full', repeatsUntilDone: true,
+		stages: [
+			{ name: 'stage_llm_gemma_4_e2b_full', computation: 'llm_gemma_4_e2b_full', inputSchemaId: 'llm@1', outputSchemaId: 'llm@1', encoding: 'inline-json', leaseMs: 60_000, prefersSameWorkerOnRetry: true },
+		],
+	},
 ];

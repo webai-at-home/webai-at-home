@@ -47,6 +47,11 @@ export type ResponseFormatName =
  * - `task_type_llm_qwen3_5_0_8b_full`, `task_type_llm_qwen3_0_6b_sharded`, and
  *   `task_type_llm_gemma_nano_chrome_full` run only in a worker browser tab, so none of them has an
  *   engine that can be asked for a shape either.
+ * - `task_type_llm_gemma_4_e2b_full` runs only in a worker browser tab as well, through the same
+ *   pinned `@huggingface/transformers`, so it is empty for the same reason. That an OpenAI-compatible
+ *   server honours `json_schema` for this model, as Ollama did in
+ *   [issue #210](https://github.com/webai-at-home/webai-at-home/issues/210), says nothing here: no
+ *   worker in this project reaches this task type that way.
  * - `task_type_dev_formula` generates no text at all, so no response format applies to it.
  *
  * An entry here is also the only thing a task type needs to gain to start honouring a format: this
@@ -58,6 +63,7 @@ const formatsByTaskType: Record<TaskType, readonly ResponseFormatName[]> = {
 	task_type_llm_gemma_nano_chrome_full: [],
 	task_type_llm_qwen3_5_0_8b_full: [],
 	task_type_llm_llama3_2_1b_full: [],
+	task_type_llm_gemma_4_e2b_full: [],
 };
 
 /** Which task type honours which response format. */
