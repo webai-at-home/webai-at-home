@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemma 4 E2B · tool calls de-risk gate (issue #216)</title>
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      .phase { color: #6cf; }
+      .pass { color: #6f6; }
+      .fail { color: #f66; }
+    </style>
+  </head>
+  <body>
+    <h1>Gemma 4 E2B tool calls de-risk gate — issue #216 milestone 0</h1>
+    <p>Loads the exact pinned export the real stage helper runs (<code>onnx-community/gemma-4-E2B-it-ONNX</code>,
+      revision <code>9f4bef82ea6e296bc69f8a2f5939f73af81b07a6</code>, <code>q4f16</code>, WebGPU only) and answers the
+      question <a href="https://github.com/webai-at-home/webai-at-home/issues/216">issue #216</a> rests on and that no
+      measurement has yet touched: <strong>this model does tool calls when LM Studio serves it, but does it still do so
+      through Transformers.js, at this quantization, on WebGPU, in a browser tab — and in what format?</strong></p>
+    <p>LM Studio applies the chat template and parses the tool calls itself, and hands back structured
+      <code>tool_calls</code>. Here this project has to do both by hand, so the format the model writes has to be read
+      off the rendered prompt rather than assumed. The gate of
+      <a href="https://github.com/webai-at-home/webai-at-home/issues/115">issue #115</a> already paid once for assuming
+      a format from what a model family is known to do.</p>
+    <p>There is a second, quieter question. Qwen3.5's <code>&lt;tool_call&gt;</code> markers survive
+      <code>skip_special_tokens: true</code> only because they are added tokens with <code>special: false</code> in
+      that tokenizer. Whatever markers this model uses are checked the same way here, against the pinned revision's own
+      tokenizer, because a marker the decoder strips is a tool call no reader will ever see.</p>
+    <button id="run-button" type="button" disabled>Loading…</button>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/gemma4-e2b-tool-calls-gate/src/main.ts"></script>
+  </body>
+</html>

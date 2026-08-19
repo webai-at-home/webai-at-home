@@ -147,6 +147,7 @@ export default defineConfig({
         qwen3_5UsageMetadataGate: resolve(import.meta.dirname, 'public/qwen3_5-usage-metadata-gate/index.html'),
         llama3_2_1bGate: resolve(import.meta.dirname, 'public/llama3_2-1b-gate/index.html'),
         qwen3_5ToolCallsGate: resolve(import.meta.dirname, 'public/qwen3_5-tool-calls-gate/index.html'),
+        gemma4E2bToolCallsGate: resolve(import.meta.dirname, 'public/gemma4-e2b-tool-calls-gate/index.html'),
         matmulNBitsOwnedWebgpuBufferGate: resolve(
           import.meta.dirname,
           'public/matmulnbits-owned-webgpu-buffer-gate/index.html',
