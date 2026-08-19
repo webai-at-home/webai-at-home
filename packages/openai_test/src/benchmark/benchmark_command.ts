@@ -1,3 +1,6 @@
+// npm imports
+import { chalkStderr } from 'chalk';
+
 // local imports
 import { RawHttpClient } from '../clients/raw_http_client.js';
 import { reportFormats } from '../completion_types.js';
@@ -117,13 +120,13 @@ export class BenchmarkCommand {
 		const rounded = (value: number): string => value.toFixed(2);
 		return {
 			onWarmupRequestStarted: (modelId, warmupRun, warmupRuns) => {
-				process.stderr.write(`${modelId} warm-up request ${warmupRun}/${warmupRuns} ... `);
+				process.stderr.write(chalkStderr.dim(`${modelId} warm-up request ${warmupRun}/${warmupRuns} ... `));
 			},
 			onWarmupRequestFinished: () => {
-				process.stderr.write('answered, and thrown away\n');
+				process.stderr.write(chalkStderr.dim('answered, and thrown away\n'));
 			},
 			onMeasuredRequestStarted: (modelId, run, runs) => {
-				process.stderr.write(`${modelId} measured request ${run}/${runs} ... `);
+				process.stderr.write(chalkStderr.dim(`${modelId} measured request ${run}/${runs} ... `));
 			},
 			onMeasuredRequestFinished: (modelId, sample) => {
 				const measured = [
@@ -132,7 +135,7 @@ export class BenchmarkCommand {
 					`${rounded(sample.outputCharactersPerSecond)} characters/second`,
 					`${sample.outputCharacters} characters`,
 				].join(', ');
-				process.stderr.write(`${measured}\n`);
+				process.stderr.write(chalkStderr.dim(`${measured}\n`));
 			},
 		};
 	}

@@ -26,6 +26,7 @@ import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
 import { Runner, type ConformanceRun, type RunnerProgressListener } from './runner.js';
 import type { ConformanceTest, TestContext } from './types.js';
+import { VerdictStyle } from './verdict_style.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -294,7 +295,8 @@ export class ConformanceCommand {
 				process.stderr.write(`${prefix}${test.id.padEnd(28)} ${test.name} ... `);
 			},
 			onTestFinished: (record) => {
-				process.stderr.write(`${record.result.verdict} (${record.durationMs} ms)\n`);
+				const verdict = VerdictStyle.color(record.result.verdict, VerdictStyle.statusWord(record.result.verdict));
+				process.stderr.write(`${verdict} (${record.durationMs} ms)\n`);
 			},
 		};
 	}

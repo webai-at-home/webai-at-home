@@ -4,6 +4,7 @@ import Chalk from 'chalk';
 // local imports
 import type { TestRunRecord } from '../runner.js';
 import type { Verdict } from '../types.js';
+import { VerdictStyle } from '../verdict_style.js';
 import { ReportSummary } from './report_summary.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -104,55 +105,13 @@ export class TerminalReporter {
 	 */
 	private static _testLine(record: TestRunRecord, verbose: boolean): string {
 		const streamSetting = record.streamSetting === undefined ? '' : ` (stream ${record.streamSetting})`;
-		const line = `${TerminalReporter._statusWord(record.result.verdict)} ${record.test.name}${streamSetting}`;
-		const colored = TerminalReporter._colorByVerdict(record.result.verdict, line);
+		const line = `${VerdictStyle.statusWord(record.result.verdict)} ${record.test.name}${streamSetting}`;
+		const colored = VerdictStyle.color(record.result.verdict, line);
 		if (record.result.verdict === 'PASS' && verbose === false) {
 			return colored;
 		}
 		const detail = verbose === true ? `${record.result.detail} [${record.test.id}, ${record.durationMs} ms]` : record.result.detail;
 		return `${colored} — ${detail}`;
-	}
-
-	/**
-	 * The word printed ahead of one test's name, one per verdict so `SKIP` and `WARN` are never
-	 * mistaken for `FAIL` at a glance.
-	 *
-	 * @param verdict The verdict to name.
-	 * @returns The word.
-	 */
-	private static _statusWord(verdict: Verdict): string {
-		switch (verdict) {
-			case 'PASS':
-				return 'OK';
-			case 'FAIL':
-				return 'Failed';
-			case 'SKIP':
-				return 'Skipped';
-			case 'WARN':
-				return 'Warn';
-		}
-	}
-
-	/**
-	 * Colors one line by its verdict: green for `PASS`, red for `FAIL`, cyan for `SKIP`, yellow for
-	 * `WARN`. Cyan keeps `SKIP` visibly distinct from a dimmed, uncolored line. Chalk turns coloring
-	 * off automatically once output is piped or redirected.
-	 *
-	 * @param verdict The verdict to color by.
-	 * @param line The line to color.
-	 * @returns The colored line.
-	 */
-	private static _colorByVerdict(verdict: Verdict, line: string): string {
-		switch (verdict) {
-			case 'PASS':
-				return Chalk.green(line);
-			case 'FAIL':
-				return Chalk.red(line);
-			case 'SKIP':
-				return Chalk.cyan(line);
-			case 'WARN':
-				return Chalk.yellow(line);
-		}
 	}
 
 	/**
@@ -176,7 +135,7 @@ export class TerminalReporter {
 			const groupRecords = records.filter((record) => record.test.group === group);
 			const verdict = TerminalReporter._groupVerdict(groupRecords);
 			const heading = TerminalReporter._groupHeadings.get(group) ?? group;
-			lines.push(`${heading.padEnd(28)}${TerminalReporter._colorByVerdict(verdict, TerminalReporter._statusWord(verdict))}`);
+			lines.push(`${heading.padEnd(28)}${VerdictStyle.color(verdict, VerdictStyle.statusWord(verdict))}`);
 		}
 		return lines;
 	}

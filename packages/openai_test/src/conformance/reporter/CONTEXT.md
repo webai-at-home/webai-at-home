@@ -18,6 +18,7 @@ One file per output format section 33 of issue #181 names with `-f/--format`, pl
 - A reporter renders the records of `../runner.ts` into a string; it never runs a test and never talks to an endpoint.
 - One invocation measures one model and writes one report, however many runs it took, its runs merged by `merged_records.ts` before any format sees them.
 - `render` returns the report as a string rather than printing it, so `../../report_writer.ts` is the only place that prints one.
+- No reporter decides a verdict's word or its color itself; `terminal.ts` asks [`../verdict_style.ts`](../verdict_style.ts), which the live progress lines read as well.
 - No reporter counts verdicts itself; every one of them asks `ReportSummary`, so four formats of one run can never disagree about how many tests passed.
 - `SKIP` stays out of the compatibility percentage and `WARN` stays in it, because a skipped test measured nothing while a warned test measured something short of correct.
 - The compatibility percentage never replaces the per-test lines above it, per section 30 of issue #181.
