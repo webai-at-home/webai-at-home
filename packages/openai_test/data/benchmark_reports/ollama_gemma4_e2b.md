@@ -4,13 +4,13 @@
 
 - Models measured: 1
 - Models not measured: 0
-- Quickest to first character: `gemma4:e2b` at 3814.83 ms average
-- Quickest to last character: `gemma4:e2b` at 5824.22 ms average
-- Fastest output: `gemma4:e2b` at 54.25 characters/second average
+- Quickest to first character: `gemma4:e2b` at 479.90 ms average
+- Quickest to last character: `gemma4:e2b` at 2531.93 ms average
+- Fastest output: `gemma4:e2b` at 53.61 characters/second average
 
 ## Measurement Run
 
-- Generated: 2026-08-19T01:31:23.468Z
+- Generated: 2026-08-19T01:50:32.702Z
 - Endpoint: `http://localhost:11434/v1`
 - Model: `gemma4:e2b`
 
@@ -26,8 +26,9 @@ openai_test benchmark --base_url http://localhost:11434/v1 --model gemma4:e2b --
 | --- | --- |
 | `--model` | gemma4:e2b |
 | `--prompt` | Count up to 30 |
-| `--runs` | 3 |
+| `--runs` | 1 |
 | `--warmup_runs` | 1 |
+| `--thinking` | off |
 | `--output` | data/benchmark_reports/ollama_gemma4_e2b.md |
 | `--base_url` | http://localhost:11434/v1 |
 | `--api_key` | no-key-required |
@@ -36,7 +37,9 @@ openai_test benchmark --base_url http://localhost:11434/v1 --model gemma4:e2b --
 
 ## What Was Measured
 
-Each model was sent the same prompt 3 times, and every request asked for its answer in pieces, so that Time to First Character and Time to Last Character are two separate numbers rather than one. No two requests were ever in flight at once, which is why parallelism is 1 in every report this program writes: a second request in flight changes what the first one measures. One warm-up request was sent first and its answer thrown away, so that the first measured request is not the one that loaded the model.
+Each model was sent the same prompt once, and every request asked for its answer in pieces, so that Time to First Character and Time to Last Character are two separate numbers rather than one. No two requests were ever in flight at once, which is why parallelism is 1 in every report this program writes: a second request in flight changes what the first one measures. One warm-up request was sent first and its answer thrown away, so that the first measured request is not the one that loaded the model.
+
+Every request carried `reasoning_effort: "none"`, so a model that would otherwise think answered straight away. This matters more than any other setting here: thinking happens before the first character of the answer, so all of it lands inside Time to First Character and none of it inside Output Characters. Measured on `gemma4:e2b`, turning it off took Time to First Character from between 2662 ms and 4618 ms down to under 600 ms.
 
 | Metric | What it means |
 | --- | --- |
@@ -52,10 +55,10 @@ None of the five is a token count. A character is what both ends can count witho
 
 | Metric | Average | Median | Minimum | Maximum |
 | --- | ---: | ---: | ---: | ---: |
-| Time to First Character | 3814.83 ms | 4490.07 ms | 1864.48 ms | 5089.96 ms |
-| Time to Last Character | 5824.22 ms | 6488.48 ms | 3863.22 ms | 7120.96 ms |
-| Output Characters per Second | 54.25 chars/s | 54.16 chars/s | 53.54 chars/s | 55.03 chars/s |
-| Output Characters | 109.00 chars | 110.00 chars | 107.00 chars | 110.00 chars |
+| Time to First Character | 479.90 ms | 479.90 ms | 479.90 ms | 479.90 ms |
+| Time to Last Character | 2531.93 ms | 2531.93 ms | 2531.93 ms | 2531.93 ms |
+| Output Characters per Second | 53.61 chars/s | 53.61 chars/s | 53.61 chars/s | 53.61 chars/s |
+| Output Characters | 110.00 chars | 110.00 chars | 110.00 chars | 110.00 chars |
 
 Input Characters: 14, the same for every request below.
 
@@ -63,6 +66,4 @@ Input Characters: 14, the same for every request below.
 
 | Request | Time to First Character | Time to Last Character | Output Characters per Second | Output Characters |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 5089.96 ms | 7120.96 ms | 54.16 chars/s | 110 chars |
-| 2 | 4490.07 ms | 6488.48 ms | 53.54 chars/s | 107 chars |
-| 3 | 1864.48 ms | 3863.22 ms | 55.03 chars/s | 110 chars |
+| 1 | 479.90 ms | 2531.93 ms | 53.61 chars/s | 110 chars |

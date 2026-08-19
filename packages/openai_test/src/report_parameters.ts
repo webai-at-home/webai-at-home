@@ -71,6 +71,8 @@ export type BenchmarkParameterSource = {
 	readonly runs: string;
 	/** How many unreported warm-up requests each model was sent, still as text. */
 	readonly warmup_runs: string;
+	/** Whether the model was allowed to think before it answered, still as text. */
+	readonly thinking: string;
 	/** The base URL of the endpoint reached. */
 	readonly base_url: string;
 	/** The bearer token sent to the endpoint, never written into a report as it stands. */
@@ -152,6 +154,7 @@ export class ReportParameters {
 			{ name: '--prompt', value: source.prompt },
 			{ name: '--runs', value: source.runs },
 			{ name: '--warmup_runs', value: source.warmup_runs },
+			{ name: '--thinking', value: source.thinking },
 			{ name: '--output', value: source.output },
 			{ name: '--verbose', value: source.verbose === true ? 'true' : undefined },
 			{ name: '--base_url', value: source.base_url },

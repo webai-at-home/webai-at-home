@@ -343,6 +343,53 @@ Test('asks for and reads usage from the final, choice-less streamed chunk only w
 	}
 });
 
+Test('sends reasoning_effort none only when the caller turned thinking off, and no such field at all otherwise', async () => {
+	const requestedEfforts: unknown[] = [];
+	const server = await startTestServer((request, response) => {
+		let body = '';
+		request.on('data', (chunk: Buffer) => {
+			body += chunk.toString();
+		});
+		request.on('end', () => {
+			const requested = JSON.parse(body);
+			requestedEfforts.push(requested.reasoning_effort);
+			// The whole-answer path is checked here too, so the server answers each request in the
+			// shape it asked for rather than streaming to a caller that asked for one piece.
+			if (requested.stream !== true) {
+				response.writeHead(200, {
+					'Content-Type': 'application/json',
+				});
+				response.end(JSON.stringify({ choices: [{ message: { content: 'whole answer' } }] }));
+				return;
+			}
+			response.writeHead(200, {
+				'Content-Type': 'text/event-stream; charset=utf-8',
+			});
+			response.write(`data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant', content: 'hi' } }] })}\n\n`);
+			response.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
+			response.write('data: [DONE]\n\n');
+			response.end();
+		});
+	});
+	try {
+		const client = CompletionSender.createClient({
+			baseUrl: server.baseUrl,
+			apiKey: 'insecure-benchmark-key',
+			timeoutMs: 5_000,
+		});
+		const messages = [{ role: 'user' as const, content: 'say hi' }];
+		await CompletionSender.send({ client, modelId: 'a-model', messages, streamSetting: 'on', thinkingSetting: 'off' });
+		await CompletionSender.send({ client, modelId: 'a-model', messages, streamSetting: 'on', thinkingSetting: 'on' });
+		// A caller that names no setting sends the exact request `conformance` and `chat` always sent.
+		await CompletionSender.send({ client, modelId: 'a-model', messages, streamSetting: 'on' });
+		await CompletionSender.send({ client, modelId: 'a-model', messages, streamSetting: 'off', thinkingSetting: 'off' });
+
+		Assert.deepEqual(requestedEfforts, ['none', undefined, undefined, 'none']);
+	} finally {
+		await server.stop();
+	}
+});
+
 Test('sends no stream_options at all when includeUsage is left out, exactly as completion/history/benchmark already do', async () => {
 	const requestedStreamOptions: unknown[] = [];
 	const server = await startTestServer((request, response) => {

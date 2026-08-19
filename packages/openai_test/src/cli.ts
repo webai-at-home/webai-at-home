@@ -80,8 +80,9 @@ export class Cli {
 				process.env.OPENAI_MODEL,
 			)
 			.option('-p, --prompt <text>', 'the one prompt sent to the endpoint', BenchmarkCommand.defaultPrompt)
-			.option('-r, --runs <number>', 'measured requests per model', '3')
+			.option('-r, --runs <number>', 'measured requests per model', '1')
 			.option('-w, --warmup_runs <number>', 'unreported warm-up requests per model', '1')
+			.option('--thinking <on|off>', 'off sends reasoning_effort none, so a thinking model answers straight away; on leaves the decision to the endpoint', 'off')
 			.option('-o, --output <file>', 'write the report to this file rather than to standard output')
 			.option('-v, --verbose', 'print each warm-up and measured request as it is sent, and what it measured when it came back');
 		SharedOptions.addFormatOption(benchmark);

@@ -19,6 +19,19 @@
  */
 export type StreamSetting = 'off' | 'on';
 
+/**
+ * Whether one chat completion request lets the model think before it answers.
+ *
+ * `off` sends `reasoning_effort: "none"`, which both Ollama and LM Studio honour by producing no
+ * reasoning at all. `on` sends no thinking field whatsoever, which leaves the decision to the
+ * endpoint's own default — it does not force a model to think, because no field of this interface
+ * can. This is what `--thinking off` and `--thinking on` choose between.
+ */
+export type ThinkingSetting = 'off' | 'on';
+
+/** Both thinking settings, in the order the help text names them. */
+export const thinkingSettings: readonly ThinkingSetting[] = ['off', 'on'];
+
 /** Both stream settings, in the order a subcommand measures them for one model. */
 export const streamSettings: readonly StreamSetting[] = ['off', 'on'];
 
@@ -281,6 +294,13 @@ export type BenchmarkReport = {
 		readonly runs: number;
 		/** The number of unreported warm-up requests per model. */
 		readonly warmupRuns: number;
+		/**
+		 * Whether every request let the model think before it answered.
+		 *
+		 * Recorded because a model that thinks spends the whole of its thinking inside Time to First
+		 * Character, so two reports measured with different settings are not comparable at all.
+		 */
+		readonly thinkingSetting: ThinkingSetting;
 		/** The number of requests in flight at any moment, always one. */
 		readonly parallelism: 1;
 	};

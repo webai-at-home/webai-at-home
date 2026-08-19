@@ -1,7 +1,7 @@
 // local imports
 import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
-import { reportFormats, type BenchmarkReport } from '../completion_types.js';
+import { reportFormats, thinkingSettings, type BenchmarkReport, type ThinkingSetting } from '../completion_types.js';
 import { EndpointReachability } from '../endpoint_reachability.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportParameters } from '../report_parameters.js';
@@ -40,6 +40,8 @@ export type RawBenchmarkOptions = RawEndpointOptions & {
 	output?: string;
 	/** Set when `-v/--verbose` was given. */
 	verbose?: boolean;
+	/** Whether the model may think before it answers, still as text. */
+	thinking: string;
 };
 
 /** Measures the streamed chat completion latency of one OpenAI-compatible endpoint. */
@@ -101,6 +103,7 @@ export class BenchmarkCommand {
 			prompt: rawOptions.prompt,
 			runs: SharedOptions.positiveInteger(rawOptions.runs, '--runs'),
 			warmupRuns: SharedOptions.positiveInteger(rawOptions.warmup_runs, '--warmup_runs', true),
+			thinkingSetting: BenchmarkCommand._resolveThinkingSetting(rawOptions.thinking),
 			...(rawOptions.verbose === true ? { listener: BenchmarkCommand._buildProgressListener() } : {}),
 		});
 		BenchmarkCommand._announceFailures(report);
@@ -117,6 +120,21 @@ export class BenchmarkCommand {
 	//	Private Helpers
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Reads what `--thinking` was given.
+	 *
+	 * @param thinking The option's value, exactly as it was typed.
+	 * @returns The setting it names.
+	 * @throws {Error} If it names neither `on` nor `off`.
+	 */
+	private static _resolveThinkingSetting(thinking: string): ThinkingSetting {
+		const wanted = thinking.trim().toLowerCase();
+		if ((thinkingSettings as readonly string[]).includes(wanted) === false) {
+			throw new Error(`--thinking must be one of ${thinkingSettings.join(', ')}, got "${thinking}"`);
+		}
+		return wanted as ThinkingSetting;
+	}
 
 	/**
 	 * Names every model that could not be measured on standard error, so that a run written to a

@@ -27,6 +27,7 @@ const options: BenchmarkOptions = {
 	prompt: 'same prompt',
 	runs: 2,
 	warmupRuns: 1,
+	thinkingSetting: 'off',
 };
 
 /**
@@ -294,6 +295,9 @@ Test('leaves the side by side table out when one model was measured, since its o
 	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
 	Assert.equal(markdown.includes('## Every Model Side By Side'), false, markdown);
 	Assert.match(markdown, /## `a-model`/);
+	// The default `--runs 1`, said in words rather than as "1 times".
+	Assert.match(markdown, /Each model was sent the same prompt once/);
+	Assert.match(markdown, /No warm-up request was sent at all/);
 });
 
 Test('the markdown report says what each measured figure means, and lists every measured request behind the averages', async () => {
@@ -316,6 +320,9 @@ Test('the markdown report says what each measured figure means, and lists every 
 	Assert.match(markdown, /One warm-up request was sent first and its answer thrown away/);
 	Assert.match(markdown, /\| Time to First Character \| How long from sending the request/);
 	Assert.match(markdown, /None of the five is a token count\./);
+	// The one setting that moves Time to First Character the most is named in words, not left to a
+	// reader to work out from the parameter table.
+	Assert.match(markdown, /Every request carried `reasoning_effort: "none"`/);
 
 	// Every measured request of its own, because the spread between them is what says how much to
 	// trust the average above them.
@@ -334,6 +341,7 @@ Test('the markdown report carries the generation date, the parameters, and the c
 			prompt: 'Count up to 30',
 			runs: '3',
 			warmup_runs: '1',
+			thinking: 'off',
 			base_url: 'https://api.openai.test/v1',
 			api_key: 'sk-a-real-secret-key',
 			timeout_ms: '600000',
@@ -346,6 +354,7 @@ Test('the markdown report carries the generation date, the parameters, and the c
 	Assert.match(markdown, /```bash\nopenai_test benchmark --model a-model\n```/);
 	Assert.match(markdown, /\| `--runs` \| 3 \|/);
 	Assert.match(markdown, /\| `--warmup_runs` \| 1 \|/);
+	Assert.match(markdown, /\| `--thinking` \| off \|/);
 	Assert.match(markdown, /\| `--prompt` \| Count up to 30 \|/);
 	// The bearer token never reaches a report, in either the parameter list or the command line.
 	Assert.equal(markdown.includes('sk-a-real-secret-key'), false, markdown);
@@ -359,6 +368,25 @@ Test('the markdown report stamps the moment it rendered when the caller offers n
 	const stamped = /- Generated: (\S+)/.exec(markdown)?.[1];
 	Assert.notEqual(stamped, undefined, markdown);
 	Assert.equal(new Date(String(stamped)).getTime() >= before.getTime(), true, `stamped ${String(stamped)}`);
+});
+
+Test('says in every format whether the models were allowed to think', async () => {
+	const thinking = await BenchmarkRunner.runBenchmark(
+		{ ...options, runs: 1, warmupRuns: 0, thinkingSetting: 'on' },
+		async () => completionResult('the answer', 5, 50),
+	);
+	Assert.equal(thinking.settings.thinkingSetting, 'on');
+	Assert.match(ReportRenderer.formatBenchmarkReport(thinking, 'text'), /thinking: on/);
+	Assert.match(ReportRenderer.formatBenchmarkReport(thinking, 'markdown'), /No thinking field was sent, so each endpoint applied its own default\./);
+	Assert.match(ReportRenderer.formatBenchmarkReport(thinking, 'junit'), /<property name="thinking" value="on"\/>/);
+	Assert.equal(JSON.parse(ReportRenderer.formatBenchmarkReport(thinking, 'json')).settings.thinkingSetting, 'on');
+
+	const notThinking = await BenchmarkRunner.runBenchmark(
+		{ ...options, runs: 1, warmupRuns: 0, thinkingSetting: 'off' },
+		async () => completionResult('the answer', 5, 50),
+	);
+	Assert.match(ReportRenderer.formatBenchmarkReport(notThinking, 'text'), /thinking: off/);
+	Assert.match(ReportRenderer.formatBenchmarkReport(notThinking, 'junit'), /<property name="thinking" value="off"\/>/);
 });
 
 Test('accepts only the report formats it knows about', () => {
@@ -384,6 +412,7 @@ Test('BenchmarkRunner.runBenchmark measures every model named, and carries on pa
 			prompt: 'Count up to 30',
 			runs: 2,
 			warmupRuns: 1,
+			thinkingSetting: 'off',
 		},
 		async (modelId: string) => {
 			if (modelId === 'failing-model') {
@@ -408,6 +437,7 @@ Test('BenchmarkRunner.runBenchmark carries no failure list at all when every mod
 			prompt: 'Count up to 30',
 			runs: 1,
 			warmupRuns: 0,
+			thinkingSetting: 'off',
 		},
 		async (modelId: string) => benchmarkResultOf(modelId, 'one', 5, 105),
 	);
@@ -424,6 +454,7 @@ Test('BenchmarkRunner.runBenchmark refuses a run in which no model could be meas
 					prompt: 'Count up to 30',
 					runs: 1,
 					warmupRuns: 0,
+					thinkingSetting: 'off',
 				},
 				async () => {
 					throw new Error('nothing answered');
@@ -441,6 +472,7 @@ Test('ReportRenderer.formatBenchmarkReport names the model that could not be mea
 			prompt: 'Count up to 30',
 			runs: 1,
 			warmupRuns: 0,
+			thinkingSetting: 'off',
 		},
 		async (modelId: string) => {
 			if (modelId === 'failing-model') {

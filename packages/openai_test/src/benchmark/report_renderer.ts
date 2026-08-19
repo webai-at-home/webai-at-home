@@ -10,6 +10,7 @@ import type {
 	MetricStatistics,
 	ReportFormat,
 	ReportParameter,
+	ThinkingSetting,
 } from '../completion_types.js';
 import { reportFormats } from '../completion_types.js';
 
@@ -111,7 +112,7 @@ export class ReportRenderer {
 	private static _renderTextReport(report: BenchmarkReport): string {
 		const lines: string[] = [
 			Chalk.bold(`OpenAI API benchmark (parallelism: ${report.settings.parallelism})`),
-			Chalk.dim(`Measured requests: ${report.settings.runs}; warm-up requests: ${report.settings.warmupRuns}`),
+			Chalk.dim(`Measured requests: ${report.settings.runs}; warm-up requests: ${report.settings.warmupRuns}; thinking: ${report.settings.thinkingSetting}`),
 		];
 		for (const summary of report.summaries) {
 			lines.push('');
@@ -244,10 +245,13 @@ export class ReportRenderer {
 	private static _markdownWhatWasMeasuredSection(report: BenchmarkReport): string[] {
 		const sentTimes = report.settings.runs === 1 ? 'once' : `${report.settings.runs} times`;
 		const warmupSentence = ReportRenderer._warmupSentence(report.settings.warmupRuns);
+		const thinkingSentence = ReportRenderer._thinkingSentence(report.settings.thinkingSetting);
 		return [
 			'## What Was Measured',
 			'',
 			`Each model was sent the same prompt ${sentTimes}, and every request asked for its answer in pieces, so that Time to First Character and Time to Last Character are two separate numbers rather than one. No two requests were ever in flight at once, which is why parallelism is ${report.settings.parallelism} in every report this program writes: a second request in flight changes what the first one measures. ${warmupSentence}`,
+			'',
+			thinkingSentence,
 			'',
 			'| Metric | What it means |',
 			'| --- | --- |',
@@ -260,6 +264,20 @@ export class ReportRenderer {
 			'None of the five is a token count. A character is what both ends can count without agreeing on a tokenizer first, which is what makes two different endpoints comparable here.',
 			'',
 		];
+	}
+
+	/**
+	 * Says whether the models were allowed to think before they answered, which is the one setting
+	 * that moves Time to First Character the most on a model that thinks.
+	 *
+	 * @param thinkingSetting Whether every request let the model think.
+	 * @returns The sentence naming it.
+	 */
+	private static _thinkingSentence(thinkingSetting: ThinkingSetting): string {
+		if (thinkingSetting === 'off') {
+			return 'Every request carried `reasoning_effort: "none"`, so a model that would otherwise think answered straight away. This matters more than any other setting here: thinking happens before the first character of the answer, so all of it lands inside Time to First Character and none of it inside Output Characters. Measured on `gemma4:e2b`, turning it off took Time to First Character from between 2662 ms and 4618 ms down to under 600 ms.';
+		}
+		return 'No thinking field was sent, so each endpoint applied its own default. A model that thinks by default spends the whole of its thinking inside Time to First Character, and none of that text is counted in Output Characters or Output Characters per Second.';
 	}
 
 	/**
@@ -438,6 +456,7 @@ export class ReportRenderer {
 			`\t\t<property name="prompt" value="${ReportRenderer._escapeXml(report.settings.prompt)}"/>`,
 			`\t\t<property name="runs" value="${report.settings.runs}"/>`,
 			`\t\t<property name="warmupRuns" value="${report.settings.warmupRuns}"/>`,
+			`\t\t<property name="thinking" value="${report.settings.thinkingSetting}"/>`,
 			'\t</properties>',
 		];
 		for (const summary of report.summaries) {

@@ -7,6 +7,7 @@ import type {
 	BenchmarkSummary,
 	CompletionResult,
 	CompletionTarget,
+	ThinkingSetting,
 } from '../completion_types.js';
 import { StatisticsCalculator } from './statistics_calculator.js';
 
@@ -63,6 +64,8 @@ export type BenchmarkOptions = {
 	readonly runs: number;
 	/** The number of unreported warm-up requests per model. */
 	readonly warmupRuns: number;
+	/** Whether every request lets the model think before it answers. */
+	readonly thinkingSetting: ThinkingSetting;
 	/** Told what the run is doing as it happens, when the caller asked for progress lines. */
 	readonly listener?: BenchmarkProgressListener;
 };
@@ -90,7 +93,7 @@ export class BenchmarkRunner {
 	 */
 	static async runBenchmark(
 		options: BenchmarkOptions,
-		requester: CompletionRequester = BenchmarkRunner.streamedRequester(options.target),
+		requester: CompletionRequester = BenchmarkRunner.streamedRequester(options.target, options.thinkingSetting),
 	): Promise<BenchmarkReport> {
 		if (options.modelIds.length === 0) {
 			throw new Error('--model named no model to measure');
@@ -129,6 +132,7 @@ export class BenchmarkRunner {
 				prompt: options.prompt,
 				runs: options.runs,
 				warmupRuns: options.warmupRuns,
+				thinkingSetting: options.thinkingSetting,
 				parallelism: 1,
 			},
 			summaries,
@@ -148,9 +152,10 @@ export class BenchmarkRunner {
 	 * run so that the measurements are not distorted by a new connection each time.
 	 *
 	 * @param target The endpoint to send requests to.
+	 * @param thinkingSetting Whether to let the model think before it answers.
 	 * @returns The requester to hand to `runBenchmark`.
 	 */
-	static streamedRequester(target: CompletionTarget): CompletionRequester {
+	static streamedRequester(target: CompletionTarget, thinkingSetting: ThinkingSetting): CompletionRequester {
 		const client = CompletionSender.createClient(target);
 		return async (modelId: string, prompt: string): Promise<CompletionResult> => {
 			return await CompletionSender.send({
@@ -163,6 +168,7 @@ export class BenchmarkRunner {
 					},
 				],
 				streamSetting: 'on',
+				thinkingSetting,
 			});
 		};
 	}

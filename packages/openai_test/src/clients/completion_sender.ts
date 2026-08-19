@@ -6,6 +6,7 @@ import type {
 	ChatCompletionToolCall,
 	ChatCompletionUsage,
 	StreamSetting,
+	ThinkingSetting,
 	CompletionResult,
 	CompletionTarget,
 	GenerationControls,
@@ -41,6 +42,11 @@ export type SendCompletionOptions = {
 	readonly messages: OpenAI.ChatCompletionMessageParam[];
 	/** Whether to ask for the answer as it is written, or in one piece. */
 	readonly streamSetting: StreamSetting;
+	/**
+	 * Whether to let the model think before it answers. Left out by every caller other than
+	 * `benchmark`, so `conformance` and `chat` keep sending the exact request they always have.
+	 */
+	readonly thinkingSetting?: ThinkingSetting;
 	/**
 	 * Called with each piece of the answer as it arrives, so a subcommand that shows the answer
 	 * to a person can write it out while it is being produced. Left out by the benchmark, which
@@ -267,6 +273,35 @@ export class CompletionSender {
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
+	 * Builds the thinking field of one request body.
+	 *
+	 * `off` sends `reasoning_effort: "none"`, which is the one spelling both Ollama 0.17 and LM
+	 * Studio 0.4.20 honour: measured live against `gemma4:e2b` on both, four requests each produced
+	 * no reasoning at all and reached their first character in under 600 ms, against 2662 to 4618 ms
+	 * and 366 to 523 characters of reasoning without it. `think: false`, `reasoning_effort: "low"`,
+	 * `reasoning_effort: "minimal"`, and `chat_template_kwargs: { enable_thinking: false }` were all
+	 * tried against the same model and left it thinking.
+	 *
+	 * `on`, and a caller that names no setting at all, send no field whatsoever, so that every
+	 * request `conformance` and `chat` sent before this existed is byte for byte the request they
+	 * still send.
+	 *
+	 * @param thinkingSetting Whether to let the model think, or `undefined` to leave it to the
+	 * endpoint's own default.
+	 * @returns The fields to spread into the request body, empty unless thinking is turned off.
+	 */
+	private static _thinkingFieldsOf(thinkingSetting: ThinkingSetting | undefined): Record<string, unknown> {
+		if (thinkingSetting !== 'off') {
+			return {};
+		}
+		// Typed as a loose record rather than passed as a literal, because `openai` 4.104.0 types
+		// `reasoning_effort` as low, medium, or high alone, and `none` is what these endpoints read.
+		return {
+			reasoning_effort: 'none',
+		};
+	}
+
+	/**
 	 * Builds the generation control fields of one request body.
 	 *
 	 * A control the caller did not ask for produces no field at all, rather than a field set to
@@ -356,6 +391,7 @@ export class CompletionSender {
 			messages: options.messages,
 			stream: true,
 			...(options.includeUsage === true ? { stream_options: { include_usage: true } } : {}),
+			...CompletionSender._thinkingFieldsOf(options.thinkingSetting),
 			...CompletionSender._controlFieldsOf(options.controls),
 			...CompletionSender._toolFieldsOf(options.tools, options.toolChoice),
 		}).withResponse();
@@ -467,6 +503,7 @@ export class CompletionSender {
 		const { data: completion, response } = await options.client.chat.completions.create({
 			model: options.modelId,
 			messages: options.messages,
+			...CompletionSender._thinkingFieldsOf(options.thinkingSetting),
 			...CompletionSender._controlFieldsOf(options.controls),
 			...CompletionSender._toolFieldsOf(options.tools, options.toolChoice),
 		}).withResponse();
