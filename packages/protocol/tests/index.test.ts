@@ -61,11 +61,12 @@ Test('rejects task input that does not match its task type', () => {
 	Assert.equal(TaskInput.safeParse({ taskType: 'task_type_dev_formula', input: '5' }).success, false);
 });
 
-Test('accepts a whole history only for the two task types whose worker can hand one to its chat template', () => {
+Test('accepts a whole history only for the three task types whose worker can hand one to its chat template', () => {
 	const history = { messages: [{ role: 'user', content: 'hello' }] };
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history });
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_llama3_2_1b_full', input: history }), { taskType: 'task_type_llm_llama3_2_1b_full', input: history });
-	// The same two task types still take one prompt too, exactly as before this existed.
+	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_gemma_4_e2b_full', input: history }), { taskType: 'task_type_llm_gemma_4_e2b_full', input: history });
+	// The same three task types still take one prompt too, exactly as before this existed.
 	Assert.deepEqual(TaskInput.parse({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' }), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello' });
 	// Every other task type refuses a history, rather than reading part of it or accepting a
 	// shape its worker cannot hand to anything.
@@ -264,6 +265,7 @@ Test('StagePayloadFactory answers every task type with a first stage value', () 
 	const history = { messages: [{ role: 'user' as const, content: 'hello' }] };
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history }), { history });
 	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_llama3_2_1b_full', input: history }), { history });
+	Assert.deepEqual(StagePayloadFactory.initial({ taskType: 'task_type_llm_gemma_4_e2b_full', input: history }), { history });
 });
 
 Test('validates every inbound client message shape', () => {
@@ -316,6 +318,11 @@ Test('names reasoning_effort as honoured only by the task type whose model think
 	Assert.equal(GenerationControlSupport.honours('task_type_llm_qwen3_0_6b_sharded', 'reasoningEffort'), false);
 	Assert.equal(GenerationControlSupport.honours('task_type_llm_gemma_nano_chrome_full', 'reasoningEffort'), false);
 	Assert.equal(GenerationControlSupport.honours('task_type_dev_formula', 'reasoningEffort'), false);
+	// Gemma 4 E2B does think, and its stage helper turns thinking off unconditionally rather than
+	// letting a consumer budget it, so there is nothing to honour. Nothing about this task type has
+	// been measured into this table yet; milestone 5 of
+	// [issue #211](https://github.com/webai-at-home/webai-at-home/issues/211) is what widens it.
+	Assert.equal(GenerationControlSupport.honours('task_type_llm_gemma_4_e2b_full', 'reasoningEffort'), false);
 	// Adding this control took nothing away from the three that task type already honoured.
 	Assert.deepEqual(
 		GenerationControlSupport.honouredControls('task_type_llm_qwen3_5_0_8b_full'),
