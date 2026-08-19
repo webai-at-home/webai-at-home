@@ -1,0 +1,18 @@
+# Target model: Ollama serving Gemma 4 E2B with a context length of 32768 tokens, which is the same
+# model as ollama.target_model.toml with one setting changed. Build the model first with:
+#   ollama create gemma4-e2b-context-32768 -f target_models/ollama_context_32768.modelfile
+#
+# It exists because exp_03_prompt_size_measure measured the default of the Ollama server as a
+# ceiling of about 2048 tokens, while one turn of the Codex command-line program is about 8600
+# tokens, so the ten tool definitions were cut away before the model ever saw them.
+#
+# This file is copied into the generated codex_home folder as ollama_context_32768.config.toml.
+
+model = "gemma4-e2b-context-32768"
+model_provider = "ollama_context_32768_target_model"
+
+[model_providers.ollama_context_32768_target_model]
+name = "Ollama with a context length of 32768"
+base_url = "http://localhost:11434/v1"
+wire_api = "responses"
+requires_openai_auth = false

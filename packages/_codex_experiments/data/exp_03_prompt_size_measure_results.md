@@ -48,19 +48,35 @@ That list of twelve fields, on `POST /v1/responses`, is the whole specification 
 
 `exp_02_agent_loop_with_tool` left two explanations open for the 2051 input tokens Ollama reported for every prompt. The recorded traffic settles it. The request that reached Ollama carried the whole thing: 20751 characters of instructions and all ten tools, in 49764 bytes. Nothing truncated it on the way out.
 
-`npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments` then sends the real tools and the real instructions to Ollama at three sizes:
+`npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments` then sends the same question to Ollama at three prompt sizes. It always asks for a `get_weather` tool and always offers that tool, next to the real tools of the Codex command-line program, because a model cannot call a tool it was never offered and the answer would then say nothing about the size of the prompt.
 
 | What was sent | Bytes | Made a tool call | Input tokens Ollama reported |
 | --- | --- | --- | --- |
-| one tool, short instructions | 437 | yes | 86 |
-| the ten tools of the Codex command-line program, short instructions | 18847 | no | 2051 |
-| the ten tools and the whole instructions | 40000 | no | 2051 |
+| that tool alone, short instructions | 437 | yes | 86 |
+| that tool next to the ten of the Codex command-line program, short instructions | 19023 | no | 2051 |
+| the same eleven tools and the whole instructions | 40176 | no | 2051 |
 
-**2051 is a ceiling, not a constant.** For a small prompt Ollama reports 86, which tracks the prompt. For every larger prompt it reports 2051 and stops there, which is about 2048 tokens. Everything past that ceiling is cut away, the ten tool definitions with it, and a model that is never shown a tool cannot call one.
+**2051 is a ceiling, not a constant.** For a small prompt Ollama reports 86, which tracks the prompt. For every larger prompt it reports 2051 and stops there, which is about 2048 tokens. Everything past that ceiling is cut away, the tool definitions with it, and a model that is never shown a tool cannot call one.
 
-So the agent loop of `exp_02_agent_loop_with_tool` did not fail because Gemma 4 E2B is too small. It failed because Ollama served it about 2048 tokens of a prompt that is about 8600 tokens long. The model file itself declares a context length of 131072 and the `tools` capability, and Ollama does produce a well-formed tool call when the prompt fits.
+## Raising The Context Length Lifts The Ceiling
 
-The next step is to raise the context length of the Ollama server above the prompt of the Codex command-line program and run `exp_02_agent_loop_with_tool` against Ollama again. That is a change to the Ollama installation of the person running the experiment, so it is not made here.
+`target_models/ollama_context_32768.modelfile` is the same Gemma 4 E2B that Ollama already holds, with one setting changed, `num_ctx 32768`. Building it adds a model tag and reuses the weights already on disk:
+
+```bash
+ollama create gemma4-e2b-context-32768 -f target_models/ollama_context_32768.modelfile
+```
+
+The same probe, asked of that model, gives the opposite answer at every size:
+
+| What was sent | Bytes | Made a tool call | Input tokens Ollama reported |
+| --- | --- | --- | --- |
+| that tool alone, short instructions | 451 | yes | 86 |
+| that tool next to the ten of the Codex command-line program, short instructions | 19037 | yes | 4217 |
+| the same eleven tools and the whole instructions | 40190 | yes | 8832 |
+
+The reported count now tracks the prompt all the way up, and the tool call comes back at every size. The truncation was the whole of the problem.
+
+So the agent loop of `exp_02_agent_loop_with_tool` did not fail because Gemma 4 E2B is too small. It failed because Ollama served it about 2048 tokens of a prompt that is about 8600 tokens long. With the context length raised, the same model does the whole task correctly three times out of three, which is recorded in [`exp_02_agent_loop_with_tool_results.md`](exp_02_agent_loop_with_tool_results.md).
 
 ## WebAI@Home, And The Cross-Check That Could Not Be Made
 

@@ -1,0 +1,13 @@
+# Gemma 4 E2B as Ollama already holds it, with one setting changed: a context length of 32768
+# tokens instead of the default of the Ollama server, which exp_03_prompt_size_measure measured as
+# a ceiling of about 2048 tokens. That ceiling cut the ten tool definitions of the Codex
+# command-line program away, so the model was never shown a tool it could call.
+#
+# Build it with:
+#   ollama create gemma4-e2b-context-32768 -f target_models/ollama_context_32768.modelfile
+#
+# It adds a model tag and reuses the weights already on disk. Remove it with:
+#   ollama rm gemma4-e2b-context-32768
+
+FROM gemma4:e2b
+PARAMETER num_ctx 32768

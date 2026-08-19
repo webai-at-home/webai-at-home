@@ -11,10 +11,11 @@ The task is fixed text in [`tasks/exp_02_agent_loop_with_tool.task.md`](../tasks
 | Target model | Runs | Tool calls per run | Read the tool result back | Stopped on its own | File written correctly |
 | --- | --- | --- | --- | --- | --- |
 | LM Studio | 3 | 3, 3, 3 | yes in all three | yes in all three | yes in all three |
-| Ollama | 3 | 0, 0, 0 | no, there was nothing to read back | yes in all three | no, no file was ever created |
+| Ollama, as it was serving the model | 3 | 0, 0, 0 | no, there was nothing to read back | yes in all three | no, no file was ever created |
+| Ollama, with a context length of 32768 | 3 | 1, 1, 1 | yes in all three | yes in all three | yes in all three |
 | WebAI@Home | 3 | 0, 0, 0 | no, the turn never started | no, exit code 1 in all three | no, no file was ever created |
 
-The same model, at the same size, served by two different programs, gave opposite results. That is the finding of this experiment, and it is the reason the target model is an axis of the plan rather than a stage of it.
+The same model, at the same size, served by two different programs, gave opposite results. The cause was found by `exp_03_prompt_size_measure` and is written below: it was one setting of the serving program, not the model. That is the finding of this experiment, and it is the reason the target model is an axis of the plan rather than a stage of it.
 
 ## LM Studio Held The Agent Loop Together
 
@@ -42,6 +43,18 @@ This is not the serving program refusing to pass the tools. Asked directly, with
 
 That answer came from Ollama. LM Studio answered with the same tool call for the same request. So the capability is there in both, and something about the much larger prompt of the Codex command-line program removes it in one of the two.
 
+## Ollama Did The Whole Task Once Its Context Length Was Raised
+
+`exp_03_prompt_size_measure` found the cause: Ollama was cutting the prompt at about 2048 tokens, which threw the ten tool definitions away before the model ever saw them. `target_models/ollama_context_32768.modelfile` is the same Gemma 4 E2B with one setting changed, `num_ctx 32768`, and the same three runs against it did the whole task correctly three times out of three.
+
+Each run made one tool call rather than three, because the model chained the three steps into one command:
+
+```
+/bin/zsh -lc 'echo "agent loop ready" > agent_loop.txt && cat agent_loop.txt && ls agent_loop.txt'
+```
+
+The output came back, the turn ended on its own, `agent_loop.txt` held exactly the right line, and the last message was the single word `done` with nothing stuck to it, which is one thing LM Studio never managed.
+
 ## The Reported Prompt Size Of Ollama Is A Constant
 
 Ollama reported **exactly 2051 input tokens** in every recorded run: for the eight-word question of `exp_01_one_turn_with_no_tool`, and for the far longer task of this experiment, tool definitions included. The same number for two prompts of very different sizes is not a count of those prompts.
@@ -53,7 +66,7 @@ Two explanations fit, and this experiment cannot separate them:
 - Ollama truncates the prompt to a fixed context length, which would cut the tool definitions out of it and would explain the zero tool calls.
 - Ollama reports a number that is not the size of the prompt it received, and the truncation is imagined.
 
-`exp_03_prompt_size_measure` settles this by measuring the prompt from recorded traffic instead of believing what the target model reports. Until then, no conclusion should be drawn about the ability of Gemma 4 E2B from the Ollama runs.
+`exp_03_prompt_size_measure` settled this by measuring the prompt from recorded traffic instead of believing what the target model reports: the first explanation is the right one, and 2051 is a ceiling of about 2048 tokens rather than a count. No conclusion about the ability of Gemma 4 E2B should be drawn from the Ollama runs made before the context length was raised.
 
 ## WebAI@Home Failed Before The Task
 

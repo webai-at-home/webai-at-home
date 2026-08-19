@@ -8,7 +8,14 @@ There are three experiments and three target models, and every experiment is run
 | --- | --- | --- |
 | LM Studio | `http://localhost:1234/v1` | `google/gemma-4-e2b` |
 | Ollama | `http://localhost:11434/v1` | `gemma4:e2b` |
+| Ollama with a context length of 32768 | `http://localhost:11434/v1` | `gemma4-e2b-context-32768` |
 | WebAI@Home | `http://localhost:8788/v1` | `llm_gemma_4_e2b_full` |
+
+The fourth is the same Gemma 4 E2B as the second with one setting changed, because Ollama was cutting the prompt at about 2048 tokens. Build it once, which adds a model tag and reuses the weights already on disk:
+
+```bash
+ollama create gemma4-e2b-context-32768 -f target_models/ollama_context_32768.modelfile
+```
 
 ## `exp_01_one_turn_with_no_tool`
 
@@ -52,7 +59,7 @@ npm run exp_02_agent_loop_with_tool:webai_at_home --workspace @webai/codex-exper
 
 Add `-- --repeats <count>` to run the task more or fewer times. The task is fixed text in [`tasks/exp_02_agent_loop_with_tool.task.md`](tasks/exp_02_agent_loop_with_tool.task.md), so every target model is given exactly the same task, word for word, and each run gets an empty workspace of its own under `workspaces/`.
 
-Four things are measured for every run: how many tool calls the model made, whether it wrote anything after its last tool call, whether the turn ended on its own, and whether the file the task asks for holds exactly the right line. The results are read in [`data/exp_02_agent_loop_with_tool_results.md`](data/exp_02_agent_loop_with_tool_results.md): LM Studio did the whole task correctly three times out of three, Ollama answered `done` three times without making a single tool call or creating any file, and WebAI@Home never started a turn.
+Four things are measured for every run: how many tool calls the model made, whether it wrote anything after its last tool call, whether the turn ended on its own, and whether the file the task asks for holds exactly the right line. The results are read in [`data/exp_02_agent_loop_with_tool_results.md`](data/exp_02_agent_loop_with_tool_results.md): LM Studio did the whole task correctly three times out of three, Ollama answered `done` three times without making a single tool call or creating any file, Ollama with a context length of 32768 did the whole task correctly three times out of three, and WebAI@Home never started a turn.
 
 ## `exp_03_prompt_size_measure`
 
@@ -82,4 +89,10 @@ The whole traffic goes to `recordings/<target model>/` and is not committed. Wha
 npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments
 ```
 
-Sends the real tools of the Codex command-line program to Ollama at three prompt sizes, and shows that the input token count it reports is a ceiling and not a count: 86 tokens for a small prompt with a tool call in the answer, then 2051 and no tool call for every larger one. Run `exp_03_prompt_size_measure:ollama` first, because the probe reads the real tools out of its recording.
+Sends the same question and the same offered tool to Ollama at three prompt sizes, and shows that the input token count it reports is a ceiling and not a count: 86 tokens for a small prompt with a tool call in the answer, then 2051 and no tool call for every larger one. Run `exp_03_prompt_size_measure:ollama` first, because the probe reads the real tools out of its recording. Pass a model name to ask a different one:
+
+```bash
+npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments -- gemma4-e2b-context-32768
+```
+
+Asked of that model, every size answers with a tool call and the reported count tracks the prompt all the way to 8832 tokens.

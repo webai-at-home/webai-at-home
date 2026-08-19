@@ -1,0 +1,6 @@
+ollama responses address: http://localhost:11434/v1/responses
+model: gemma4:e2b
+
+that tool alone, short instructions | 437 bytes | made a tool call: true | reported input tokens: 86
+that tool next to the ten of the Codex command-line program, short instructions | 19023 bytes | made a tool call: false | reported input tokens: 2051
+the same eleven tools and the whole instructions of the Codex command-line program | 40176 bytes | made a tool call: false | reported input tokens: 2051

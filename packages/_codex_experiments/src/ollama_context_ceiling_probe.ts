@@ -26,13 +26,15 @@ export type OllamaContextCeilingProbeStep = {
 };
 
 /**
- * Sends the same tools and the same question to Ollama at three prompt sizes, to separate two
- * explanations of the 2051 input tokens Ollama reports for every prompt of the Codex command-line
- * program: a truncated prompt, or a reported number that means nothing.
+ * Sends the same question to Ollama at three prompt sizes, to separate two explanations of the 2051
+ * input tokens Ollama reports for every prompt of the Codex command-line program: a truncated
+ * prompt, or a reported number that means nothing.
  *
  * It reads the real request of the Codex command-line program out of the traffic recorded by
  * `exp_03_prompt_size_measure`, so that the tools and the instructions are the real ones, and it
- * shrinks that request rather than inventing a new one.
+ * shrinks that request rather than inventing a new one. The `get_weather` tool the question asks
+ * for is offered in every step, next to the real tools, because a model cannot call a tool it was
+ * never offered and the answer would say nothing about the size of the prompt.
  */
 export class OllamaContextCeilingProbe {
 	/** The address of the Ollama Responses API on this machine. */
@@ -46,21 +48,18 @@ export class OllamaContextCeilingProbe {
 		'exp_03_prompt_size_measure_traffic.jsonl',
 	);
 
-	/** Where the result of the probe is written. */
-	static readonly resultFilePath = Path.join(
-		CodexRun.packageDirectory,
-		'data',
-		'ollama',
-		'ollama_context_ceiling_probe_result.txt',
-	);
+	/** The folder the result of the probe is written to, one file per model asked. */
+	static readonly resultDirectory = Path.join(CodexRun.packageDirectory, 'data', 'ollama');
 
 	/**
 	 * Runs the three steps of the probe and writes the result next to the recorded runs.
 	 *
+	 * @param modelNameGiven The model to ask, or nothing to ask the one the recorded traffic used.
 	 * @returns The three steps, in the order they were sent.
 	 */
-	static async run(): Promise<OllamaContextCeilingProbeStep[]> {
+	static async run(modelNameGiven?: string): Promise<OllamaContextCeilingProbeStep[]> {
 		const recorded = OllamaContextCeilingProbe._readRecordedRequest();
+		const modelName = modelNameGiven ?? recorded.model;
 		const question = 'What is the weather in Paris? Call the get_weather tool.';
 		const oneTool = {
 			type: 'function',
@@ -91,31 +90,31 @@ export class OllamaContextCeilingProbe {
 		];
 
 		const steps: OllamaContextCeilingProbeStep[] = [];
-		steps.push(await OllamaContextCeilingProbe._ask('one tool, short instructions', {
-			model: recorded.model,
+		steps.push(await OllamaContextCeilingProbe._ask('that tool alone, short instructions', {
+			model: modelName,
 			stream: true,
 			input: input,
 			instructions: shortInstructions,
 			tools: [oneTool],
 		}));
-		steps.push(await OllamaContextCeilingProbe._ask('the ten tools of the Codex command-line program, short instructions', {
-			model: recorded.model,
+		steps.push(await OllamaContextCeilingProbe._ask('that tool next to the ten of the Codex command-line program, short instructions', {
+			model: modelName,
 			stream: true,
 			input: input,
 			instructions: shortInstructions,
-			tools: recorded.tools,
+			tools: [oneTool, ...recorded.tools],
 		}));
-		steps.push(await OllamaContextCeilingProbe._ask('the ten tools and the whole instructions of the Codex command-line program', {
-			model: recorded.model,
+		steps.push(await OllamaContextCeilingProbe._ask('the same eleven tools and the whole instructions of the Codex command-line program', {
+			model: modelName,
 			stream: true,
 			input: input,
 			instructions: recorded.instructions,
-			tools: recorded.tools,
+			tools: [oneTool, ...recorded.tools],
 		}));
 
 		const resultText = [
 			`ollama responses address: ${OllamaContextCeilingProbe.ollamaResponsesUrl}`,
-			`model: ${recorded.model}`,
+			`model: ${modelName}`,
 			'',
 			...steps.map((step) => {
 				return [
@@ -128,7 +127,8 @@ export class OllamaContextCeilingProbe {
 			'',
 		].join('\n');
 
-		Fs.writeFileSync(OllamaContextCeilingProbe.resultFilePath, resultText);
+		const resultFileName = `ollama_context_ceiling_probe_${modelName.replace(/[^a-z0-9]+/gi, '_')}_result.txt`;
+		Fs.writeFileSync(Path.join(OllamaContextCeilingProbe.resultDirectory, resultFileName), resultText);
 		console.log(resultText);
 		return steps;
 	}
@@ -204,4 +204,4 @@ export class OllamaContextCeilingProbe {
 	}
 }
 
-await OllamaContextCeilingProbe.run();
+await OllamaContextCeilingProbe.run(process.argv[2]);
