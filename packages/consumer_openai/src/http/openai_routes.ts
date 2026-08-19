@@ -48,9 +48,9 @@ import { ResponsesStreamWriter } from './responses_stream_writer.js';
 const bodySizeLimit = '1mb';
 
 /**
- * What this server has learned about one `POST /v1/chat/completions` request, gathered as it is
- * read, checked, and answered, and written to the transaction log exactly once, when the
- * response closes.
+ * What this server has learned about one `POST /v1/chat/completions` or `POST /v1/responses`
+ * request, gathered as it is read, checked, and answered, and written to the transaction log
+ * exactly once, when the response closes.
  */
 type ChatCompletionTransaction = {
 	/** The identifier of this transaction. */
@@ -87,9 +87,9 @@ type ChatCompletionTransaction = {
  */
 export class OpenaiRoutes {
 	/**
-	 * Every `POST /v1/chat/completions` request's transaction in flight, keyed by its Express
-	 * request object, so the response-close handler set up when the request begins can find it
-	 * later.
+	 * Every `POST /v1/chat/completions` and every `POST /v1/responses` request's transaction in
+	 * flight, keyed by its Express request object, so the response-close handler set up when the
+	 * request begins can find it later.
 	 */
 	private readonly transactions = new WeakMap<Express.Request, ChatCompletionTransaction>();
 
@@ -1107,7 +1107,7 @@ export class OpenaiRoutes {
 				id: transaction.id,
 				receivedAt: transaction.receivedAt,
 				method: request.method,
-				path: '/v1/chat/completions',
+				path: request.originalUrl,
 				httpVersion: `HTTP/${request.httpVersion}`,
 				requestHeaders: request.headers,
 				requestBody: request.body,

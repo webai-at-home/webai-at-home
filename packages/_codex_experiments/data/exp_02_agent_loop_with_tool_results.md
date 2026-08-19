@@ -68,9 +68,19 @@ Two explanations fit, and this experiment cannot separate them:
 
 `exp_03_prompt_size_measure` settled this by measuring the prompt from recorded traffic instead of believing what the target model reports: the first explanation is the right one, and 2051 is a ceiling of about 2048 tokens rather than a count. No conclusion about the ability of Gemma 4 E2B should be drawn from the Ollama runs made before the context length was raised.
 
-## WebAI@Home Failed Before The Task
+## WebAI@Home Failed Before The Task, Twice, For Two Different Reasons
 
-All three runs failed with exit code 1 and `404 Not Found` on `POST /v1/responses`, the same missing endpoint recorded in [`exp_01_one_turn_with_no_tool_results.md`](exp_01_one_turn_with_no_tool_results.md). Nothing about the agent loop was measured, because no turn ever started.
+The first three runs failed with exit code 1 and `404 Not Found` on `POST /v1/responses`. That missing endpoint was added by [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214).
+
+The three runs recorded here were made after it was added, against a server that serves the endpoint and with a native `worker_openai` connected for `stage_llm_gemma_4_e2b_full`. All three still failed with exit code 1, in one second, zero seconds, and zero seconds, and for a different reason:
+
+```
+The model llm_gemma_4_e2b_full cannot read tool declarations, and this server refuses a request it
+would have to ignore rather than answering it as though no tool had been declared. The models that
+accept tool declarations are llm_qwen3_5_0_8b_full.
+```
+
+This experiment is the one that declares tools on purpose, so unlike `exp_01_one_turn_with_no_tool` there is no sense in which the refusal is a surprise. It is the same refusal, from the same list, and it is written up in [`exp_01_one_turn_with_no_tool_results.md`](exp_01_one_turn_with_no_tool_results.md). Nothing about the agent loop has been measured against WebAI@Home yet, because no turn has ever started.
 
 ## What Was Measured, And What Was Not
 

@@ -25,8 +25,8 @@ export type TransactionOutcome = 'completed' | 'failed' | 'cancelled';
 export type TransactionResponseType = 'chat.completion' | 'chat.completion.chunk' | 'response' | 'response.stream' | 'error' | 'none';
 
 /**
- * Everything this server has learned about one `POST /v1/chat/completions` transaction, by the
- * time its response has closed.
+ * Everything this server has learned about one `POST /v1/chat/completions` or
+ * `POST /v1/responses` transaction, by the time its response has closed.
  */
 export type HttpTransactionInput = {
 	/** The identifier of this transaction. */
@@ -84,12 +84,12 @@ const transactionSeparator = '='.repeat(50);
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * Records every `POST /v1/chat/completions` transaction as one `curl -v`-style block of plain
- * text, the way that command, a browser's network inspector, or a reverse proxy's access log
- * already shows an HTTP exchange: a `>` line per request field, a `<` line per response field, a
- * blank line between headers and body, and a line naming how long the call took, so a developer
- * reading the log recognises the shape immediately and can copy a block straight into a bug
- * report.
+ * Records every `POST /v1/chat/completions` and every `POST /v1/responses` transaction as one
+ * `curl -v`-style block of plain text, the way that command, a browser's network inspector, or a
+ * reverse proxy's access log already shows an HTTP exchange: a `>` line per request field, a `<`
+ * line per response field, a blank line between headers and body, and a line naming how long the
+ * call took, so a developer reading the log recognises the shape immediately and can copy a block
+ * straight into a bug report.
  *
  * This is a human-facing rendering rather than a machine format: it is generated from what this
  * server already knows about a transaction, and nothing here is meant to be parsed back.

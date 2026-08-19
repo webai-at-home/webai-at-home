@@ -12,7 +12,7 @@ The first request of every run, against all three target models, was about 49800
 
 | Part of the request | Size | Changes between turns |
 | --- | --- | --- |
-| The whole body | 49788 bytes against LM Studio, 49764 against Ollama, 49830 against WebAI@Home | grows with the history |
+| The whole body | 49788 bytes against LM Studio, 49764 against Ollama, 49585 against WebAI@Home | grows with the history |
 | `instructions`, the standing prompt | 20751 characters | never |
 | `tools`, ten of them | 18587 characters | never |
 | `input`, the history | 8747 characters in 3 items | grows every turn |
@@ -99,12 +99,31 @@ The two serving programs do not count the same tokens for the same bytes: 6605 a
 
 So the agent loop of `exp_02_agent_loop_with_tool` did not fail because Gemma 4 E2B is too small. It failed because Ollama served it about 2048 tokens of a prompt that is about 8600 tokens long. With the context length raised, the same model does the whole task correctly three times out of three, which is recorded in [`exp_02_agent_loop_with_tool_results.md`](exp_02_agent_loop_with_tool_results.md).
 
-## WebAI@Home, And The Cross-Check That Could Not Be Made
+## WebAI@Home, And The Cross-Check, Which Now Passes
 
-All six recorded requests to WebAI@Home were identical, 49830 bytes each, and all six were answered `404 Not Found`. The Codex command-line program sent the first and then retried five times, and every retry carried the whole 49830 bytes again.
+The first run against WebAI@Home recorded six identical requests of 49830 bytes, all answered `404 Not Found`: the Codex command-line program sent the first and then retried five times, and every retry carried the whole 49830 bytes again. [Issue #214](https://github.com/webai-at-home/webai-at-home/issues/214) added `POST /v1/responses`, and the run recorded here was made against a server that serves it.
 
-The plan asked for the proxy recording to be cross-checked against the `curl -v`-style request log the OpenAI-compatible server of `packages/consumer_openai` writes for every request, from [issue #75](https://github.com/webai-at-home/webai-at-home/issues/75). That cross-check cannot be made: the log holds zero `POST /v1/responses` entries, because a request to a route the server does not serve never reaches the part of it that writes the log. The proxy recording is therefore the only record of those six requests, and it is the reason the proxy exists.
+That run recorded **one** request rather than six, of 49585 bytes, answered `400 Bad Request`. There is no retry, because a refusal of the request is not a reason to send it again:
+
+```
+The model llm_gemma_4_e2b_full cannot read tool declarations, and this server refuses a request it
+would have to ignore rather than answering it as though no tool had been declared.
+```
+
+The refusal itself belongs to [`exp_01_one_turn_with_no_tool_results.md`](exp_01_one_turn_with_no_tool_results.md). What belongs here is that the request was read: all twelve fields, 20751 characters of instructions, ten tools in 18587 characters, and three input items in 8787 characters reached the route and were parsed before anything was decided about them.
+
+The plan asked for the proxy recording to be cross-checked against the `curl -v`-style request log the OpenAI-compatible server of `packages/consumer_openai` writes for every request, from [issue #75](https://github.com/webai-at-home/webai-at-home/issues/75). That cross-check could not be made against a route the server did not serve, and it can be made now. The two agree exactly:
+
+| Measured by | Bytes of the request body |
+| --- | --- |
+| the recording proxy of this experiment | 49585 |
+| `content-length` in the request log of the server | 49585 |
+
+Two things about the log had to be fixed before the two could be compared:
+
+- The log named every entry `POST /v1/chat/completions`, including the `POST /v1/responses` ones, because the path was written into the record as a fixed string rather than read from the request. It is now read from the request.
+- The log is written to `~/.webai-at-home/consumer_openai/logs/`, not into the package folder, and the file of one run is named after the moment that run started.
 
 ## What Is Committed
 
-The whole recorded traffic runs to several megabytes and is not committed. What answers the questions above is: `exp_03_prompt_size_measure_measurements.json` and `exp_03_prompt_size_measure_result.txt` for each target model, and `ollama_context_ceiling_probe_result.txt` for the probe. The traffic itself is written to `recordings/<target model>/` and can be made again by running the experiment.
+The whole recorded traffic runs to several megabytes and is not committed. What answers the questions above is: `exp_03_prompt_size_measure_measurements.json` and `exp_03_prompt_size_measure_result.txt` for each target model, and `context_ceiling_probe_result.txt` for the probe. The traffic itself is written to `recordings/<target model>/` and can be made again by running the experiment.
