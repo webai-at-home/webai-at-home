@@ -1,4 +1,4 @@
-# Directory Context: `/packages/openai_conformance_test/src/clients`
+# Directory Context: `/packages/openai_conformance_test_TOREMOVE/src/clients`
 
 ## Purpose
 

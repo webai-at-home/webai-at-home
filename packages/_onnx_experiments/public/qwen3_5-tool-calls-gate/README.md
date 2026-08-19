@@ -9,7 +9,7 @@ and answers milestone 0's question for [issue #115](https://github.com/webai-at-
 ## Why this gate exists even though the model already passed
 
 `qwen_qwen3.5-0.8b` served by LM Studio passes all six tool call abilities the `tool_calls` subcommand of
-[`@webai/openai-api-tool`](../../../openai_api_tool/) probes, in both the streamed and the nostream mode. That is a
+[`@webai/openai-api-tool`](../../../openai_api_tool_TOREMOVE/) probes, in both the streamed and the nostream mode. That is a
 measurement of the model weights, taken through a server that applies the chat template and parses the tool calls
 itself, and hands back structured `tool_calls`.
 

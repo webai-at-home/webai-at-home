@@ -1,4 +1,4 @@
-# Directory Context: `/packages/openai_api_tool`
+# Directory Context: `/packages/openai_api_tool_TOREMOVE`
 
 ## Purpose
 
@@ -10,7 +10,7 @@ The command line tool that exercises and measures a server speaking the OpenAI-c
 - `src/completion_sender.ts`: the one way this package sends a request and times it.
 - `src/benchmark_runner.ts`: the warm-up and measured requests of one run, and their aggregation.
 - `src/generation_control_prober.ts`, `src/tool_call_prober.ts`: the probes behind `generation_controls` and `tool_calls`, each with its own renderer.
-- `src/shared_options.ts`: every option all six subcommands accept, reused by [`packages/openai_conformance_test`](../openai_conformance_test/) through the `./shared_options` subpath export.
+- `src/shared_options.ts`: every option all six subcommands accept, reused by [`packages/openai_conformance_test_TOREMOVE`](../openai_conformance_test_TOREMOVE/) through the `./shared_options` subpath export.
 
 ## Rules
 
@@ -26,6 +26,6 @@ The command line tool that exercises and measures a server speaking the OpenAI-c
 
 ## Background
 
-- The freeze comes from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which merged this package and `packages/openai_conformance_test` into `packages/openai_test`. Both packages stay, and neither is deleted.
+- The freeze comes from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which merged this package and `packages/openai_conformance_test_TOREMOVE` into `packages/openai_test`. Both packages stay, and neither is deleted.
 
 - The generation control probes come from [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151), and the six separate tool call probes from [issue #78](https://github.com/webai-at-home/webai-at-home/issues/78).

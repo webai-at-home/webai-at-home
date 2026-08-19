@@ -7,7 +7,7 @@ It does not grade whether an answer is a good answer. A model that replies with 
 ## Running it
 
 ```bash
-npx tsx packages/openai_conformance_test/src/cli.ts --model llm_llama3_2_1b_full --profile full
+npx tsx packages/openai_conformance_test_TOREMOVE/src/cli.ts --model llm_llama3_2_1b_full --profile full
 ```
 
 Without cloning this repository:

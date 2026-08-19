@@ -21,4 +21,4 @@ One short runnable program per task type and per calling style, each one showing
 
 ## Background
 
-- These examples came from `@webai/consumer-openai` to `packages/openai_api_tool`, and moved here when that package was frozen by [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).
+- These examples came from `@webai/consumer-openai` to `packages/openai_api_tool_TOREMOVE`, and moved here when that package was frozen by [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208).

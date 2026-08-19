@@ -53,8 +53,8 @@ The central research questions are still open, especially result verification, b
 - [`packages/consumer_cli`](packages/consumer_cli/README.md) — command-line client for submitting test tasks.
 - [`packages/consumer_openai`](packages/consumer_openai/README.md) — OpenAI-compatible server, so a program that already talks to OpenAI can use the cluster by changing its base address.
 - [`packages/worker_openai`](packages/worker_openai/README.md) — native worker process that runs its assigned stage by calling a local server speaking the OpenAI-compatible API, such as LM Studio.
-- [`packages/openai_api_tool`](packages/openai_api_tool/README.md) — command-line tool that exercises and measures any server speaking the OpenAI-compatible API, this project's own and another machine's alike.
-- [`packages/openai_conformance_test`](packages/openai_conformance_test/README.md) — command-line tool that reports which parts of the OpenAI-compatible protocol a server actually honours, rather than how good its answers are.
+- [`packages/openai_api_tool_TOREMOVE`](packages/openai_api_tool_TOREMOVE/README.md) — command-line tool that exercises and measures any server speaking the OpenAI-compatible API, this project's own and another machine's alike.
+- [`packages/openai_conformance_test_TOREMOVE`](packages/openai_conformance_test_TOREMOVE/README.md) — command-line tool that reports which parts of the OpenAI-compatible protocol a server actually honours, rather than how good its answers are.
 - [`packages/flow_viewer`](packages/flow_viewer/README.md) — flow viewer for inspecting recorded message traffic.
 - [`packages/_onnx_experiments`](packages/_onnx_experiments/README.md) — browser experiments for ONNX Runtime Web.
 - [`packages/_account_key_experiments`](packages/_account_key_experiments/README.md) — browser experiments about the signing key pair a participant's account is, and whether a real browser tab can hold one it cannot leak.

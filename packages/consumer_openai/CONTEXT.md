@@ -10,7 +10,7 @@ An OpenAI-compatible server in front of the `webai-at-home` cluster. It accepts 
 - `src/http/`: the routes `/v1/models` and `/v1/chat/completions`, and the request and answer log.
 - `src/api/`: the request and answer shapes, the errors, which task type each model name maps to, and the building of the history, the prompt, the finish reason, and the generation settings.
 - `src/libs/`: `cluster_task_runner.ts`, on top of `ConsumerClient` from `@webai/consumer-cli`, and `server_settings.ts`, holding every option and environment variable.
-- The examples, the sweep across every model, and the latency benchmark live in [`packages/openai_api_tool`](../openai_api_tool/), not here.
+- The examples, the sweep across every model, and the latency benchmark live in [`packages/openai_api_tool_TOREMOVE`](../openai_api_tool_TOREMOVE/), not here.
 
 ## Rules
 

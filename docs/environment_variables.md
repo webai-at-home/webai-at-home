@@ -43,7 +43,7 @@ These say which server speaking the OpenAI-compatible API `packages/worker_opena
 | `OPENAI_BASE_URL` | `packages/worker_openai` | `-b, --openai-base-url` | `http://localhost:1234/v1`, LM Studio's own default address |
 | `OPENAI_API_KEY` | `packages/worker_openai` | `-k, --openai-api-key` | none, meaning no `Authorization` header is sent at all, which is what a local server such as LM Studio expects |
 
-`packages/openai_api_tool` reads the same two names for the same purpose, on its own subcommands, with defaults of its own — see the table below. Neither program's default carries over to the other: what one falls back to is not what the other falls back to, only the variable name is shared.
+`packages/openai_api_tool_TOREMOVE` reads the same two names for the same purpose, on its own subcommands, with defaults of its own — see the table below. Neither program's default carries over to the other: what one falls back to is not what the other falls back to, only the variable name is shared.
 
 ## The container environment
 
@@ -72,7 +72,7 @@ These configure example programs and tests rather than the cluster itself. None 
 | Variable | Read by | Meaning | Default |
 | --- | --- | --- | --- |
 | `OPENAI_BASE_URL` | every example in `packages/openai_test/examples` | Base URL of the OpenAI-compatible server the example sends its request to | `http://localhost:8788/v1` |
-| `OPENAI_API_KEY` | the same examples, and every subcommand of `packages/openai_api_tool` | Key presented to that server | `no-key-required` |
+| `OPENAI_API_KEY` | the same examples, and every subcommand of `packages/openai_api_tool_TOREMOVE` | Key presented to that server | `no-key-required` |
 | `WEBAI_LOCAL_MODEL_BASE_URL` | `packages/consumer_openai/tests/real_llm_llama3_2_1b_full_native_worker.test.ts` | Base URL of the local model server the test needs running | `http://localhost:1234/v1` |
 | `WEBAI_LOCAL_MODEL` | the same test | Which model that server is asked for | `llama-3.2-1b-instruct` |
 | `REAL_TEST_HEADED`, `REAL_TEST_DEVTOOLS`, `REAL_TEST_SLOW` | the `real_*` tests in `packages/consumer_openai/tests` | Whether to show the browser, open its developer tools, and slow each action down, when watching a test run | unset, meaning headless, no developer tools, full speed |
