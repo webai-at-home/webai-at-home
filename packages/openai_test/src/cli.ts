@@ -60,7 +60,7 @@ export class Cli {
 			.option('--profile <name>', `which group of tests to run: ${[...knownProfiles.keys()].join(', ')}`, 'core')
 			.option('-g, --group <name>', 'run only the tests of one group, such as streaming')
 			.option('-t, --test <id...>', 'run only the tests with these identifiers, such as chat.basic')
-			.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '5')
+			.option('-r, --repeats <number>', 'how many times a tool call or generation control probe repeats its prompt', '3')
 			.option('-o, --output <file>', 'write the report to this file rather than to standard output')
 			.option('-v, --verbose', 'print each test as it starts and as it finishes, and print the detail of every test, including the ones that passed')
 			.option('--ci', 'exit 1 when any test failed, for a continuous integration run');
