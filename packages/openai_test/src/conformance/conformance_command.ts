@@ -19,12 +19,11 @@ import { toolsProfile } from './profiles/tools.js';
 import { JsonReporter } from './reporter/json.js';
 import { JunitReporter } from './reporter/junit.js';
 import { MarkdownReporter } from './reporter/markdown.js';
-import { MatrixReporter } from './reporter/matrix.js';
 import { MergedRecords } from './reporter/merged_records.js';
 import { ReportParameters } from '../report_parameters.js';
 import { ReportSummary } from './reporter/report_summary.js';
 import { TerminalReporter } from './reporter/terminal.js';
-import { Runner, type ConformanceRun, type RunnerProgressListener, type SkippedModel } from './runner.js';
+import { Runner, type ConformanceRun, type RunnerProgressListener } from './runner.js';
 import type { ConformanceTest, TestContext } from './types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -108,9 +107,7 @@ export class ConformanceCommand {
 	 * @param invokedName The name this program was invoked under, used to write that same line, so a
 	 * person who typed `webai-at-home openai_test` is not shown a name they never typed.
 	 * @returns Nothing, once the report has been written. Sets `process.exitCode` to `1` when one or
-	 * more tests failed. Every model the sweep leaves out is named on standard error as it is left
-	 * out, because only the verdict matrix has a section for it, and a sweep that ends up measuring
-	 * one model writes the single-model report instead.
+	 * more tests failed.
 	 * @throws {Error} If the command line is unusable: a missing `-m/--model`, an unknown
 	 * `--profile` or `-f/--format`, or a `-g/--group` or `-t/--test` matching no test at all.
 	 */
@@ -137,31 +134,17 @@ export class ConformanceCommand {
 		const tests = ConformanceCommand._selectTests(profile, rawOptions);
 		const repeats = SharedOptions.positiveInteger(rawOptions.repeats, '--repeats');
 		const streamSettings = SharedOptions.resolveStreamSettings(rawOptions);
-		const selection = await ModelResolver.resolve(rawOptions.model, rawHttpClient);
 
-		const isSweep = selection.modelIds.length > 1 || streamSettings.length > 1;
-		const progressPrinter = ConformanceCommand._isProgressWanted(rawOptions);
-		const runs: ConformanceRun[] = [];
-		const skippedModels: SkippedModel[] = [];
-		for (const modelId of selection.modelIds) {
-			if (selection.isFromEndpointListing === true) {
-				const reason = await ModelResolver.probeUsable(new OpenaiPackageClient(target).client, modelId);
-				if (reason !== undefined) {
-					skippedModels.push({
-						modelId,
-						reason,
-					});
-					console.error(`Model left out: "${modelId}" (${reason})`);
-					continue;
-				}
-			}
-			runs.push(...(await ConformanceCommand._runOneModel(tests, modelId, streamSettings, repeats, target, progressPrinter, isSweep)));
-		}
-		if (runs.length === 0) {
-			throw new Error(`no model was measured. ${ConformanceCommand._describeSkipped(skippedModels)}`);
-		}
+		const runs = await ConformanceCommand._runModel(
+			tests,
+			SharedOptions.readOneModelId(rawOptions.model, 'conformance'),
+			streamSettings,
+			repeats,
+			target,
+			ConformanceCommand._isProgressWanted(rawOptions),
+		);
 
-		const report = ConformanceCommand._renderReport(runs, skippedModels, rawOptions, target.baseUrl, args, invokedName);
+		const report = ConformanceCommand._renderReport(runs, rawOptions, target.baseUrl, args, invokedName);
 		ReportWriter.write(report, rawOptions.output);
 	}
 
@@ -181,22 +164,22 @@ export class ConformanceCommand {
 	 * genuinely changes, and they are the only ones a second stream setting runs again.
 	 *
 	 * @param tests The tests to run, in the order to run and report them.
-	 * @param modelId The model identifier to run them against.
+	 * @param modelId The one model identifier to run them against.
 	 * @param streamSettings The stream settings to send the probes in, in order.
 	 * @param repeats How many times a test comparing repeated answers sends its prompt.
 	 * @param target The endpoint to send every request to.
+	 * @param isProgressWanted Whether each test is printed as it starts and as it finishes.
 	 * @returns One run for the tests no stream setting reaches, when there are any, followed by one run per
 	 * stream setting for the tests a stream setting does reach. A single stream setting collapses both into one run, so a
-	 * single-model, single-setting invocation produces exactly one run and exactly today's report.
+	 * single-setting invocation produces exactly one run.
 	 */
-	private static async _runOneModel(
+	private static async _runModel(
 		tests: readonly ConformanceTest[],
 		modelId: string,
 		streamSettings: readonly StreamSetting[],
 		repeats: number,
 		target: CompletionTarget,
 		isProgressWanted: boolean,
-		isSweep: boolean,
 	): Promise<ConformanceRun[]> {
 		const buildContext = (streamSetting: StreamSetting): TestContext => {
 			const openaiPackageClient = new OpenaiPackageClient(target);
@@ -214,7 +197,7 @@ export class ConformanceCommand {
 			if (isProgressWanted === false) {
 				return undefined;
 			}
-			const prefix = ConformanceCommand._progressPrefix(modelId, streamSetting, isSweep);
+			const prefix = ConformanceCommand._progressPrefix(streamSetting, streamSettings.length > 1);
 			return ConformanceCommand._buildProgressListener(prefix);
 		};
 
@@ -263,23 +246,20 @@ export class ConformanceCommand {
 	}
 
 	/**
-	 * Builds what every progress line of one run is written behind, so a sweep says which model and
-	 * which stream setting reached a verdict rather than printing the same test identifier several times over.
+	 * Builds what every progress line of one run is written behind, so a run measured with streaming
+	 * both on and off says which stream setting reached a verdict rather than printing the same test
+	 * identifier twice over.
 	 *
-	 * @param modelId The model identifier this run measures.
 	 * @param streamSetting The stream setting this run's probes are sent in, `undefined` for the tests no stream setting reaches.
-	 * @param isSweep Whether more than one run is expected. A single run needs no prefix at all,
-	 * because there is nothing to tell its lines apart from.
+	 * @param isSeveralRuns Whether more than one run is expected. A single run needs no prefix at
+	 * all, because there is nothing to tell its lines apart from.
 	 * @returns The prefix, empty when there is nothing to distinguish.
 	 */
-	private static _progressPrefix(modelId: string, streamSetting: StreamSetting | undefined, isSweep: boolean): string {
-		if (isSweep === false) {
+	private static _progressPrefix(streamSetting: StreamSetting | undefined, isSeveralRuns: boolean): string {
+		if (isSeveralRuns === false || streamSetting === undefined) {
 			return '';
 		}
-		if (streamSetting === undefined) {
-			return `${modelId} `;
-		}
-		return `${modelId} ${streamSetting} `;
+		return `${streamSetting} `;
 	}
 
 	/**
@@ -302,20 +282,6 @@ export class ConformanceCommand {
 				process.stderr.write(`${record.result.verdict} (${record.durationMs} ms)\n`);
 			},
 		};
-	}
-
-	/**
-	 * Says which models were left out, and why, for a run that ended up measuring none of them.
-	 *
-	 * @param skippedModels The models that were left out.
-	 * @returns One sentence naming each of them.
-	 */
-	private static _describeSkipped(skippedModels: readonly SkippedModel[]): string {
-		if (skippedModels.length === 0) {
-			return '-m/--model matched no model at all.';
-		}
-		const named = skippedModels.map((skipped) => `"${skipped.modelId}" (${skipped.reason})`).join('; ');
-		return `Every model matched failed to answer one chat completion under its own name: ${named}`;
 	}
 
 	/**
@@ -354,17 +320,12 @@ export class ConformanceCommand {
 	 * not say when it was measured or what it was measured with says very little; the other three
 	 * are read by a program or by the person who just typed the command.
 	 *
-	 * One model is reported exactly as it always was, however many runs it took: the summary, what
-	 * was run, and one table per group carrying the detail of everything that did not pass. Several
-	 * models is a sweep, and a sweep is a different document: the matrix, where a reader compares
-	 * models by reading across a row, which a stack of separate reports never lets them do.
-	 *
-	 * The count that decides this is the models, never the runs. One model measured with streaming
-	 * both on and off produces three runs and is still one model, and printing a one-column matrix
-	 * for it would drop every failure reason the report exists to carry.
+	 * The one model measured is reported as one document however many runs it took: the summary,
+	 * what was run, and one table per group carrying the detail of everything that did not pass.
+	 * One model measured with streaming both on and off produces three runs and is still one
+	 * report, with `MergedRecords` folding the runs back into one list of records.
 	 *
 	 * @param runs Every run this invocation produced.
-	 * @param skippedModels The models the sweep left out before measuring them.
 	 * @param rawOptions The subcommand's options.
 	 * @param endpoint The endpoint that was tested.
 	 * @param args The command line arguments as they were typed.
@@ -373,33 +334,12 @@ export class ConformanceCommand {
 	 */
 	private static _renderReport(
 		runs: readonly ConformanceRun[],
-		skippedModels: readonly SkippedModel[],
 		rawOptions: RawConformanceOptions,
 		endpoint: string,
 		args: readonly string[],
 		invokedName: string,
 	): string {
 		const commandLine = ReportParameters.commandLine(args, invokedName);
-		const measuredModelIds = new Set(runs.map((run) => run.modelId));
-		if (measuredModelIds.size > 1) {
-			const matrixOptions = {
-				endpoint,
-				skippedModels,
-				generatedAt: new Date(),
-				commandLine,
-			};
-			switch (rawOptions.format) {
-				case 'json':
-					return JsonReporter.renderRuns(runs, endpoint, skippedModels);
-				case 'markdown':
-					return MatrixReporter.renderMarkdown(runs, matrixOptions);
-				case 'junit':
-					return JunitReporter.renderRuns(runs, endpoint);
-				default:
-					return MatrixReporter.renderText(runs, matrixOptions);
-			}
-		}
-
 		const records = MergedRecords.of(runs);
 		const options = {
 			endpoint,

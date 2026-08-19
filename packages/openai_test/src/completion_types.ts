@@ -276,23 +276,15 @@ export type BenchmarkSummary = {
 	readonly outputCharacters: MetricStatistics;
 };
 
-/** One model the benchmark named but could not measure, and the reason it could not. */
-export type BenchmarkFailure = {
-	/** The model identifier that was asked for. */
-	readonly modelId: string;
-	/** Why the measurement could not be made, in the words the endpoint or the transport used. */
-	readonly reason: string;
-};
-
-/** The full benchmark report, holding one summary per measured model. */
+/** The full benchmark report of the one model measured. */
 export type BenchmarkReport = {
 	/** The benchmark settings that affect comparability with another run. */
 	readonly settings: {
 		/** The one prompt sent to the endpoint. */
 		readonly prompt: string;
-		/** The number of measured requests per model. */
+		/** The number of measured requests. */
 		readonly runs: number;
-		/** The number of unreported warm-up requests per model. */
+		/** The number of unreported warm-up requests. */
 		readonly warmupRuns: number;
 		/**
 		 * Whether every request let the model think before it answered.
@@ -304,13 +296,8 @@ export type BenchmarkReport = {
 		/** The number of requests in flight at any moment, always one. */
 		readonly parallelism: 1;
 	};
-	/** The aggregate measurements, one entry per measured model, in the order they were measured. */
-	readonly summaries: readonly BenchmarkSummary[];
-	/**
-	 * The models named that could not be measured, in the order they were tried. Absent when every
-	 * model named was measured, so a report of a run where nothing went wrong carries no empty list.
-	 */
-	readonly failures?: readonly BenchmarkFailure[];
+	/** The aggregate measurements of the one model measured. */
+	readonly summary: BenchmarkSummary;
 };
 
 /**

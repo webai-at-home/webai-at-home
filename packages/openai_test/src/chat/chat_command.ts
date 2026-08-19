@@ -26,8 +26,8 @@ import { ChatSession, type LineSource } from './chat_session.js';
 /** The `chat` subcommand's options, exactly as commander parses them. */
 export type RawChatOptions = RawEndpointOptions & {
 	/**
-	 * Exactly one model identifier. A sweep makes no sense in a session someone is typing into.
-	 * `undefined` when neither `-m/--model` nor `OPENAI_MODEL` named one.
+	 * Exactly one model identifier. `undefined` when neither `-m/--model` nor `OPENAI_MODEL` named
+	 * one.
 	 */
 	model?: string;
 	/** The system message sent as the first message of the session, when one was asked for. */
@@ -133,10 +133,9 @@ export class ChatCommand {
 	/**
 	 * Reads the one model identifier `-m/--model` named.
 	 *
-	 * `conformance` and `benchmark` sweep every model an endpoint serves. `chat` does not, because
-	 * a session someone types turns into has one model behind it, so the sweep spellings this
-	 * package accepts elsewhere are refused here by name rather than silently sending to the first
-	 * of them.
+	 * `conformance` and `benchmark` answer `list` by printing the identifiers the endpoint serves.
+	 * `chat` has nowhere to print such a listing to, since it opens a session rather than writing a
+	 * report, so `list` is refused here alongside the spellings that name several models.
 	 *
 	 * @param rawModel The `-m/--model` value, exactly as commander parsed it, `undefined` when
 	 * neither the option nor `OPENAI_MODEL` named one.
@@ -147,10 +146,9 @@ export class ChatCommand {
 		if (rawModel === undefined) {
 			throw new Error('no model was named — give -m/--model one model identifier, or set OPENAI_MODEL');
 		}
-		const isSweep = rawModel === 'all' || rawModel === 'list' || rawModel.includes(',') || rawModel.includes('*');
-		if (isSweep === true) {
-			throw new Error(`chat sends turns to one model, so -m/--model takes one model identifier, got "${rawModel}"`);
+		if (rawModel.trim() === 'list') {
+			throw new Error('chat sends turns to one model, so -m/--model takes one model identifier, got "list"');
 		}
-		return rawModel;
+		return SharedOptions.readOneModelId(rawModel, 'chat');
 	}
 }

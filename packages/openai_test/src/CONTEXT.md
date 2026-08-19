@@ -11,7 +11,7 @@ Every source file of the `openai_test` program: the command line, what all three
 - `shared_options.ts`: the options more than one subcommand accepts.
 - `exit_codes.ts`: what this program returns to the shell, named once so a subcommand sets one without importing `cli.ts`.
 - `endpoint_reachability.ts`: the one request that says whether anything is listening at all.
-- `model_resolver.ts`: how one `-m/--model` becomes the model identifiers to work through, each proved usable.
+- `model_resolver.ts`: the model identifiers the endpoint lists, read only to answer `-m/--model list`.
 - `report_writer.ts` and `report_parameters.ts`: what `-o/--output` does, and what a run was given and the command line that produced it, without the bearer token — both written once for the two subcommands that write reports.
 - `clients/`: the ways this package reaches an endpoint — see [its own CONTEXT.md](clients/CONTEXT.md).
 - `readers/`: what actually arrived on the wire — see [its own CONTEXT.md](readers/CONTEXT.md).
@@ -26,7 +26,7 @@ Every source file of the `openai_test` program: the command line, what all three
 - `shared_options.ts` holds an option only when more than one subcommand accepts it; one subcommand's own option is declared in `cli.ts` beside it.
 - A folder sits here because more than one subcommand reaches for it; a folder one subcommand alone uses lives inside that subcommand's folder.
 - `conformance` and `benchmark` both send one `GET /models` first, so an endpoint nothing is listening on ends the run with exit code `2`.
-- A model identifier from the endpoint's own listing is used only after it answers one chat completion under its own name.
+- Every subcommand works with one model: `SharedOptions.readOneModelId` refuses `all`, a comma-separated list, and a pattern in all three.
 - `reportFormats` in `completion_types.ts` is the one list of output formats, and `report_parameters.ts` the one place a bearer token is replaced; neither reporting subcommand keeps a copy of either.
 - `RawEndpointOptions` is the part all three subcommands share; `RawSharedOptions` adds what only the reporting subcommands accept, which is why `chat` uses the first.
 

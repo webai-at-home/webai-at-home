@@ -1,7 +1,6 @@
 // local imports
-import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
-import { reportFormats, thinkingSettings, type BenchmarkReport, type ThinkingSetting } from '../completion_types.js';
+import { reportFormats, thinkingSettings, type ThinkingSetting } from '../completion_types.js';
 import { EndpointReachability } from '../endpoint_reachability.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportParameters } from '../report_parameters.js';
@@ -16,23 +15,24 @@ import { ReportRenderer, type BenchmarkMarkdownOptions } from './report_renderer
 //
 //	Run with:
 //	  ./src/cli.ts benchmark --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct
-//	  ./src/cli.ts benchmark --base_url http://localhost:1234/v1 --model all --format markdown
+//	  ./src/cli.ts benchmark --base_url http://localhost:1234/v1 --model llama-3.2-1b-instruct --format markdown
 //
-//	Every request is streamed, because Time to First Character and Time to Last Character are two
-//	separate numbers only while the answer arrives in pieces. This is why `benchmark` takes neither
-//	`--stream`: there is nothing to choose.
+//	One run measures one model, so that a report says one endpoint answers this fast with this model
+//	and nothing else. Every request is streamed, because Time to First Character and Time to Last
+//	Character are two separate numbers only while the answer arrives in pieces. This is why
+//	`benchmark` takes no `--stream`: there is nothing to choose.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /** The `benchmark` subcommand's options, exactly as commander parses them. */
 export type RawBenchmarkOptions = RawEndpointOptions & {
-	/** The model identifier to measure. */
+	/** The one model identifier to measure. */
 	model: string;
 	/** The one prompt sent to the endpoint. */
 	prompt: string;
-	/** The number of measured requests per model, still as text. */
+	/** The number of measured requests, still as text. */
 	runs: string;
-	/** The number of unreported warm-up requests per model, still as text. */
+	/** The number of unreported warm-up requests, still as text. */
 	warmup_runs: string;
 	/** The output format. */
 	format: string;
@@ -50,20 +50,19 @@ export class BenchmarkCommand {
 	static readonly defaultPrompt = 'Count up to 30';
 
 	/**
-	 * Runs the `benchmark` subcommand: measures every requested model on the endpoint, one after
-	 * the other, and writes one report.
+	 * Runs the `benchmark` subcommand: measures the one model named on the endpoint, and writes one
+	 * report.
 	 *
 	 * @param rawOptions The subcommand's options, exactly as commander parsed them.
 	 * @param args The command line arguments as they were typed, without the program name, so that
 	 * a markdown report can carry the line that produced it. Defaults to no arguments at all, for a
 	 * caller that has none to offer.
 	 * @param invokedName The name this program was invoked under, written at the head of that line.
-	 * @returns Nothing, once the report has been written. Sets `process.exitCode` to `1` when a
-	 * model named could not be measured while another one could, since the run produced numbers but
-	 * not the numbers it was asked for.
+	 * @returns Nothing, once the report has been written. No exit code is set either way: there are
+	 * no verdicts here.
 	 * @throws {Error} If `-f/--format` names a format that cannot be written, if a request count is
-	 * not a whole number in range, if nothing is listening at the endpoint, or if no model could be
-	 * measured at all.
+	 * not a whole number in range, if nothing is listening at the endpoint, or if the model could
+	 * not be measured.
 	 */
 	static async run(rawOptions: RawBenchmarkOptions, args: readonly string[] = [], invokedName = 'openai_test'): Promise<void> {
 		if (rawOptions.model === undefined || rawOptions.model.trim() === '') {
@@ -81,32 +80,15 @@ export class BenchmarkCommand {
 			return;
 		}
 
-		const selection = await ModelResolver.resolve(rawOptions.model, rawHttpClient);
-		const modelIds: string[] = [];
-		for (const modelId of selection.modelIds) {
-			if (selection.isFromEndpointListing === true) {
-				const reason = await ModelResolver.probeUsable(new OpenaiPackageClient(target).client, modelId);
-				if (reason !== undefined) {
-					console.error(`Model left out: "${modelId}" (${reason})`);
-					continue;
-				}
-			}
-			modelIds.push(modelId);
-		}
-		if (modelIds.length === 0) {
-			throw new Error('every model the endpoint listed failed to answer one chat completion under its own name');
-		}
-
 		const report = await BenchmarkRunner.runBenchmark({
 			target,
-			modelIds,
+			modelId: SharedOptions.readOneModelId(rawOptions.model, 'benchmark'),
 			prompt: rawOptions.prompt,
 			runs: SharedOptions.positiveInteger(rawOptions.runs, '--runs'),
 			warmupRuns: SharedOptions.positiveInteger(rawOptions.warmup_runs, '--warmup_runs', true),
 			thinkingSetting: BenchmarkCommand._resolveThinkingSetting(rawOptions.thinking),
 			...(rawOptions.verbose === true ? { listener: BenchmarkCommand._buildProgressListener() } : {}),
 		});
-		BenchmarkCommand._announceFailures(report);
 		const markdownOptions: BenchmarkMarkdownOptions = {
 			generatedAt: new Date(),
 			parameters: ReportParameters.ofBenchmarkOptions(rawOptions),
@@ -134,20 +116,6 @@ export class BenchmarkCommand {
 			throw new Error(`--thinking must be one of ${thinkingSettings.join(', ')}, got "${thinking}"`);
 		}
 		return wanted as ThinkingSetting;
-	}
-
-	/**
-	 * Names every model that could not be measured on standard error, so that a run written to a
-	 * file with `-o/--output` still says on the terminal that something was asked for and not
-	 * measured.
-	 *
-	 * @param report The report the run produced.
-	 * @returns Nothing.
-	 */
-	private static _announceFailures(report: BenchmarkReport): void {
-		for (const failure of report.failures ?? []) {
-			console.error(`Model not measured: "${failure.modelId}" (${failure.reason})`);
-		}
 	}
 
 	/**
@@ -180,9 +148,6 @@ export class BenchmarkCommand {
 					`${sample.outputCharacters} characters`,
 				].join(', ');
 				process.stderr.write(`${measured}\n`);
-			},
-			onModelFailed: (modelId, reason) => {
-				process.stderr.write(`${modelId} not measured: ${reason}\n`);
 			},
 		};
 	}

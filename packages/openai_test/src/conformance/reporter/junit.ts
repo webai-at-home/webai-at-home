@@ -1,5 +1,5 @@
 // local imports
-import type { ConformanceRun, TestRunRecord } from '../runner.js';
+import type { TestRunRecord } from '../runner.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -31,35 +31,6 @@ export class JunitReporter {
 	 */
 	static render(records: readonly TestRunRecord[], options: JunitReportOptions): string {
 		return ['<?xml version="1.0" encoding="UTF-8"?>', ...JunitReporter._testSuiteLines(records, options, '')].join('\n');
-	}
-
-	/**
-	 * Renders a sweep across several models as one `<testsuites>` element holding one `<testsuite>`
-	 * per run, which is the shape JUnit already has for exactly this.
-	 *
-	 * A suite is named `openai_test.<model>` and, where the stream setting reached its tests, `.<streamSetting>` after
-	 * that, so a continuous integration run that shows one suite per line names the model rather
-	 * than showing the same name several times over.
-	 *
-	 * @param runs Every run of the sweep, in the order they were run.
-	 * @param endpoint The endpoint's base URL, recorded on every suite.
-	 * @returns The XML document, ready to print or redirect to a file.
-	 */
-	static renderRuns(runs: readonly ConformanceRun[], endpoint: string): string {
-		const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>', '<testsuites>'];
-		for (const run of runs) {
-			const suiteLines = JunitReporter._testSuiteLines(
-				run.records,
-				{
-					endpoint,
-					modelId: run.modelId,
-				},
-				run.streamSetting === undefined ? `.${run.modelId}` : `.${run.modelId}.${run.streamSetting}`,
-			);
-			lines.push(...suiteLines.map((line) => `\t${line}`));
-		}
-		lines.push('</testsuites>');
-		return lines.join('\n');
 	}
 
 	///////////////////////////////////////////////////////////////////////////////

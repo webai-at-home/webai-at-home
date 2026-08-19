@@ -54,7 +54,7 @@ export class Cli {
 			.description('Reports which parts of the OpenAI-compatible Chat Completions API one server actually honours.')
 			.option(
 				'-m, --model <name>',
-				'model identifier, a comma-separated list of identifiers, a pattern such as llm_*, all, or list to print the identifiers the endpoint serves',
+				'the one model identifier to test, or list to print the identifiers the endpoint serves',
 				process.env.OPENAI_MODEL,
 			)
 			.option('--profile <name>', `which group of tests to run: ${[...knownProfiles.keys()].join(', ')}`, 'core')
@@ -76,7 +76,7 @@ export class Cli {
 			.description("Measures one OpenAI-compatible endpoint's streamed chat completion latency, one model at a time.")
 			.option(
 				'-m, --model <name>',
-				'model identifier, a comma-separated list of identifiers, a pattern such as llm_*, all, or list to print the identifiers the endpoint serves',
+				'the one model identifier to measure, or list to print the identifiers the endpoint serves',
 				process.env.OPENAI_MODEL,
 			)
 			.option('-p, --prompt <text>', 'the one prompt sent to the endpoint', BenchmarkCommand.defaultPrompt)

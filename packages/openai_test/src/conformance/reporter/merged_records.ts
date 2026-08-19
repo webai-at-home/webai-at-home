@@ -7,8 +7,8 @@ import type { ConformanceRun, TestRunRecord } from '../runner.js';
 //
 //	A model measured with streaming both on and off produces three runs: the tests streaming has no
 //	bearing on, and one per stream setting for the tests it does. That is three sets of records for
-//	one model, and the report of one model is one document, so the three are merged back into one
-//	list here rather than printed as the verdict matrix a sweep across several models earns.
+//	one model, and one invocation writes one report, so the three are merged back into one list here
+//	rather than printed as three reports of the same model.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 

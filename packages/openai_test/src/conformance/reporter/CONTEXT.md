@@ -11,13 +11,12 @@ One file per output format section 33 of issue #181 names with `-f/--format`, pl
 - `json.ts`: `JsonReporter`, the `json` format another program reads.
 - `markdown.ts`: `MarkdownReporter`, the `markdown` format a report file holds.
 - `junit.ts`: `JunitReporter`, the `junit` format a continuous integration run already knows how to read.
-- `matrix.ts`: `MatrixReporter`, the `text` and `markdown` verdict matrix a sweep across several models writes.
-- `merged_records.ts`: `MergedRecords`, which lays one model's runs back out as the one record list the four single-model reporters read.
+- `merged_records.ts`: `MergedRecords`, which lays one model's runs back out as the one record list the four reporters read.
 
 ## Rules
 
 - A reporter renders the records of `../runner.ts` into a string; it never runs a test and never talks to an endpoint.
-- Several models are rendered by `matrix.ts` or by the `renderRuns` of `json.ts` and `junit.ts`; one model keeps the single-model formats however many runs it took, its runs merged by `merged_records.ts`.
+- One invocation measures one model and writes one report, however many runs it took, its runs merged by `merged_records.ts` before any format sees them.
 - `render` returns the report as a string rather than printing it, so `../../report_writer.ts` is the only place that prints one.
 - No reporter counts verdicts itself; every one of them asks `ReportSummary`, so four formats of one run can never disagree about how many tests passed.
 - `SKIP` stays out of the compatibility percentage and `WARN` stays in it, because a skipped test measured nothing while a warned test measured something short of correct.

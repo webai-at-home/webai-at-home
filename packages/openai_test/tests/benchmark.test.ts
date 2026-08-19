@@ -23,7 +23,7 @@ const target: CompletionTarget = {
 
 const options: BenchmarkOptions = {
 	target,
-	modelIds: ['a-model'],
+	modelId: 'a-model',
 	prompt: 'same prompt',
 	runs: 2,
 	warmupRuns: 1,
@@ -142,7 +142,7 @@ Test('summarizes every metric from measured samples', () => {
 
 Test('computes Output Characters per Second from the Time to First and Time to Last Character of the completion', async () => {
 	const report = await BenchmarkRunner.runBenchmark({ ...options, runs: 1, warmupRuns: 0 }, async () => completionResult('0123456789', 100, 600));
-	const sample = report.summaries[0].samples[0];
+	const sample = report.summary.samples[0];
 	Assert.equal(sample.timeToFirstCharacterMs, 100);
 	Assert.equal(sample.timeToLastCharacterMs, 600);
 	Assert.equal(sample.outputCharacters, 10);
@@ -153,7 +153,7 @@ Test('computes Output Characters per Second from the Time to First and Time to L
 
 Test('floors the streaming duration at 1 ms rather than dividing by zero when the Time to First Character equals the Time to Last Character', async () => {
 	const report = await BenchmarkRunner.runBenchmark({ ...options, runs: 1, warmupRuns: 0 }, async () => completionResult('whole answer', 50, 50));
-	Assert.equal(report.summaries[0].samples[0].outputCharactersPerSecond, 'whole answer'.length * 1_000);
+	Assert.equal(report.summary.samples[0].outputCharactersPerSecond, 'whole answer'.length * 1_000);
 });
 
 Test('runs the warm-ups and then the measured requests in strict sequence', async () => {
@@ -170,23 +170,7 @@ Test('runs the warm-ups and then the measured requests in strict sequence', asyn
 		'a-model:same prompt',
 	]);
 	Assert.equal(report.settings.parallelism, 1);
-	Assert.equal(report.summaries[0].outputCharacters.average, 'the answer'.length);
-});
-
-Test('measures every named model one after the other, finishing one before starting the next', async () => {
-	const calls: string[] = [];
-	const report = await BenchmarkRunner.runBenchmark(
-		{ ...options, modelIds: ['first-model', 'second-model'], runs: 2, warmupRuns: 0 },
-		async (modelId) => {
-			calls.push(modelId);
-			return completionResult('the answer', 5, 50);
-		},
-	);
-
-	Assert.deepEqual(calls, ['first-model', 'first-model', 'second-model', 'second-model']);
-	Assert.equal(report.summaries.length, 2);
-	Assert.equal(report.summaries[0].modelId, 'first-model');
-	Assert.equal(report.summaries[1].modelId, 'second-model');
+	Assert.equal(report.summary.outputCharacters.average, 'the answer'.length);
 });
 
 Test('tells the listener about every warm-up and every measured request, in the order they were sent', async () => {
@@ -201,7 +185,6 @@ Test('tells the listener about every warm-up and every measured request, in the 
 				onWarmupRequestFinished: (modelId) => announced.push(`warm-up finished ${modelId}`),
 				onMeasuredRequestStarted: (modelId, run, runs) => announced.push(`measured started ${modelId} ${run}/${runs}`),
 				onMeasuredRequestFinished: (modelId, sample) => announced.push(`measured finished ${modelId} ${sample.run} ${sample.outputCharacters}`),
-				onModelFailed: (modelId, reason) => announced.push(`failed ${modelId} ${reason}`),
 			},
 		},
 		async () => completionResult('the answer', 5, 50),
@@ -217,34 +200,10 @@ Test('tells the listener about every warm-up and every measured request, in the 
 	]);
 });
 
-Test('tells the listener about a model it could not measure, before carrying on to the next one', async () => {
-	const announced: string[] = [];
-	const listener = {
-		onWarmupRequestStarted: () => undefined,
-		onWarmupRequestFinished: () => undefined,
-		onMeasuredRequestStarted: (modelId: string) => announced.push(`measured ${modelId}`),
-		onMeasuredRequestFinished: () => undefined,
-		onModelFailed: (modelId: string, reason: string) => announced.push(`failed ${modelId}: ${reason}`),
-	};
-	await BenchmarkRunner.runBenchmark(
-		{ ...options, modelIds: ['failing-model', 'second-model'], runs: 1, warmupRuns: 0, listener },
-		async (modelId: string) => {
-			if (modelId === 'failing-model') {
-				throw new Error('this model answered as somebody else');
-			}
-			return completionResult('the answer', 5, 50);
-		},
-	);
-
-	Assert.equal(announced[0], 'measured failing-model');
-	Assert.match(announced[1] ?? '', /^failed failing-model: .*answered as somebody else/);
-	Assert.equal(announced[2], 'measured second-model');
-});
-
 Test('refuses request counts that are not whole numbers in range', async () => {
 	await Assert.rejects(async () => BenchmarkRunner.runBenchmark({ ...options, runs: 0 }, async () => completionResult('a', 1, 2)), /--runs/);
 	await Assert.rejects(async () => BenchmarkRunner.runBenchmark({ ...options, warmupRuns: -1 }, async () => completionResult('a', 1, 2)), /--warmup_runs/);
-	await Assert.rejects(async () => BenchmarkRunner.runBenchmark({ ...options, modelIds: [] }, async () => completionResult('a', 1, 2)), /--model/);
+	await Assert.rejects(async () => BenchmarkRunner.runBenchmark({ ...options, modelId: '   ' }, async () => completionResult('a', 1, 2)), /--model/);
 });
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -266,37 +225,24 @@ Test('writes the same benchmark report out as text, markdown, and JSON', async (
 
 	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
 	Assert.match(markdown, /^# OpenAI API Benchmark Report/);
-	Assert.match(markdown, /## `a-model`/);
+	Assert.match(markdown, /## Measurements/);
 	Assert.match(markdown, /\| Metric \| Average \| Median \| Minimum \| Maximum \|/);
 	Assert.match(markdown, new RegExp(`- Endpoint: \`${target.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\``));
 
 	const json = ReportRenderer.formatBenchmarkReport(report, 'json');
 	const parsed = JSON.parse(json);
 	Assert.equal(parsed.settings.runs, options.runs);
-	Assert.equal(parsed.summaries[0].baseUrl, target.baseUrl);
-	Assert.equal(typeof parsed.summaries[0].timeToFirstCharacterMs.average, 'number');
+	Assert.equal(parsed.summary.baseUrl, target.baseUrl);
+	Assert.equal(typeof parsed.summary.timeToFirstCharacterMs.average, 'number');
 });
 
-Test('gives every measured model its own markdown section, and one row of the side by side table', async () => {
-	const report = await BenchmarkRunner.runBenchmark(
-		{ ...options, modelIds: ['first-model', 'second-model'], runs: 1, warmupRuns: 0 },
-		async () => completionResult('the answer', 5, 50),
-	);
-	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
-	Assert.match(markdown, /## `first-model`/);
-	Assert.match(markdown, /## `second-model`/);
-	Assert.match(markdown, /## Every Model Side By Side/);
-	Assert.match(markdown, /\| `first-model` \| 5\.00 ms \|/);
-	Assert.match(markdown, /\| `second-model` \| 5\.00 ms \|/);
-});
-
-Test('leaves the side by side table out when one model was measured, since its own section says it all already', async () => {
+Test('names the one model measured, and the endpoint it was measured on, in the measurement run section', async () => {
 	const report = await BenchmarkRunner.runBenchmark({ ...options, runs: 1, warmupRuns: 0 }, async () => completionResult('the answer', 5, 50));
 	const markdown = ReportRenderer.formatBenchmarkReport(report, 'markdown');
-	Assert.equal(markdown.includes('## Every Model Side By Side'), false, markdown);
-	Assert.match(markdown, /## `a-model`/);
+	Assert.match(markdown, /- Model: `a-model`/);
+	Assert.match(markdown, new RegExp(`- Endpoint: \`${target.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\``));
 	// The default `--runs 1`, said in words rather than as "1 times".
-	Assert.match(markdown, /Each model was sent the same prompt once/);
+	Assert.match(markdown, /The model was sent the same prompt once/);
 	Assert.match(markdown, /No warm-up request was sent at all/);
 });
 
@@ -316,7 +262,7 @@ Test('the markdown report says what each measured figure means, and lists every 
 	// What the run was, in words, so that a report file found months later needs nothing else read
 	// beside it to be understood.
 	Assert.match(markdown, /## What Was Measured/);
-	Assert.match(markdown, /Each model was sent the same prompt 2 times/);
+	Assert.match(markdown, /The model was sent the same prompt 2 times/);
 	Assert.match(markdown, /One warm-up request was sent first and its answer thrown away/);
 	Assert.match(markdown, /\| Time to First Character \| How long from sending the request/);
 	Assert.match(markdown, /None of the five is a token count\./);
@@ -370,14 +316,14 @@ Test('the markdown report stamps the moment it rendered when the caller offers n
 	Assert.equal(new Date(String(stamped)).getTime() >= before.getTime(), true, `stamped ${String(stamped)}`);
 });
 
-Test('says in every format whether the models were allowed to think', async () => {
+Test('says in every format whether the model was allowed to think', async () => {
 	const thinking = await BenchmarkRunner.runBenchmark(
 		{ ...options, runs: 1, warmupRuns: 0, thinkingSetting: 'on' },
 		async () => completionResult('the answer', 5, 50),
 	);
 	Assert.equal(thinking.settings.thinkingSetting, 'on');
 	Assert.match(ReportRenderer.formatBenchmarkReport(thinking, 'text'), /thinking: on/);
-	Assert.match(ReportRenderer.formatBenchmarkReport(thinking, 'markdown'), /No thinking field was sent, so each endpoint applied its own default\./);
+	Assert.match(ReportRenderer.formatBenchmarkReport(thinking, 'markdown'), /No thinking field was sent, so the endpoint applied its own default\./);
 	Assert.match(ReportRenderer.formatBenchmarkReport(thinking, 'junit'), /<property name="thinking" value="on"\/>/);
 	Assert.equal(JSON.parse(ReportRenderer.formatBenchmarkReport(thinking, 'json')).settings.thinkingSetting, 'on');
 
@@ -404,86 +350,59 @@ Test('accepts only the report formats it knows about', () => {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-Test('BenchmarkRunner.runBenchmark measures every model named, and carries on past the one that failed', async () => {
+Test('BenchmarkRunner.runBenchmark measures the one model named, and reports what it measured', async () => {
 	const report = await BenchmarkRunner.runBenchmark(
 		{
 			target: benchmarkTarget,
-			modelIds: ['first-model', 'failing-model', 'second-model'],
+			modelId: 'first-model',
 			prompt: 'Count up to 30',
 			runs: 2,
 			warmupRuns: 1,
 			thinkingSetting: 'off',
 		},
-		async (modelId: string) => {
-			if (modelId === 'failing-model') {
-				throw new Error('this model answered as somebody else');
-			}
-			return benchmarkResultOf(modelId, 'one two three', 20, 1020);
-		},
+		async (modelId: string) => benchmarkResultOf(modelId, 'one two three', 20, 1020),
 	);
-	Assert.deepEqual(report.summaries.map((summary) => summary.modelId), ['first-model', 'second-model']);
-	Assert.deepEqual(report.failures?.map((failure) => failure.modelId), ['failing-model']);
-	Assert.match(report.failures?.[0].reason ?? '', /answered as somebody else/);
-	Assert.equal(report.summaries[0].samples.length, 2);
-	Assert.equal(report.summaries[0].timeToFirstCharacterMs.average, 20);
-	Assert.equal(report.summaries[0].outputCharacters.average, 13);
+	Assert.equal(report.summary.modelId, 'first-model');
+	Assert.equal(report.summary.samples.length, 2);
+	Assert.equal(report.summary.timeToFirstCharacterMs.average, 20);
+	Assert.equal(report.summary.outputCharacters.average, 13);
 });
 
-Test('BenchmarkRunner.runBenchmark carries no failure list at all when every model named was measured', async () => {
-	const report = await BenchmarkRunner.runBenchmark(
-		{
-			target: benchmarkTarget,
-			modelIds: ['first-model'],
-			prompt: 'Count up to 30',
-			runs: 1,
-			warmupRuns: 0,
-			thinkingSetting: 'off',
-		},
-		async (modelId: string) => benchmarkResultOf(modelId, 'one', 5, 105),
-	);
-	Assert.equal(report.failures, undefined);
-});
-
-Test('BenchmarkRunner.runBenchmark refuses a run in which no model could be measured', async () => {
+Test('BenchmarkRunner.runBenchmark refuses a run whose one model could not be measured, naming the model and the reason', async () => {
 	await Assert.rejects(
 		async () =>
 			await BenchmarkRunner.runBenchmark(
 				{
 					target: benchmarkTarget,
-					modelIds: ['failing-model'],
+					modelId: 'failing-model',
 					prompt: 'Count up to 30',
 					runs: 1,
 					warmupRuns: 0,
 					thinkingSetting: 'off',
 				},
 				async () => {
-					throw new Error('nothing answered');
+					throw new Error('this model answered as somebody else');
 				},
 			),
-		/no model was measured/,
+		/"failing-model" was not measured: .*answered as somebody else/,
 	);
 });
 
-Test('ReportRenderer.formatBenchmarkReport names the model that could not be measured in every one of the four formats', async () => {
+Test('ReportRenderer.formatBenchmarkReport names the one model measured in every one of the four formats', async () => {
 	const report = await BenchmarkRunner.runBenchmark(
 		{
 			target: benchmarkTarget,
-			modelIds: ['first-model', 'failing-model'],
+			modelId: 'first-model',
 			prompt: 'Count up to 30',
 			runs: 1,
 			warmupRuns: 0,
 			thinkingSetting: 'off',
 		},
-		async (modelId: string) => {
-			if (modelId === 'failing-model') {
-				throw new Error('this model answered as somebody else');
-			}
-			return benchmarkResultOf(modelId, 'one two three', 20, 1020);
-		},
+		async (modelId: string) => benchmarkResultOf(modelId, 'one two three', 20, 1020),
 	);
 	for (const format of reportFormats) {
 		const rendered = ReportRenderer.formatBenchmarkReport(report, format);
-		Assert.match(rendered, /failing-model/, `the ${format} format left the failing model out`);
+		Assert.match(rendered, /first-model/, `the ${format} format left the measured model out`);
 	}
-	Assert.match(ReportRenderer.formatBenchmarkReport(report, 'junit'), /failures="1"/);
+	Assert.match(ReportRenderer.formatBenchmarkReport(report, 'junit'), /tests="1" failures="0"/);
 });

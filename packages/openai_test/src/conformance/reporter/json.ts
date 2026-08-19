@@ -1,5 +1,5 @@
 // local imports
-import type { ConformanceRun, SkippedModel, TestRunRecord } from '../runner.js';
+import type { TestRunRecord } from '../runner.js';
 import { ReportSummary } from './report_summary.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -40,47 +40,6 @@ export class JsonReporter {
 					compatibilityPercent: Number(summary.compatibilityPercent.toFixed(1)),
 				},
 				tests: JsonReporter._testEntries(records),
-			},
-			undefined,
-			2,
-		);
-	}
-
-	/**
-	 * Renders a sweep across several models as JSON, one entry per run.
-	 *
-	 * The single-model document is not nested inside this one: a reader of either has to know which
-	 * they are looking at anyway, and a sweep carries two things a single run has no place for — the
-	 * stream setting each run's probes were sent in, and the models the sweep never measured.
-	 *
-	 * @param runs Every run of the sweep, in the order they were run.
-	 * @param endpoint The endpoint's base URL.
-	 * @param skippedModels The models the sweep left out, and why.
-	 * @returns The JSON document, indented, ready to print or redirect to a file.
-	 */
-	static renderRuns(runs: readonly ConformanceRun[], endpoint: string, skippedModels: readonly SkippedModel[]): string {
-		return JSON.stringify(
-			{
-				endpoint,
-				runs: runs.map((run) => {
-					const summary = ReportSummary.of(run.records);
-					return {
-						model: run.modelId,
-						streamSetting: run.streamSetting ?? null,
-						summary: {
-							passed: summary.passedCount,
-							failed: summary.failedCount,
-							skipped: summary.skippedCount,
-							warned: summary.warnedCount,
-							compatibilityPercent: Number(summary.compatibilityPercent.toFixed(1)),
-						},
-						tests: JsonReporter._testEntries(run.records),
-					};
-				}),
-				skippedModels: skippedModels.map((skipped) => ({
-					model: skipped.modelId,
-					reason: skipped.reason,
-				})),
 			},
 			undefined,
 			2,

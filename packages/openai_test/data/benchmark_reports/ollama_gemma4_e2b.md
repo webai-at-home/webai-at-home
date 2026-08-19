@@ -2,15 +2,13 @@
 
 ## Summary
 
-- Models measured: 1
-- Models not measured: 0
-- Quickest to first character: `gemma4:e2b` at 479.90 ms average
-- Quickest to last character: `gemma4:e2b` at 2531.93 ms average
-- Fastest output: `gemma4:e2b` at 53.61 characters/second average
+- Time to First Character: 470.30 ms average
+- Time to Last Character: 2522.31 ms average
+- Output Characters per Second: 53.12 characters/second average
 
 ## Measurement Run
 
-- Generated: 2026-08-19T01:50:32.702Z
+- Generated: 2026-08-19T02:09:41.219Z
 - Endpoint: `http://localhost:11434/v1`
 - Model: `gemma4:e2b`
 
@@ -37,7 +35,7 @@ openai_test benchmark --base_url http://localhost:11434/v1 --model gemma4:e2b --
 
 ## What Was Measured
 
-Each model was sent the same prompt once, and every request asked for its answer in pieces, so that Time to First Character and Time to Last Character are two separate numbers rather than one. No two requests were ever in flight at once, which is why parallelism is 1 in every report this program writes: a second request in flight changes what the first one measures. One warm-up request was sent first and its answer thrown away, so that the first measured request is not the one that loaded the model.
+The model was sent the same prompt once, and every request asked for its answer in pieces, so that Time to First Character and Time to Last Character are two separate numbers rather than one. No two requests were ever in flight at once, which is why parallelism is 1 in every report this program writes: a second request in flight changes what the first one measures. One warm-up request was sent first and its answer thrown away, so that the first measured request is not the one that loaded the model.
 
 Every request carried `reasoning_effort: "none"`, so a model that would otherwise think answered straight away. This matters more than any other setting here: thinking happens before the first character of the answer, so all of it lands inside Time to First Character and none of it inside Output Characters. Measured on `gemma4:e2b`, turning it off took Time to First Character from between 2662 ms and 4618 ms down to under 600 ms.
 
@@ -51,14 +49,14 @@ Every request carried `reasoning_effort: "none"`, so a model that would otherwis
 
 None of the five is a token count. A character is what both ends can count without agreeing on a tokenizer first, which is what makes two different endpoints comparable here.
 
-## `gemma4:e2b`
+## Measurements
 
 | Metric | Average | Median | Minimum | Maximum |
 | --- | ---: | ---: | ---: | ---: |
-| Time to First Character | 479.90 ms | 479.90 ms | 479.90 ms | 479.90 ms |
-| Time to Last Character | 2531.93 ms | 2531.93 ms | 2531.93 ms | 2531.93 ms |
-| Output Characters per Second | 53.61 chars/s | 53.61 chars/s | 53.61 chars/s | 53.61 chars/s |
-| Output Characters | 110.00 chars | 110.00 chars | 110.00 chars | 110.00 chars |
+| Time to First Character | 470.30 ms | 470.30 ms | 470.30 ms | 470.30 ms |
+| Time to Last Character | 2522.31 ms | 2522.31 ms | 2522.31 ms | 2522.31 ms |
+| Output Characters per Second | 53.12 chars/s | 53.12 chars/s | 53.12 chars/s | 53.12 chars/s |
+| Output Characters | 109.00 chars | 109.00 chars | 109.00 chars | 109.00 chars |
 
 Input Characters: 14, the same for every request below.
 
@@ -66,4 +64,4 @@ Input Characters: 14, the same for every request below.
 
 | Request | Time to First Character | Time to Last Character | Output Characters per Second | Output Characters |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 479.90 ms | 2531.93 ms | 53.61 chars/s | 110 chars |
+| 1 | 470.30 ms | 2522.31 ms | 53.12 chars/s | 109 chars |

@@ -30,8 +30,9 @@ export type TestRunRecord = {
 /**
  * One list of tests, run against one model, with the probes sent in one stream setting.
  *
- * A sweep produces more than one of these: one per model, and one more per extra stream setting for the
- * tests a stream setting actually reaches.
+ * One invocation produces more than one of these when it was given more than one stream setting:
+ * one for the tests no stream setting reaches, and one per stream setting for the tests a stream
+ * setting actually reaches.
  */
 export type ConformanceRun = {
 	/** The model identifier every test in this run was sent to. */
@@ -59,14 +60,6 @@ export type RunnerProgressListener = {
 	readonly onTestStarted: (test: ConformanceTest) => void;
 	/** Called once `record.test` has finished, whatever verdict it reached. */
 	readonly onTestFinished: (record: TestRunRecord) => void;
-};
-
-/** One model a sweep left out, and why. */
-export type SkippedModel = {
-	/** The model identifier that was left out. */
-	readonly modelId: string;
-	/** Why it was left out, in the endpoint's own words where it gave any. */
-	readonly reason: string;
 };
 
 /** Runs a list of conformance tests, in order, against one endpoint and one model. */

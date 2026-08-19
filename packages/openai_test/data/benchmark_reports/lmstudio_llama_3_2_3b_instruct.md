@@ -2,15 +2,13 @@
 
 ## Summary
 
-- Models measured: 1
-- Models not measured: 0
-- Quickest to first character: `llama-3.2-3b-instruct` at 29.77 ms average
-- Quickest to last character: `llama-3.2-3b-instruct` at 1928.39 ms average
-- Fastest output: `llama-3.2-3b-instruct` at 64.78 characters/second average
+- Time to First Character: 35.89 ms average
+- Time to Last Character: 2030.35 ms average
+- Output Characters per Second: 61.67 characters/second average
 
 ## Measurement Run
 
-- Generated: 2026-08-19T01:51:04.953Z
+- Generated: 2026-08-19T02:10:18.735Z
 - Endpoint: `http://localhost:1234/v1`
 - Model: `llama-3.2-3b-instruct`
 
@@ -37,7 +35,7 @@ openai_test benchmark --base_url http://localhost:1234/v1 --model llama-3.2-3b-i
 
 ## What Was Measured
 
-Each model was sent the same prompt once, and every request asked for its answer in pieces, so that Time to First Character and Time to Last Character are two separate numbers rather than one. No two requests were ever in flight at once, which is why parallelism is 1 in every report this program writes: a second request in flight changes what the first one measures. One warm-up request was sent first and its answer thrown away, so that the first measured request is not the one that loaded the model.
+The model was sent the same prompt once, and every request asked for its answer in pieces, so that Time to First Character and Time to Last Character are two separate numbers rather than one. No two requests were ever in flight at once, which is why parallelism is 1 in every report this program writes: a second request in flight changes what the first one measures. One warm-up request was sent first and its answer thrown away, so that the first measured request is not the one that loaded the model.
 
 Every request carried `reasoning_effort: "none"`, so a model that would otherwise think answered straight away. This matters more than any other setting here: thinking happens before the first character of the answer, so all of it lands inside Time to First Character and none of it inside Output Characters. Measured on `gemma4:e2b`, turning it off took Time to First Character from between 2662 ms and 4618 ms down to under 600 ms.
 
@@ -51,13 +49,13 @@ Every request carried `reasoning_effort: "none"`, so a model that would otherwis
 
 None of the five is a token count. A character is what both ends can count without agreeing on a tokenizer first, which is what makes two different endpoints comparable here.
 
-## `llama-3.2-3b-instruct`
+## Measurements
 
 | Metric | Average | Median | Minimum | Maximum |
 | --- | ---: | ---: | ---: | ---: |
-| Time to First Character | 29.77 ms | 29.77 ms | 29.77 ms | 29.77 ms |
-| Time to Last Character | 1928.39 ms | 1928.39 ms | 1928.39 ms | 1928.39 ms |
-| Output Characters per Second | 64.78 chars/s | 64.78 chars/s | 64.78 chars/s | 64.78 chars/s |
+| Time to First Character | 35.89 ms | 35.89 ms | 35.89 ms | 35.89 ms |
+| Time to Last Character | 2030.35 ms | 2030.35 ms | 2030.35 ms | 2030.35 ms |
+| Output Characters per Second | 61.67 chars/s | 61.67 chars/s | 61.67 chars/s | 61.67 chars/s |
 | Output Characters | 123.00 chars | 123.00 chars | 123.00 chars | 123.00 chars |
 
 Input Characters: 14, the same for every request below.
@@ -66,4 +64,4 @@ Input Characters: 14, the same for every request below.
 
 | Request | Time to First Character | Time to Last Character | Output Characters per Second | Output Characters |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 29.77 ms | 1928.39 ms | 64.78 chars/s | 123 chars |
+| 1 | 35.89 ms | 2030.35 ms | 61.67 chars/s | 123 chars |

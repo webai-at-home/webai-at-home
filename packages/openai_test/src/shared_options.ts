@@ -32,9 +32,9 @@ export type RawEndpointOptions = {
 	timeout_ms: string;
 };
 
-/** The options the subcommands that sweep models and write a report accept, exactly as commander parses them. */
+/** The options the two subcommands that write a report accept, exactly as commander parses them. */
 export type RawSharedOptions = RawEndpointOptions & {
-	/** One model identifier, a comma-separated list, a pattern such as `llm_*`, `all`, or `list`. */
+	/** The one model identifier to work with, or `list` to print the identifiers the endpoint serves. */
 	model: string;
 	/** The value `--stream` was given, still unchecked against `streamSettings`. */
 	stream?: string;
@@ -145,6 +145,31 @@ export class SharedOptions {
 			throw new Error(`${optionName} must be ${expected} integer, got "${value}"`);
 		}
 		return parsed;
+	}
+
+	/**
+	 * Reads the one model identifier `-m/--model` named.
+	 *
+	 * Every subcommand of this package works with one model, so the spellings that name several —
+	 * `all`, a comma-separated list, and a pattern carrying `*` — are refused here by name. Sending
+	 * one of them on as if it were a model identifier would reach the endpoint as a model nobody
+	 * serves, and the error a reader would then be shown says nothing about what went wrong.
+	 *
+	 * @param rawModel The `-m/--model` value, exactly as commander parsed it.
+	 * @param subcommandName The subcommand refusing it, named in the error so a reader knows which
+	 * one of the three is speaking.
+	 * @returns The one model identifier, with the surrounding spaces taken off.
+	 * @throws {Error} If the value named no model at all, or if it names more than one.
+	 */
+	static readOneModelId(rawModel: string, subcommandName: string): string {
+		const modelId = rawModel.trim();
+		if (modelId === '') {
+			throw new Error('-m/--model named no model at all');
+		}
+		if (modelId === 'all' || modelId.includes(',') === true || modelId.includes('*') === true) {
+			throw new Error(`${subcommandName} works with one model, so -m/--model takes one model identifier, got "${rawModel}"`);
+		}
+		return modelId;
 	}
 
 	/**

@@ -1,7 +1,6 @@
 // local imports
 import { CompletionSender, type CompletionRequester } from '../clients/completion_sender.js';
 import type {
-	BenchmarkFailure,
 	BenchmarkReport,
 	BenchmarkSample,
 	BenchmarkSummary,
@@ -20,9 +19,8 @@ import { StatisticsCalculator } from './statistics_calculator.js';
 //	the difference between the two. An endpoint that ignores the streaming request and answers in
 //	one piece still works: its first and last character then arrive at the same moment.
 //
-//	A model that cannot be measured at all is recorded as a failure and the sweep carries on to the
-//	next model, because one unusable model out of ten is not a reason to throw away the nine
-//	measurements. Only a run where every model failed throws.
+//	One run measures one model. A model that cannot be measured at all throws, because a benchmark
+//	report of one model with no measurement in it is nothing at all.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -48,21 +46,19 @@ export type BenchmarkProgressListener = {
 	readonly onMeasuredRequestStarted: (modelId: string, run: number, runs: number) => void;
 	/** Called once that measured request has come back, with what it measured. */
 	readonly onMeasuredRequestFinished: (modelId: string, sample: BenchmarkSample) => void;
-	/** Called when a model could not be measured at all, before the run carries on to the next model. */
-	readonly onModelFailed: (modelId: string, reason: string) => void;
 };
 
 /** The options that control one benchmark run. */
 export type BenchmarkOptions = {
 	/** The endpoint to measure. */
 	readonly target: CompletionTarget;
-	/** Every model identifier to measure on that endpoint, measured one after the other. */
-	readonly modelIds: readonly string[];
+	/** The one model identifier to measure on that endpoint. */
+	readonly modelId: string;
 	/** The one prompt sent to the endpoint. */
 	readonly prompt: string;
-	/** The number of measured requests per model. */
+	/** The number of measured requests. */
 	readonly runs: number;
-	/** The number of unreported warm-up requests per model. */
+	/** The number of unreported warm-up requests. */
 	readonly warmupRuns: number;
 	/** Whether every request lets the model think before it answers. */
 	readonly thinkingSetting: ThinkingSetting;
@@ -76,26 +72,26 @@ export type BenchmarkOptions = {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-/** Measures the latency of one OpenAI-compatible endpoint, one model at a time. */
+/** Measures the latency of one model on one OpenAI-compatible endpoint. */
 export class BenchmarkRunner {
 	/**
-	 * Runs the warm-up requests and then the measured requests for every model, with no
+	 * Runs the warm-up requests and then the measured requests of the one model measured, with no
 	 * concurrent requests at any point.
 	 *
-	 * @param options The endpoint, the models, the prompt, and the request counts of this run.
+	 * @param options The endpoint, the model, the prompt, and the request counts of this run.
 	 * @param requester The completion request used for every warm-up and measured request.
 	 * Defaults to a real streamed request through `CompletionSender`, and is replaced by a test
 	 * that needs measurements it decides itself.
-	 * @returns The full benchmark report, with one summary per measured model and one failure per
-	 * model that could not be measured at all.
+	 * @returns The full benchmark report, holding the aggregate measurements of that model.
 	 * @throws {Error} If any request count is not a whole number in range, if no model was named,
-	 * or if every model named failed, since a report of nothing but failures measured nothing.
+	 * or if the model could not be measured, since a report with no measurement in it measured
+	 * nothing.
 	 */
 	static async runBenchmark(
 		options: BenchmarkOptions,
 		requester: CompletionRequester = BenchmarkRunner.streamedRequester(options.target, options.thinkingSetting),
 	): Promise<BenchmarkReport> {
-		if (options.modelIds.length === 0) {
+		if (options.modelId.trim() === '') {
 			throw new Error('--model named no model to measure');
 		}
 		if (options.runs < 1 || Number.isInteger(options.runs) === false) {
@@ -108,26 +104,14 @@ export class BenchmarkRunner {
 			throw new Error('--timeout_ms must be a positive integer');
 		}
 
-		const summaries: BenchmarkSummary[] = [];
-		const failures: BenchmarkFailure[] = [];
-		for (const modelId of options.modelIds) {
-			try {
-				summaries.push(await BenchmarkRunner._measureModel(modelId, options, requester));
-			} catch (error: unknown) {
-				const reason = CompletionSender.describeFailure(error);
-				options.listener?.onModelFailed(modelId, reason);
-				failures.push({
-					modelId,
-					reason,
-				});
-			}
-		}
-		if (summaries.length === 0) {
-			const named = failures.map((failure) => `"${failure.modelId}" (${failure.reason})`).join('; ');
-			throw new Error(`no model was measured: ${named}`);
+		let summary: BenchmarkSummary;
+		try {
+			summary = await BenchmarkRunner._measureModel(options.modelId, options, requester);
+		} catch (error: unknown) {
+			throw new Error(`"${options.modelId}" was not measured: ${CompletionSender.describeFailure(error)}`);
 		}
 
-		const report: BenchmarkReport = {
+		return {
 			settings: {
 				prompt: options.prompt,
 				runs: options.runs,
@@ -135,14 +119,7 @@ export class BenchmarkRunner {
 				thinkingSetting: options.thinkingSetting,
 				parallelism: 1,
 			},
-			summaries,
-		};
-		if (failures.length === 0) {
-			return report;
-		}
-		return {
-			...report,
-			failures,
+			summary,
 		};
 	}
 
