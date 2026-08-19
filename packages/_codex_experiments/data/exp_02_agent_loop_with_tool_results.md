@@ -13,9 +13,9 @@ The task is fixed text in [`tasks/exp_02_agent_loop_with_tool.task.md`](../tasks
 | LM Studio | 3 | 3, 3, 3 | yes in all three | yes in all three | yes in all three |
 | Ollama, as it was serving the model | 3 | 0, 0, 0 | no, there was nothing to read back | yes in all three | no, no file was ever created |
 | Ollama, with a context length of 32768 | 3 | 1, 1, 1 | yes in all three | yes in all three | yes in all three |
-| WebAI@Home | 3 | 0, 0, 0 | no, the turn never started | no, exit code 1 in all three | no, no file was ever created |
+| WebAI@Home | 3 | 3, 3, 3 | yes in all three | yes in all three | yes in all three |
 
-The same model, at the same size, served by two different programs, gave opposite results. The cause was found by `exp_03_prompt_size_measure` and is written below: it was one setting of the serving program, not the model. That is the finding of this experiment, and it is the reason the target model is an axis of the plan rather than a stage of it.
+The same model, at the same size, gave opposite results depending only on how it was served: three of the four rows did the whole task and one did nothing at all. The cause was found by `exp_03_prompt_size_measure` and is written below: it was one setting of the serving program, not the model. That is the finding of this experiment, and it is the reason the target model is an axis of the plan rather than a stage of it.
 
 ## LM Studio Held The Agent Loop Together
 
@@ -68,19 +68,21 @@ Two explanations fit, and this experiment cannot separate them:
 
 `exp_03_prompt_size_measure` settled this by measuring the prompt from recorded traffic instead of believing what the target model reports: the first explanation is the right one, and 2051 is a ceiling of about 2048 tokens rather than a count. No conclusion about the ability of Gemma 4 E2B should be drawn from the Ollama runs made before the context length was raised.
 
-## WebAI@Home Failed Before The Task, Twice, For Two Different Reasons
+## WebAI@Home Did The Whole Task, Three Runs Out Of Three
 
-The first three runs failed with exit code 1 and `404 Not Found` on `POST /v1/responses`. That missing endpoint was added by [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214).
+The first two attempts never reached the task at all. The first failed with `404 Not Found` on `POST /v1/responses`, which [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214) added. The second failed because every request of the Codex command-line program declares ten tools and `llm_gemma_4_e2b_full` accepted none, which [issue #216](https://github.com/webai-at-home/webai-at-home/issues/216) fixed by making the task type actually read a tool call rather than by weakening the refusal. Both are written up in [`exp_01_one_turn_with_no_tool_results.md`](exp_01_one_turn_with_no_tool_results.md).
 
-The three runs recorded here were made after it was added, against a server that serves the endpoint and with a native `worker_openai` connected for `stage_llm_gemma_4_e2b_full`. All three still failed with exit code 1, in one second, zero seconds, and zero seconds, and for a different reason:
+The three runs recorded here were made after both fixes, against a native `worker_openai` in front of LM Studio's `google/gemma-4-e2b`. Each made the same three `command_execution` tool calls LM Studio made when it was asked directly:
 
 ```
-The model llm_gemma_4_e2b_full cannot read tool declarations, and this server refuses a request it
-would have to ignore rather than answering it as though no tool had been declared. The models that
-accept tool declarations are llm_qwen3_5_0_8b_full.
+/bin/zsh -lc 'echo "agent loop ready" > agent_loop.txt'
+/bin/zsh -lc 'cat agent_loop.txt'
+/bin/zsh -lc 'ls agent_loop.txt'
 ```
 
-This experiment is the one that declares tools on purpose, so unlike `exp_01_one_turn_with_no_tool` there is no sense in which the refusal is a surprise. It is the same refusal, from the same list, and it is written up in [`exp_01_one_turn_with_no_tool_results.md`](exp_01_one_turn_with_no_tool_results.md). Nothing about the agent loop has been measured against WebAI@Home yet, because no turn has ever started.
+The output of each command came back to the model, the model wrote after the last one, the turn ended on its own, and `agent_loop.txt` held exactly the line the task asked for, in 25 to 29 seconds. Three runs out of three did the whole task correctly.
+
+**One thing this target model does that LM Studio does not: the last message is exactly `done`.** Asked directly, LM Studio leaks part of its own prompt into that message — `done<environment_context>`, or `done` followed by the path of the workspace — and the same leak was recorded in `exp_01_one_turn_with_no_tool`. Through WebAI@Home the answer is the single word the task asked for, in all three runs. The same model behind the same server, reached one way, leaks, and reached the other way, does not. What is different is the route, and this experiment does not say which part of it removes the leak.
 
 ## What Was Measured, And What Was Not
 

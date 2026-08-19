@@ -1,5 +1,5 @@
 target model: webai_at_home
 question: Reply with exactly one word and nothing else: ready
-exit code: 1
-seconds: 0
+exit code: 0
+seconds: 16
 codex version: codex-cli 0.145.0

@@ -1,9 +1,14 @@
 target model: webai_at_home
 codex version: codex-cli 0.145.0
-exit code: 1
-requests recorded: 1
+exit code: 0
+requests recorded: 6
 
-request 1 | /v1/responses | status 400 | 49585 bytes | ~12358 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 3 input items in 8787 characters | streamed: true | reported input tokens: none
+request 1 | /v1/responses | status 200 | 49585 bytes | ~12358 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 3 input items in 8787 characters | streamed: true | reported input tokens: 8662
+request 2 | /v1/responses | status 200 | 50346 bytes | ~12549 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 5 input items in 9303 characters | streamed: true | reported input tokens: 8754
+request 3 | /v1/responses | status 200 | 50727 bytes | ~12644 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 7 input items in 9684 characters | streamed: true | reported input tokens: 8835
+request 4 | /v1/responses | status 200 | 51098 bytes | ~12737 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 9 input items in 10055 characters | streamed: true | reported input tokens: 8912
+request 5 | /v1/responses | status 200 | 51466 bytes | ~12829 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 11 input items in 10423 characters | streamed: true | reported input tokens: 8993
+request 6 | /v1/responses | status 200 | 51993 bytes | ~12960 tokens estimated | instructions 20751 characters | 10 tools in 18587 characters | 13 input items in 10950 characters | streamed: true | reported input tokens: 9088
 
 fields sent: client_metadata, include, input, instructions, model, parallel_tool_calls, prompt_cache_key, reasoning, store, stream, tool_choice, tools
 fields sent that are already recorded as failing: none

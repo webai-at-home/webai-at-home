@@ -1,5 +1,5 @@
-{"type":"thread.started","thread_id":"01a01b31-9af3-7ca3-bf84-c9e557765188"}
+{"type":"thread.started","thread_id":"01a01c14-b058-7952-bf95-a68594e4012a"}
 {"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `llm_gemma_4_e2b_full` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
 {"type":"turn.started"}
-{"type":"error","message":"{\"error\":{\"message\":\"The model llm_gemma_4_e2b_full cannot read tool declarations, and this server refuses a request it would have to ignore rather than answering it as though no tool had been declared. The models that accept tool declarations are llm_qwen3_5_0_8b_full. Send the request again without tools, or send it to a model that reads them.\",\"type\":\"invalid_request_error\",\"param\":\"tools\",\"code\":\"unsupported_tool_declarations\"}}"}
-{"type":"turn.failed","error":{"message":"{\"error\":{\"message\":\"The model llm_gemma_4_e2b_full cannot read tool declarations, and this server refuses a request it would have to ignore rather than answering it as though no tool had been declared. The models that accept tool declarations are llm_qwen3_5_0_8b_full. Send the request again without tools, or send it to a model that reads them.\",\"type\":\"invalid_request_error\",\"param\":\"tools\",\"code\":\"unsupported_tool_declarations\"}}"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"ready"}}
+{"type":"turn.completed","usage":{"input_tokens":8157,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":162,"reasoning_output_tokens":0}}

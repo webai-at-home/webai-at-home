@@ -15,11 +15,11 @@ The first request of every run, against all three target models, was about 49800
 | The whole body | 49788 bytes against LM Studio, 49764 against Ollama, 49585 against WebAI@Home | grows with the history |
 | `instructions`, the standing prompt | 20751 characters | never |
 | `tools`, ten of them | 18587 characters | never |
-| `input`, the history | 8747 characters in 3 items | grows every turn |
+| `input`, the history | 8747 characters against LM Studio, 8731 against Ollama, 8787 against WebAI@Home, 3 items in each | grows every turn |
 
 So about 39000 of the 49800 characters are fixed overhead that is resent whole on every single request, and only the history grows.
 
-Against LM Studio, which was the only target model that held the agent loop together, the six requests of one run grew like this:
+Two target models held the agent loop together for six requests and can be measured turn after turn. Against LM Studio, one run grew like this:
 
 | Request | Bytes | Input items | Input characters | Input tokens LM Studio reported |
 | --- | --- | --- | --- | --- |
@@ -31,6 +31,19 @@ Against LM Studio, which was the only target model that held the agent loop toge
 | 6 | 54088 | 18 | 13047 | 9514 |
 
 Three tool calls cost about 4300 bytes of history and about 900 tokens. A prompt of about 8600 tokens is the floor for one turn of the Codex command-line program, whatever is asked of it.
+
+Against WebAI@Home, the six requests of one run grew more slowly:
+
+| Request | Bytes | Input items | Input characters | Input tokens WebAI@Home reported |
+| --- | --- | --- | --- | --- |
+| 1 | 49585 | 3 | 8787 | 8662 |
+| 2 | 50346 | 5 | 9303 | 8754 |
+| 3 | 50727 | 7 | 9684 | 8835 |
+| 4 | 51098 | 9 | 10055 | 8912 |
+| 5 | 51466 | 11 | 10423 | 8993 |
+| 6 | 51993 | 13 | 10950 | 9088 |
+
+The same number of turns costs 2408 bytes of history here against 4300 against LM Studio, and the history grows by two items a turn rather than three. The recorded traffic says why, and it is not a difference between the models, which are the same model. Every answer LM Studio streams back carries a `reasoning` item; the Codex command-line program keeps that item and sends it back in the next request, so a turn adds a `reasoning`, a `function_call`, and a `function_call_output`. No answer recorded from WebAI@Home carries a `reasoning` item at all, so a turn adds only the `function_call` and the `function_call_output`.
 
 The `estimatedTokens` field in the recorded measurements divides characters by four. Against the counts LM Studio reported, that estimate is about 45 percent high for this kind of JSON, so it is an upper bound and not a count.
 
@@ -101,23 +114,26 @@ So the agent loop of `exp_02_agent_loop_with_tool` did not fail because Gemma 4 
 
 ## WebAI@Home, And The Cross-Check, Which Now Passes
 
-The first run against WebAI@Home recorded six identical requests of 49830 bytes, all answered `404 Not Found`: the Codex command-line program sent the first and then retried five times, and every retry carried the whole 49830 bytes again. [Issue #214](https://github.com/webai-at-home/webai-at-home/issues/214) added `POST /v1/responses`, and the run recorded here was made against a server that serves it.
+This section has been rewritten twice, because the run behind it failed twice, for two different reasons, before it passed.
 
-That run recorded **one** request rather than six, of 49585 bytes, answered `400 Bad Request`. There is no retry, because a refusal of the request is not a reason to send it again:
+The first run recorded six identical requests of 49830 bytes, all answered `404 Not Found`: the Codex command-line program sent the first and then retried five times, and every retry carried the whole 49830 bytes again. [Issue #214](https://github.com/webai-at-home/webai-at-home/issues/214) added `POST /v1/responses`.
 
-```
-The model llm_gemma_4_e2b_full cannot read tool declarations, and this server refuses a request it
-would have to ignore rather than answering it as though no tool had been declared.
-```
+The second run recorded **one** request rather than six, of 49585 bytes, answered `400 Bad Request`. There is no retry, because a refusal of the request is not a reason to send it again. The server refused because the task type `llm_gemma_4_e2b_full` could not read tool declarations, and this server refuses a request it would have to ignore rather than answering it as though no tool had been declared. The refusal itself belongs to [`exp_01_one_turn_with_no_tool_results.md`](exp_01_one_turn_with_no_tool_results.md). [Issue #216](https://github.com/webai-at-home/webai-at-home/issues/216) taught that task type to read tool declarations.
 
-The refusal itself belongs to [`exp_01_one_turn_with_no_tool_results.md`](exp_01_one_turn_with_no_tool_results.md). What belongs here is that the request was read: all twelve fields, 20751 characters of instructions, ten tools in 18587 characters, and three input items in 8787 characters reached the route and were parsed before anything was decided about them.
+The run recorded here is the third. Six requests, every one answered `200 OK`, growing from 49585 bytes to 51993, in the table above.
 
-The plan asked for the proxy recording to be cross-checked against the `curl -v`-style request log the OpenAI-compatible server of `packages/consumer_openai` writes for every request, from [issue #75](https://github.com/webai-at-home/webai-at-home/issues/75). That cross-check could not be made against a route the server did not serve, and it can be made now. The two agree exactly:
+What all three runs say about the request itself is the same, and it is what this experiment is for: all twelve fields, 20751 characters of instructions, ten tools in 18587 characters, and three input items in 8787 characters reached the route and were parsed. Neither the missing route nor the refusal ever came from failing to read the request.
 
-| Measured by | Bytes of the request body |
-| --- | --- |
-| the recording proxy of this experiment | 49585 |
-| `content-length` in the request log of the server | 49585 |
+The plan asked for the proxy recording to be cross-checked against the `curl -v`-style request log the OpenAI-compatible server of `packages/consumer_openai` writes for every request, from [issue #75](https://github.com/webai-at-home/webai-at-home/issues/75). That cross-check could not be made against a route the server did not serve. It can be made now, on all six requests, and the two agree exactly on every one:
+
+| Request | Bytes measured by the recording proxy of this experiment | `content-length` in the request log of the server |
+| --- | --- | --- |
+| 1 | 49585 | 49585 |
+| 2 | 50346 | 50346 |
+| 3 | 50727 | 50727 |
+| 4 | 51098 | 51098 |
+| 5 | 51466 | 51466 |
+| 6 | 51993 | 51993 |
 
 Two things about the log had to be fixed before the two could be compared:
 
