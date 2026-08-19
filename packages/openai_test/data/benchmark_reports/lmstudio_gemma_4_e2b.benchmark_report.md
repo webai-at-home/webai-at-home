@@ -2,33 +2,33 @@
 
 ## Summary
 
-- Time to First Character: 470.30 ms average
-- Time to Last Character: 2522.31 ms average
-- Output Characters per Second: 53.12 characters/second average
+- Time to First Character: 361.15 ms average
+- Time to Last Character: 1979.99 ms average
+- Output Characters per Second: 67.33 characters/second average
 
 ## Measurement Run
 
-- Generated: 2026-08-19T02:09:41.219Z
-- Endpoint: `http://localhost:11434/v1`
-- Model: `gemma4:e2b`
+- Generated: 2026-08-19T03:18:25.569Z
+- Endpoint: `http://localhost:1234/v1`
+- Model: `google/gemma-4-e2b`
 
 ### Command Line
 
 ```bash
-openai_test benchmark --base_url http://localhost:11434/v1 --model gemma4:e2b --format markdown --output data/benchmark_reports/ollama_gemma4_e2b.md
+openai_test benchmark --base_url http://localhost:1234/v1 --model google/gemma-4-e2b --format markdown --output data/benchmark_reports/lmstudio_gemma_4_e2b.benchmark_report.md
 ```
 
 ### Parameters
 
 | Option | Value |
 | --- | --- |
-| `--model` | gemma4:e2b |
+| `--model` | google/gemma-4-e2b |
 | `--prompt` | Count up to 30 |
 | `--runs` | 1 |
 | `--warmup_runs` | 1 |
 | `--thinking` | off |
-| `--output` | data/benchmark_reports/ollama_gemma4_e2b.md |
-| `--base_url` | http://localhost:11434/v1 |
+| `--output` | data/benchmark_reports/lmstudio_gemma_4_e2b.benchmark_report.md |
+| `--base_url` | http://localhost:1234/v1 |
 | `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |
 | `--format` | markdown |
@@ -53,9 +53,9 @@ None of the five is a token count. A character is what both ends can count witho
 
 | Metric | Average | Median | Minimum | Maximum |
 | --- | ---: | ---: | ---: | ---: |
-| Time to First Character | 470.30 ms | 470.30 ms | 470.30 ms | 470.30 ms |
-| Time to Last Character | 2522.31 ms | 2522.31 ms | 2522.31 ms | 2522.31 ms |
-| Output Characters per Second | 53.12 chars/s | 53.12 chars/s | 53.12 chars/s | 53.12 chars/s |
+| Time to First Character | 361.15 ms | 361.15 ms | 361.15 ms | 361.15 ms |
+| Time to Last Character | 1979.99 ms | 1979.99 ms | 1979.99 ms | 1979.99 ms |
+| Output Characters per Second | 67.33 chars/s | 67.33 chars/s | 67.33 chars/s | 67.33 chars/s |
 | Output Characters | 109.00 chars | 109.00 chars | 109.00 chars | 109.00 chars |
 
 Input Characters: 14, the same for every request below.
@@ -64,4 +64,4 @@ Input Characters: 14, the same for every request below.
 
 | Request | Time to First Character | Time to Last Character | Output Characters per Second | Output Characters |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 470.30 ms | 2522.31 ms | 53.12 chars/s | 109 chars |
+| 1 | 361.15 ms | 1979.99 ms | 67.33 chars/s | 109 chars |

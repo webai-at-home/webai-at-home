@@ -15,7 +15,7 @@
 ### Command Line
 
 ```bash
-openai_test benchmark --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct --format markdown --output data/benchmark_reports/lmstudio_llama_3_2_3b_instruct.md
+openai_test benchmark --base_url http://localhost:1234/v1 --model llama-3.2-3b-instruct --format markdown --output data/benchmark_reports/lmstudio_llama_3_2_3b_instruct.benchmark_report.md
 ```
 
 ### Parameters
@@ -27,7 +27,7 @@ openai_test benchmark --base_url http://localhost:1234/v1 --model llama-3.2-3b-i
 | `--runs` | 1 |
 | `--warmup_runs` | 1 |
 | `--thinking` | off |
-| `--output` | data/benchmark_reports/lmstudio_llama_3_2_3b_instruct.md |
+| `--output` | data/benchmark_reports/lmstudio_llama_3_2_3b_instruct.benchmark_report.md |
 | `--base_url` | http://localhost:1234/v1 |
 | `--api_key` | no-key-required |
 | `--timeout_ms` | 600000 |
