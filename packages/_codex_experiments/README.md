@@ -83,16 +83,18 @@ The whole traffic goes to `recordings/<target model>/` and is not committed. Wha
 - Twelve fields go out and no others: `client_metadata`, `include`, `input`, `instructions`, `model`, `parallel_tool_calls`, `prompt_cache_key`, `reasoning`, `store`, `stream`, `tool_choice`, `tools`. None of the parameters recorded as failing in the conformance report is ever sent. Those twelve, on `POST /v1/responses`, are the whole specification the WebAI@Home gateway has to satisfy.
 - Ollama cuts the prompt at about 2048 tokens, which throws the ten tool definitions away, which is why its agent loop made no tool call.
 
-## `ollama_context_ceiling_probe`
+## `context_ceiling_probe`
 
 ```bash
-npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments
+npm run context_ceiling_probe:ollama --workspace @webai/codex-experiments
 ```
 
-Sends the same question and the same offered tool to Ollama at three prompt sizes, and shows that the input token count it reports is a ceiling and not a count: 86 tokens for a small prompt with a tool call in the answer, then 2051 and no tool call for every larger one. Run `exp_03_prompt_size_measure:ollama` first, because the probe reads the real tools out of its recording. Pass a model name to ask a different one:
+Sends the same question, with the same offered tool, to one target model at three prompt sizes, and says whether the input token count it reports is a count or a ceiling. Run `exp_03_prompt_size_measure` first, because the probe reads the real tools and the real instructions out of its recording.
 
-```bash
-npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments -- gemma4-e2b-context-32768
-```
+| Target model | Small prompt | 19000 bytes | 40000 bytes |
+| --- | --- | --- | --- |
+| Ollama | 86 tokens, tool call | 2051 tokens, no tool call | 2051 tokens, no tool call |
+| Ollama with a context length of 32768 | 86 tokens, tool call | 4217 tokens, tool call | 8832 tokens, tool call |
+| LM Studio | 85 tokens, tool call | 1990 tokens, tool call | 6605 tokens, tool call |
 
-Asked of that model, every size answers with a tool call and the reported count tracks the prompt all the way to 8832 tokens.
+LM Studio holds the model at a context length of 85760 tokens, so it has no ceiling to lift and nothing about it was changed.

@@ -2,17 +2,17 @@
 
 ## Purpose
 
-Runs the Codex command-line program against a small local model instead of against the OpenAI service, and records what breaks. Three experiments, each run against four target models serving Gemma 4 E2B: LM Studio, Ollama, Ollama with a larger context length, and WebAI@Home.
+Runs the Codex command-line program against a small local model rather than the OpenAI service, and records what breaks. Three experiments, each run against four target models serving Gemma 4 E2B: LM Studio, Ollama, Ollama with a larger context length, and WebAI@Home.
 
 ## Key Exports & Entry Points
 
-- `src/exp_01_one_turn_with_no_tool.ts`: one whole turn, with a question that needs no tool. Command to run this folder: `npm run exp_01_one_turn_with_no_tool:lmstudio --workspace @webai/codex-experiments`, and the same for every experiment and every target model.
+- `src/exp_01_one_turn_with_no_tool.ts`: one whole turn, with a question that needs no tool. Command to run this folder: `npm run exp_01_one_turn_with_no_tool:lmstudio --workspace @webai/codex-experiments`, and the same for every experiment and target model.
 - `src/exp_02_agent_loop_with_tool.ts`: the fixed task of `tasks/`, and the four measurements of the agent loop. Plus `--repeats <count>`.
-- `src/exp_03_prompt_size_measure.ts`: the same task through `src/recording_proxy.ts`, and the measurement of every request written down.
-- `src/ollama_context_ceiling_probe.ts`: one question asked of Ollama at three prompt sizes, which proved the ceiling.
+- `src/exp_03_prompt_size_measure.ts`: the same task through `src/recording_proxy.ts`, and the measurement of every request.
+- `src/context_ceiling_probe.ts`: one question asked at three prompt sizes, which says whether the count a target model reports is a count or a ceiling.
 - `src/codex_run.ts`: the one way every experiment runs the Codex command-line program.
 - `target_models/`: one committed file per target model, `<target model>.target_model.toml`, copied into `codex_home/` as `<target model>.config.toml`, the name read for `--profile <target model>`.
-- `tasks/`: the fixed task text. `data/`: the recorded runs and one results file per experiment.
+- `tasks/`: the task text. `data/`: the recorded runs and each experiment's results file.
 - `codex_home/`, `workspaces/`, `recordings/`: generated, never committed.
 
 ## Rules
@@ -23,10 +23,10 @@ Runs the Codex command-line program against a small local model instead of again
 - Never believe what a target model reports about itself. A measurement is read from recorded traffic or from the file on disk.
 - Never run `CodexRun.execute` while this process is also serving requests: it blocks the process and the recording proxy then answers nothing. `CodexRun.executeWithoutBlocking` is there for that.
 - `wire_api` is `responses` everywhere: the Codex command-line program refuses `wire_api = "chat"` since version 0.145.0, and reads TOML only.
-- A recording that answers a question is committed. Bulk recordings are not.
+- A recording that answers a question is committed. Bulk ones are not.
 
 ## Background
 
-- The plan and the results are in [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213).
-- The rule about not believing a target model comes from [`data/exp_03_prompt_size_measure_results.md`](data/exp_03_prompt_size_measure_results.md): the count Ollama reports is a ceiling that cuts the tool definitions away.
-- The model identifier of WebAI@Home is the task type name without `task_type_`, from [`docs/naming_scheme.md`](../../docs/naming_scheme.md).
+- The plan and every result are in [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213).
+- The rule about not believing a target model comes from [`data/exp_03_prompt_size_measure_results.md`](data/exp_03_prompt_size_measure_results.md): the count Ollama reported was a ceiling that cut the tool definitions away.
+- The model identifier of WebAI@Home is its task type name without `task_type_`, from [`docs/naming_scheme.md`](../../docs/naming_scheme.md).

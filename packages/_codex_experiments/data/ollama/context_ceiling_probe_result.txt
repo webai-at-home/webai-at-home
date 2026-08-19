@@ -1,4 +1,5 @@
-ollama responses address: http://localhost:11434/v1/responses
+target model: ollama
+responses address: http://localhost:11434/v1/responses
 model: gemma4:e2b
 
 that tool alone, short instructions | 437 bytes | made a tool call: true | reported input tokens: 86

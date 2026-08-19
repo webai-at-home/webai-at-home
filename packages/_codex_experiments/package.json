@@ -16,7 +16,10 @@
 		"exp_03_prompt_size_measure:ollama": "tsx src/exp_03_prompt_size_measure.ts ollama",
 		"exp_03_prompt_size_measure:ollama_context_32768": "tsx src/exp_03_prompt_size_measure.ts ollama_context_32768",
 		"exp_03_prompt_size_measure:webai_at_home": "tsx src/exp_03_prompt_size_measure.ts webai_at_home",
-		"ollama_context_ceiling_probe": "tsx src/ollama_context_ceiling_probe.ts",
+		"context_ceiling_probe:lmstudio": "tsx src/context_ceiling_probe.ts lmstudio",
+		"context_ceiling_probe:ollama": "tsx src/context_ceiling_probe.ts ollama",
+		"context_ceiling_probe:ollama_context_32768": "tsx src/context_ceiling_probe.ts ollama_context_32768",
+		"context_ceiling_probe:webai_at_home": "tsx src/context_ceiling_probe.ts webai_at_home",
 		"typecheck": "tsc -p tsconfig.json",
 		"test": "npm run typecheck"
 	},

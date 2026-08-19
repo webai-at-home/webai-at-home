@@ -1,0 +1,7 @@
+target model: lmstudio
+responses address: http://localhost:1234/v1/responses
+model: google/gemma-4-e2b
+
+that tool alone, short instructions | 445 bytes | made a tool call: true | reported input tokens: 85
+that tool next to the ten of the Codex command-line program, short instructions | 19031 bytes | made a tool call: true | reported input tokens: 1990
+the same eleven tools and the whole instructions of the Codex command-line program | 40184 bytes | made a tool call: true | reported input tokens: 6605

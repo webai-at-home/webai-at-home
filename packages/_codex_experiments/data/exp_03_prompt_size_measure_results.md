@@ -48,7 +48,7 @@ That list of twelve fields, on `POST /v1/responses`, is the whole specification 
 
 `exp_02_agent_loop_with_tool` left two explanations open for the 2051 input tokens Ollama reported for every prompt. The recorded traffic settles it. The request that reached Ollama carried the whole thing: 20751 characters of instructions and all ten tools, in 49764 bytes. Nothing truncated it on the way out.
 
-`npm run ollama_context_ceiling_probe --workspace @webai/codex-experiments` then sends the same question to Ollama at three prompt sizes. It always asks for a `get_weather` tool and always offers that tool, next to the real tools of the Codex command-line program, because a model cannot call a tool it was never offered and the answer would then say nothing about the size of the prompt.
+`npm run context_ceiling_probe:ollama --workspace @webai/codex-experiments` then sends the same question to Ollama at three prompt sizes. It always asks for a `get_weather` tool and always offers that tool, next to the real tools of the Codex command-line program, because a model cannot call a tool it was never offered and the answer would then say nothing about the size of the prompt.
 
 | What was sent | Bytes | Made a tool call | Input tokens Ollama reported |
 | --- | --- | --- | --- |
@@ -75,6 +75,27 @@ The same probe, asked of that model, gives the opposite answer at every size:
 | the same eleven tools and the whole instructions | 40190 | yes | 8832 |
 
 The reported count now tracks the prompt all the way up, and the tool call comes back at every size. The truncation was the whole of the problem.
+
+## LM Studio Has No Ceiling To Lift
+
+The same probe, `npm run context_ceiling_probe:lmstudio --workspace @webai/codex-experiments`, asked of LM Studio:
+
+| What was sent | Bytes | Made a tool call | Input tokens LM Studio reported |
+| --- | --- | --- | --- |
+| that tool alone, short instructions | 445 | yes | 85 |
+| that tool next to the ten of the Codex command-line program, short instructions | 19031 | yes | 1990 |
+| the same eleven tools and the whole instructions | 40184 | yes | 6605 |
+
+The count tracks the prompt at every size and a tool call comes back at every size, so there is no ceiling and nothing to raise. LM Studio holds the model at a context length of 85760 tokens, which `lms ps` reports and which is about nine times the prompt of one turn:
+
+```
+IDENTIFIER            MODEL                 STATUS    SIZE       CONTEXT    PARALLEL    DEVICE
+google/gemma-4-e2b    google/gemma-4-e2b    IDLE      4.37 GB    85760      4           Local
+```
+
+That is why LM Studio held the agent loop together from the first run while Ollama did not, and it is why nothing about LM Studio was changed and `exp_02_agent_loop_with_tool` was not run against it again.
+
+The two serving programs do not count the same tokens for the same bytes: 6605 against 8832 for the same request. Neither number is the measurement used anywhere in this experiment, which is the point of the recording proxy.
 
 So the agent loop of `exp_02_agent_loop_with_tool` did not fail because Gemma 4 E2B is too small. It failed because Ollama served it about 2048 tokens of a prompt that is about 8600 tokens long. With the context length raised, the same model does the whole task correctly three times out of three, which is recorded in [`exp_02_agent_loop_with_tool_results.md`](exp_02_agent_loop_with_tool_results.md).
 
