@@ -1,6 +1,0 @@
-{"type":"thread.started","thread_id":"01a01aa6-6299-78a2-b135-389055b0d8c9"}
-{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `gemma4:e2b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_1","type":"reasoning","text":"The user has asked for a very specific response: \"Reply with exactly one word and nothing else: ready\".\nThis is a direct instruction, not a request for information, a task to be performed, or a request to use any of the provided tools.\nThe appropriate action is to comply directly with the instruction.\nNo tool use is necessary.\n\nPlan: Respond with the single word \"ready\"."}}
-{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"ready"}}
-{"type":"turn.completed","usage":{"input_tokens":2051,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":88,"reasoning_output_tokens":0}}

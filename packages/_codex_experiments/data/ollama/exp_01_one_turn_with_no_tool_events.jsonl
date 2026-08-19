@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a01aab-11ae-7e90-9a0c-63f14a85d991"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `gemma4:e2b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"reasoning","text":"The user is asking me to reply with exactly one word: \"ready\".\nThis is a direct instruction for my output, not a request that requires using any of the provided tools.\nI should comply with the instruction directly.\n\n1.  **Analyze the request:** \"Reply with exactly one word and nothing else: ready\"\n2.  **Determine the action:** Output the word \"ready\".\n3.  **Tool check:** No tools are needed for this simple response.\n4.  **Final Output Generation:** \"ready\""}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"ready"}}
+{"type":"turn.completed","usage":{"input_tokens":2051,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":117,"reasoning_output_tokens":0}}

@@ -1,5 +1,5 @@
 target model: ollama
 question: Reply with exactly one word and nothing else: ready
 exit code: 0
-seconds: 13
+seconds: 5
 codex version: codex-cli 0.145.0

@@ -4,9 +4,9 @@
 	"version": "0.1.0",
 	"type": "module",
 	"scripts": {
-		"experiment_one:lmstudio": "tsx src/experiment_one_connect.ts lmstudio",
-		"experiment_one:ollama": "tsx src/experiment_one_connect.ts ollama",
-		"experiment_one:webai_at_home": "tsx src/experiment_one_connect.ts webai_at_home",
+		"exp_01_one_turn_with_no_tool:lmstudio": "tsx src/exp_01_one_turn_with_no_tool.ts lmstudio",
+		"exp_01_one_turn_with_no_tool:ollama": "tsx src/exp_01_one_turn_with_no_tool.ts ollama",
+		"exp_01_one_turn_with_no_tool:webai_at_home": "tsx src/exp_01_one_turn_with_no_tool.ts webai_at_home",
 		"typecheck": "tsc -p tsconfig.json",
 		"test": "npm run typecheck"
 	},

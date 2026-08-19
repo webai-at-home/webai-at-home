@@ -1,6 +1,8 @@
 # Target model: WebAI@Home, the OpenAI-compatible server of packages/consumer_openai, in front of a
 # gateway running task_type_llm_gemma_4_e2b_full.
-# Used as `CODEX_HOME=<the generated codex_home folder> codex exec --profile webai_at_home ...`.
+#
+# This file is copied into the generated codex_home folder as webai_at_home.config.toml, which is
+# the name the Codex command-line program reads when it is given `--profile webai_at_home`.
 
 model = "llm_gemma_4_e2b_full"
 model_provider = "webai_at_home_target_model"

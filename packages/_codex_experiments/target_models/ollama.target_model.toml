@@ -1,5 +1,7 @@
 # Target model: Ollama, serving gemma4:e2b on this machine.
-# Used as `CODEX_HOME=<the generated codex_home folder> codex exec --profile ollama ...`.
+#
+# This file is copied into the generated codex_home folder as ollama.config.toml, which is the name
+# the Codex command-line program reads when it is given `--profile ollama`.
 
 model = "gemma4:e2b"
 model_provider = "ollama_target_model"

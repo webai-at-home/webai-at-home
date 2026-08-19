@@ -8,14 +8,14 @@ const __dirname = import.meta.dirname;
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	ExperimentOneConnect — runs experiment one of issue #213 against one target model
+//	Exp01OneTurnWithNoTool — the first experiment of issue #213, run against one target model
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * The result of one run of experiment one against one target model.
+ * The result of one run of `exp_01_one_turn_with_no_tool` against one target model.
  */
-export type ExperimentOneResult = {
+export type Exp01OneTurnWithNoToolResult = {
 	/** The target model the run was made against: `lmstudio`, `ollama`, or `webai_at_home`. */
 	targetModelName: string;
 	/** The question given to the Codex command-line program, which needs no tool at all. */
@@ -31,49 +31,50 @@ export type ExperimentOneResult = {
 };
 
 /**
- * Experiment one of [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213):
- * connect the Codex command-line program to one target model and complete one whole turn with a
- * question that needs no tool at all. Every file it writes goes under `data/<target_model>/`.
+ * `exp_01_one_turn_with_no_tool`, the first experiment of
+ * [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213): connect the Codex
+ * command-line program to one target model and complete one whole turn with a question that needs
+ * no tool at all. Every file it writes goes under `data/<target_model>/`.
  */
-export class ExperimentOneConnect {
-	/** The question asked in experiment one. It needs no tool, so only the connection is tested. */
+export class Exp01OneTurnWithNoTool {
+	/** The question asked by this experiment. It needs no tool, so only the connection is tested. */
 	static readonly question = 'Reply with exactly one word and nothing else: ready';
 
 	/** The folder of this package, holding `target_models/`, `data/`, and `src/`. */
 	static readonly packageDirectory = Path.resolve(__dirname, '..');
 
 	/** The folder holding one configuration file per target model, which is committed. */
-	static readonly targetModelsDirectory = Path.join(ExperimentOneConnect.packageDirectory, 'target_models');
+	static readonly targetModelsDirectory = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'target_models');
 
 	/**
 	 * The folder given to the Codex command-line program as its `CODEX_HOME`. It is generated, it
 	 * holds a copy of every target model configuration file, and it is never committed.
 	 */
-	static readonly codexHomeDirectory = Path.join(ExperimentOneConnect.packageDirectory, 'codex_home');
+	static readonly codexHomeDirectory = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'codex_home');
 
 	/**
-	 * Runs experiment one against one target model and writes the recorded run under `data/`.
+	 * Runs this experiment against one target model and writes the recorded run under `data/`.
 	 *
 	 * @param targetModelName The target model to run against: `lmstudio`, `ollama`, or `webai_at_home`.
 	 * @returns The result of the run, already written to disk.
 	 */
-	static run(targetModelName: string): ExperimentOneResult {
-		const configurationPath = Path.join(ExperimentOneConnect.targetModelsDirectory, `${targetModelName}.config.toml`);
+	static run(targetModelName: string): Exp01OneTurnWithNoToolResult {
+		const configurationPath = Path.join(Exp01OneTurnWithNoTool.targetModelsDirectory, `${targetModelName}.target_model.toml`);
 		if (Fs.existsSync(configurationPath) === false) {
 			throw new Error(`no such target model: ${targetModelName}, expected ${configurationPath}`);
 		}
 
-		ExperimentOneConnect._prepareCodexHome();
+		Exp01OneTurnWithNoTool._prepareCodexHome();
 
-		const outputDirectory = Path.join(ExperimentOneConnect.packageDirectory, 'data', targetModelName);
+		const outputDirectory = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'data', targetModelName);
 		Fs.mkdirSync(outputDirectory, {
 			recursive: true,
 		});
 
-		const lastMessagePath = Path.join(outputDirectory, 'experiment_one_last_message.txt');
-		const eventsPath = Path.join(outputDirectory, 'experiment_one_events.jsonl');
-		const standardErrorPath = Path.join(outputDirectory, 'experiment_one_stderr.txt');
-		const resultPath = Path.join(outputDirectory, 'experiment_one_result.txt');
+		const lastMessagePath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_last_message.txt');
+		const eventsPath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_events.jsonl');
+		const standardErrorPath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_stderr.txt');
+		const resultPath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_result.txt');
 
 		const startedAt = Date.now();
 		const codexRun = ChildProcess.spawnSync(
@@ -81,17 +82,17 @@ export class ExperimentOneConnect {
 			[
 				'exec',
 				'--profile', targetModelName,
-				'--cd', ExperimentOneConnect.packageDirectory,
+				'--cd', Exp01OneTurnWithNoTool.packageDirectory,
 				'--sandbox', 'read-only',
 				'--skip-git-repo-check',
 				'--json',
 				'--output-last-message', lastMessagePath,
-				ExperimentOneConnect.question,
+				Exp01OneTurnWithNoTool.question,
 			],
 			{
 				env: {
 					...process.env,
-					CODEX_HOME: ExperimentOneConnect.codexHomeDirectory,
+					CODEX_HOME: Exp01OneTurnWithNoTool.codexHomeDirectory,
 				},
 				stdio: ['ignore', 'pipe', 'pipe'],
 				encoding: 'utf8',
@@ -103,13 +104,13 @@ export class ExperimentOneConnect {
 		Fs.writeFileSync(eventsPath, codexRun.stdout ?? '');
 		Fs.writeFileSync(standardErrorPath, codexRun.stderr ?? '');
 
-		const result: ExperimentOneResult = {
+		const result: Exp01OneTurnWithNoToolResult = {
 			targetModelName: targetModelName,
-			question: ExperimentOneConnect.question,
+			question: Exp01OneTurnWithNoTool.question,
 			exitCode: codexRun.status ?? 1,
 			seconds: Math.round((finishedAt - startedAt) / 1000),
-			codexVersion: ExperimentOneConnect._readCodexVersion(),
-			lastMessage: ExperimentOneConnect._readTextFile(lastMessagePath),
+			codexVersion: Exp01OneTurnWithNoTool._readCodexVersion(),
+			lastMessage: Exp01OneTurnWithNoTool._readTextFile(lastMessagePath),
 		};
 
 		const resultText = [
@@ -126,7 +127,7 @@ export class ExperimentOneConnect {
 	}
 
 	/**
-	 * Parses the command line, runs experiment one against the named target model, and prints the
+	 * Parses the command line, runs this experiment against the named target model, and prints the
 	 * result. The exit code of this program is the exit code of the Codex command-line program.
 	 *
 	 * @returns Nothing.
@@ -134,15 +135,15 @@ export class ExperimentOneConnect {
 	static main(): void {
 		const command = new Command();
 		command
-			.name('experiment_one_connect')
-			.description('Experiment one of issue #213: connect the Codex command-line program to one target model')
+			.name('exp_01_one_turn_with_no_tool')
+			.description('The first experiment of issue #213: one whole turn with a question that needs no tool')
 			.argument('<target_model>', 'the target model to run against: lmstudio, ollama, or webai_at_home')
 			.action((targetModelName: string) => {
 				console.log(`target model: ${targetModelName}`);
-				console.log(`question: ${ExperimentOneConnect.question}`);
+				console.log(`question: ${Exp01OneTurnWithNoTool.question}`);
 				console.log('');
 
-				const result = ExperimentOneConnect.run(targetModelName);
+				const result = Exp01OneTurnWithNoTool.run(targetModelName);
 
 				console.log(`exit code: ${result.exitCode}`);
 				console.log(`seconds: ${result.seconds}`);
@@ -151,7 +152,7 @@ export class ExperimentOneConnect {
 				console.log('--- last message ---');
 				console.log(result.lastMessage);
 				console.log('--- errors recorded, if any ---');
-				console.log(ExperimentOneConnect._readRecordedErrors(result.targetModelName));
+				console.log(Exp01OneTurnWithNoTool._readRecordedErrors(result.targetModelName));
 
 				process.exitCode = result.exitCode;
 			});
@@ -165,8 +166,9 @@ export class ExperimentOneConnect {
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
-	 * Copies every target model configuration file into the generated `codex_home` folder, which is
-	 * the folder given to the Codex command-line program as its `CODEX_HOME`. The two folders are
+	 * Copies every `<target model>.target_model.toml` file into the generated `codex_home` folder as
+	 * `<target model>.config.toml`, which is the name the Codex command-line program reads when it
+	 * is given `--profile <target model>`. That folder is its `CODEX_HOME`. The two folders are
 	 * kept apart because the Codex command-line program writes its own sessions, logs, databases,
 	 * and downloaded documentation into its `CODEX_HOME`, and none of that belongs next to the
 	 * committed target model configuration files.
@@ -174,16 +176,17 @@ export class ExperimentOneConnect {
 	 * @returns Nothing.
 	 */
 	private static _prepareCodexHome(): void {
-		Fs.mkdirSync(ExperimentOneConnect.codexHomeDirectory, {
+		Fs.mkdirSync(Exp01OneTurnWithNoTool.codexHomeDirectory, {
 			recursive: true,
 		});
-		for (const fileName of Fs.readdirSync(ExperimentOneConnect.targetModelsDirectory)) {
-			if (fileName.endsWith('.config.toml') === false) {
+		for (const fileName of Fs.readdirSync(Exp01OneTurnWithNoTool.targetModelsDirectory)) {
+			if (fileName.endsWith('.target_model.toml') === false) {
 				continue;
 			}
+			const targetModelName = fileName.slice(0, fileName.length - '.target_model.toml'.length);
 			Fs.copyFileSync(
-				Path.join(ExperimentOneConnect.targetModelsDirectory, fileName),
-				Path.join(ExperimentOneConnect.codexHomeDirectory, fileName),
+				Path.join(Exp01OneTurnWithNoTool.targetModelsDirectory, fileName),
+				Path.join(Exp01OneTurnWithNoTool.codexHomeDirectory, `${targetModelName}.config.toml`),
 			);
 		}
 	}
@@ -224,8 +227,8 @@ export class ExperimentOneConnect {
 	 * @returns One line per error event, or an empty string when the run recorded none.
 	 */
 	private static _readRecordedErrors(targetModelName: string): string {
-		const eventsPath = Path.join(ExperimentOneConnect.packageDirectory, 'data', targetModelName, 'experiment_one_events.jsonl');
-		const eventsText = ExperimentOneConnect._readTextFile(eventsPath);
+		const eventsPath = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'data', targetModelName, 'exp_01_one_turn_with_no_tool_events.jsonl');
+		const eventsText = Exp01OneTurnWithNoTool._readTextFile(eventsPath);
 		if (eventsText === '') {
 			return '';
 		}
@@ -241,4 +244,4 @@ export class ExperimentOneConnect {
 	}
 }
 
-ExperimentOneConnect.main();
+Exp01OneTurnWithNoTool.main();

@@ -1,5 +1,7 @@
 # Target model: LM Studio, serving google/gemma-4-e2b on this machine.
-# Used as `CODEX_HOME=<the generated codex_home folder> codex exec --profile lmstudio ...`.
+#
+# This file is copied into the generated codex_home folder as lmstudio.config.toml, which is the
+# name the Codex command-line program reads when it is given `--profile lmstudio`.
 
 model = "google/gemma-4-e2b"
 model_provider = "lmstudio_target_model"

@@ -1,6 +1,6 @@
-# Experiment One — Connect The Codex Command-Line Program To One Target Model
+# `exp_01_one_turn_with_no_tool` — One Whole Turn, With A Question That Needs No Tool
 
-The question of experiment one, from [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213):
+The question of `exp_01_one_turn_with_no_tool`, from [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213):
 
 > Can the Codex command-line program be pointed at a base address that is not the OpenAI service, using the chat-completions request format, and complete one whole turn against `google/gemma-4-e2b`?
 
@@ -10,9 +10,9 @@ The question needed one correction before it could be answered, and the correcti
 
 | Target model | Base address | Model identifier | Exit code | Seconds | Input tokens reported | Last message |
 | --- | --- | --- | --- | --- | --- | --- |
-| LM Studio | `http://localhost:1234/v1` | `google/gemma-4-e2b` | 0 | 23 | 8157 | `ready` |
-| Ollama | `http://localhost:11434/v1` | `gemma4:e2b` | 0 | 13 | 2051 | `ready` |
-| WebAI@Home | `http://localhost:8788/v1` | `llm_gemma_4_e2b_full` | 1 | 7 | none, the turn failed | none, the turn failed |
+| LM Studio | `http://localhost:1234/v1` | `google/gemma-4-e2b` | 0 | 16 | 8157 | `ready` |
+| Ollama | `http://localhost:11434/v1` | `gemma4:e2b` | 0 | 5 | 2051 | `ready` |
+| WebAI@Home | `http://localhost:8788/v1` | `llm_gemma_4_e2b_full` | 1 | 6 | none, the turn failed | none, the turn failed |
 
 Two target models out of three pass the gate. The plan continues.
 
@@ -43,10 +43,10 @@ The Codex command-line program retried five times before giving up. This is a mi
 
 ## Recorded On The Way
 
-- **The prompt is large.** For a question of eight words needing no tool, LM Studio reported 8157 input tokens. That is the base prompt of the Codex command-line program, and experiment three measures it properly.
-- **The two target models disagree on the count.** Ollama reported 2051 input tokens for the same question. The two target models cannot both be right, which is the reason experiment three measures the prompt from recorded traffic rather than from what a target model reports.
+- **The prompt is large.** For a question of eight words needing no tool, LM Studio reported 8157 input tokens. That is the base prompt of the Codex command-line program, and `exp_03_prompt_size_measure` measures it properly.
+- **The two target models disagree on the count.** Ollama reported 2051 input tokens for the same question. The two target models cannot both be right, which is the reason `exp_03_prompt_size_measure` measures the prompt from recorded traffic rather than from what a target model reports.
 - **Neither model is known to the Codex command-line program.** Both runs recorded `Model metadata for ... not found. Defaulting to fallback metadata; this can degrade performance and cause issues.`, so the context window it assumes is a fallback and not the real one of Gemma 4 E2B.
-- **The model already leaks its prompt, sometimes.** The runs recorded here answer exactly `ready`, but one earlier LM Studio run answered `ready` followed by the `<environment_context>` block of its own prompt. Nothing about the run changed between the two, because the seed parameter does not work on this endpoint. The turn still completed, so the gate passes, but this is the failure experiment two measures.
+- **The model already leaks its prompt, sometimes.** The runs recorded here answer exactly `ready`, but one earlier LM Studio run answered `ready` followed by the `<environment_context>` block of its own prompt. Nothing about the run changed between the two, because the seed parameter does not work on this endpoint. The turn still completed, so the gate passes, but this is the failure `exp_02_agent_loop_with_tool` measures.
 
 ## Cost
 
