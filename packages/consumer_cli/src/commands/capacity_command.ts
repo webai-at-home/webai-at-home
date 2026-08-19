@@ -161,7 +161,7 @@ export class CapacityCommand {
 
 	/**
 	 * Formats every task type's capacity estimate as one Markdown table, which stays readable at
-	 * five task types in a way five repeated bullet lists do not.
+	 * six task types in a way six repeated bullet lists do not.
 	 *
 	 * @param results One capacity estimate per task type.
 	 * @returns The Markdown text, ready to print with a single `console.log`.

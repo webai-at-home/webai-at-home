@@ -28,4 +28,4 @@ The OpenAI API Conformance Test command line program: it points at a server clai
 
 - The freeze comes from [issue #208](https://github.com/webai-at-home/webai-at-home/issues/208), which merged this package and `packages/openai_api_tool_TOREMOVE` into `packages/openai_test`. Both packages stay, and neither is deleted.
 - Whether a run counts as a failure is decided by the verdicts alone, never by `--ci`.
-- Each milestone's own findings are posted as comments on [issue #182](https://github.com/webai-at-home/webai-at-home/issues/182) rather than restated here.
+- Each milestone's own findings are posted as comments on [#182](https://github.com/webai-at-home/webai-at-home/issues/182) rather than restated here.

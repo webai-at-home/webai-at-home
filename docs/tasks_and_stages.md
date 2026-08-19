@@ -17,7 +17,7 @@ Each stage also states the identifier of the schema its input must match, the id
 
 A stage may state two optional scheduling settings:
 
-- `leaseMs` is how long the assignment lease for that stage lasts. A stage that does not state one uses the gateway's `--lease-ms` default of 15000 milliseconds. `stage_llm_gemma_nano_chrome_full`, `stage_llm_qwen3_5_0_8b_full`, and `stage_llm_llama3_2_1b_full` each state their own value, 60000 milliseconds; every other built-in stage uses the default. A worker keeps a lease alive while it is still working by sending a stage heartbeat message.
+- `leaseMs` is how long the assignment lease for that stage lasts. A stage that does not state one uses the gateway's `--lease-ms` default of 15000 milliseconds. `stage_llm_gemma_nano_chrome_full`, `stage_llm_qwen3_5_0_8b_full`, `stage_llm_llama3_2_1b_full`, and `stage_llm_gemma_4_e2b_full` each state their own value, 60000 milliseconds; every other built-in stage uses the default. A worker keeps a lease alive while it is still working by sending a stage heartbeat message.
 - `prefersSameWorkerOnRetry` makes a stage go back to the device that already holds the state that stage keeps in memory, instead of deliberately avoiding that device. It applies to three moments: a retried attempt after a lease expiry, the assignment of the stage that follows a finished one, and the assignment of a stage on a task that had to wait in the `queued` state. A stage that does not set it is instead preferably moved to a device other than the one that just ran a stage of the task.
 
 Which device holds the state a stage needs depends on which stage is about to run, not on which device ran last: in a pipeline that repeats, the device holding the state for the upcoming stage is the device that ran that same stage in the previous round. The gateway therefore records, on the task itself, which device most recently completed each stage of that task, in the field `stageWorkerDeviceIds`. The placement is decided by `WorkerPlacement` in [`packages/gateway/src/device/worker_placement.ts`](../packages/gateway/src/device/worker_placement.ts), which reads that record first and falls back to the device that just finished a stage, for the first round of a repeating pipeline and for a stage whose state is handed to it by the stage before it on the same device.
@@ -266,6 +266,61 @@ That script submits the prompt "What is the capital of France?" under the consum
 npm run dev --workspace @webai/consumer-cli -- submit --task_type llm_llama3_2_1b_full "Write one sentence about rain."
 ```
 
+### Task type `task_type_llm_gemma_4_e2b_full`
+
+**Name:** `task_type_llm_gemma_4_e2b_full`, served by the pipeline whose identifier is `llm_gemma_4_e2b_full`, at version 1. Added by [issue #211](https://github.com/webai-at-home/webai-at-home/issues/211), the implementation of [issue #206](https://github.com/webai-at-home/webai-at-home/issues/206).
+
+**Input:** one text prompt, or a whole history — this is one of the three task types whose worker can hand a message list to its model's own chat template, the others being `task_type_llm_qwen3_5_0_8b_full` and `task_type_llm_llama3_2_1b_full`.
+
+**What it does:** it generates text with the complete Gemma 4 E2B instruction-tuned language model, downloaded from Hugging Face and held entirely by one worker browser tab. Unlike `task_type_llm_llama3_2_1b_full`, it is reachable by that one kind of worker and no other: there is no native worker forwarding to a local server, and no fallback of any kind.
+
+The asset downloaded and run is [`onnx-community/gemma-4-E2B-it-ONNX`](https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX), the ONNX export of `google/gemma-4-E2B-it`, pinned to revision `9f4bef82ea6e296bc69f8a2f5939f73af81b07a6` at the `q4f16` quantization, licensed `apache-2.0`. The repository is not gated, which is what makes the task possible at all: a worker browser tab carries no Hugging Face access token.
+
+This is the first task type here whose model is not text-only. The repository declares a text part, a vision part, and an audio part, and its pipeline tag is `any-to-any`. This task type carves the text out of it: only the merged decoder and the token embedding graphs are downloaded, and only text is ever sent. The token embedding graph is the larger of the two, at about 1590 megabytes against the decoder's 1520, because the model carries per-layer input embeddings.
+
+**This task type requires WebGPU, and has no WebAssembly fallback.** `StageHelperLlmGemma4E2bFull.readiness` refuses the stage outright on a browser without it, rather than offering the stage and answering some slower way. The reason is not correctness but speed: this model is meant to become the one this project reaches for first ([issue #210](https://github.com/webai-at-home/webai-at-home/issues/210)), and a model answering at WebAssembly speed is not that. A worker that offers a stage it cannot honour properly is worse than a worker that offers nothing.
+
+The answer is produced the same way the other two full-model task types produce one, in pieces or as a whole according to the `isStreaming` generation setting the consumer submitted:
+
+- A task that asked for nothing has every piece read by one run, which returns the complete answer as its result, marked finished.
+- A task that asked for its answer in pieces has one piece read per run, and the worker keeps the generation open for the run that follows.
+
+Generation is greedy, and the model's thinking is turned off, whatever the consumer asked for. That is not a default waiting to be made settable: this task type honours no generation control at all in [`packages/protocol/src/task/generation_control_support.ts`](../packages/protocol/src/task/generation_control_support.ts), and none may be acted on until that table names it. Thinking off is a measured choice rather than an arbitrary one — measured on a local model server, this model with thinking on answered 515 characters to a request budgeted at 8 tokens.
+
+Generation stops on one of the model's own `eos_token_id` values, read from its `generation_config`, or on a safety bound of generated tokens, defined in [`packages/worker_webpage/web/src/stages/stage_helper_llm_gemma_4_e2b_full.ts`](../packages/worker_webpage/web/src/stages/stage_helper_llm_gemma_4_e2b_full.ts). The model states those values twice and the two statements disagree — `config.json` says `[1, 106]` and `generation_config.json` says `[1, 106, 50]` — and `generation_config` is the one read, because it is the one `generate()` itself reads.
+
+**Purpose:** it is the largest model this project downloads into a browser tab by a wide margin, and the candidate to become the default model of `webai-at-home`.
+
+**Stages the cluster must carry out**, one run per answer, or one run per piece plus a final one for a task that asked for its answer in pieces:
+
+| Order | Stage name | Computation | Input schema | Output schema | Encoding | What this stage does |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `stage_llm_gemma_4_e2b_full` | `llm_gemma_4_e2b_full` | `llm@1` | `llm@1` | `inline-json` | It generates an answer to the submitted prompt or history — downloading and loading the model first, on the tab's first task — or, on a run that carries an answer on, finds the answer already held open. It then reads either every remaining piece or one piece, according to what the consumer asked for, stopping at the safety bounds above. It returns one piece with the answer marked unfinished, or the complete answer marked finished. |
+
+The stage states a lease of 60000 milliseconds rather than using the gateway default, matching the two other full-model stages. That lease is nowhere near long enough to cover the first load, and is not meant to be: a cold download and load was **measured at about 466 seconds** on the machine of this repository, in Google Chrome, on an `apple metal-3` adapter, on 19 August 2026. What carries a run past the lease is the stage heartbeat messages the worker sends while downloading, loading, or generating. Note that the tab's main thread is unresponsive for most of that load.
+
+Once loaded, generation measured 11.45, 17.17, and 17.71 tokens per second over three runs of one prompt, the first slower for warm-up, each producing exactly the same 44 tokens — which is what greedy decoding should do.
+
+The stage sets `prefersSameWorkerOnRetry`, for the same reason the other two full-model stages do: an answer read in pieces lives in the memory of the one tab producing it, along with the downloaded model, so every run of it has to reach that same tab.
+
+**What the cluster needs in order to run it:** one worker browser tab with a WebGPU adapter supporting 16-bit floating point shaders, which the `q4f16` quantization needs for its float16 key-value cache, and enough free storage for the download — about 3111 megabytes, for which `StageHelperLlmGemma4E2bFull.readiness` asks 3500 megabytes free before the tab advertises the stage. A tab that fails any of those checks registers without this stage rather than accepting work it would fail.
+
+That storage requirement is larger than some browsers will grant. An embedded browser view was measured capping one origin at about 2900 megabytes and refusing `navigator.storage.persist()`, which is below this model's size, so the stage is correctly never offered there; a real Google Chrome on the same machine reported 10240 megabytes and ran the task.
+
+The debug page `packages/gateway/web/debug_iframe_llm_gemma_4_e2b_full/index.html` opens the gateway monitor page beside one inline frame named `llm-gemma-4-e2b-full`, restricted to `stage_llm_gemma_4_e2b_full`.
+
+**How to submit one:**
+
+```bash
+npm run sample:llm_gemma_4_e2b_full --workspace @webai/consumer-cli
+```
+
+That script submits the prompt "What is the capital of France?" under the consumer name `llm-gemma-4-e2b-full-consumer`. To submit a different prompt, call the command line client directly:
+
+```bash
+npm run dev --workspace @webai/consumer-cli -- submit --task_type llm_gemma_4_e2b_full "Write one sentence about rain."
+```
+
 ## Every stage in the cluster
 
 Eight stage names exist across the five built-in pipelines, using six distinct computations.
@@ -280,10 +335,11 @@ Eight stage names exist across the five built-in pipelines, using six distinct c
 | `stage_llm_gemma_nano_chrome_full` | `llm_gemma_nano_chrome_full` version 1 | `task_type_llm_gemma_nano_chrome_full` | `llm_gemma_nano_chrome_full` |
 | `stage_llm_qwen3_5_0_8b_full` | `llm_qwen3_5_0_8b_full` version 1 | `task_type_llm_qwen3_5_0_8b_full` | `llm_qwen3_5_0_8b_full` |
 | `stage_llm_llama3_2_1b_full` | `llm_llama3_2_1b_full` version 1 | `task_type_llm_llama3_2_1b_full` | `llm_llama3_2_1b_full` |
+| `stage_llm_gemma_4_e2b_full` | `llm_gemma_4_e2b_full` version 1 | `task_type_llm_gemma_4_e2b_full` | `llm_gemma_4_e2b_full` |
 
-A worker decides which of these it offers by asking the gateway for its loaded pipelines and keeping every stage whose computation it implements. A worker browser tab and the Node.js worker in `packages/worker_openai` follow the same rule, each in its own copy of it, and neither ever decides from a stage name — `stage_llm_llama3_2_1b_full` and `stage_llm_qwen3_5_0_8b_full` are implemented in both copies, which is how either kind of worker can offer them. The page address may narrow that set further through its `enabledStages` parameter, which is how the five debug pages give each inline frame a single stage. A tab that names no stages at all offers every stage the loaded pipelines define whose computation it implements. The choice is made by `offeredStages` in [`packages/worker_webpage/web/src/main.ts`](../packages/worker_webpage/web/src/main.ts).
+A worker decides which of these it offers by asking the gateway for its loaded pipelines and keeping every stage whose computation it implements. A worker browser tab and the Node.js worker in `packages/worker_openai` follow the same rule, each in its own copy of it, and neither ever decides from a stage name — `stage_llm_llama3_2_1b_full` and `stage_llm_qwen3_5_0_8b_full` are implemented in both copies, which is how either kind of worker can offer them. The page address may narrow that set further through its `enabledStages` parameter, which is how the six debug pages give each inline frame a single stage. A tab that names no stages at all offers every stage the loaded pipelines define whose computation it implements. The choice is made by `offeredStages` in [`packages/worker_webpage/web/src/main.ts`](../packages/worker_webpage/web/src/main.ts).
 
-Being able to run a computation is not always enough to offer its stage. A tab drops `stage_llm_gemma_nano_chrome_full` again when its browser's own language model is not ready, and it drops `stage_llm_qwen3_5_0_8b_full` or `stage_llm_llama3_2_1b_full` again when its browser lacks WebGPU, 16-bit float shader support, or enough free storage for whichever of the two it was checking. The Node.js worker in `packages/worker_openai` drops the stages `--stage-names` asked for, `stage_llm_llama3_2_1b_full` and `stage_llm_qwen3_5_0_8b_full` among them, for the same kind of reason, when the local server it was pointed at cannot be reached or does not hold the model it was told to serve. A tab downloads the shards for the language-model shard stages it offers, and downloads and loads whichever of the complete Qwen3.5-0.8B or Llama 3.2 1B Instruct models the stages it offers need, before it registers, so that neither is downloaded while a task waits for it. All of this happens between asking for the pipelines and registering.
+Being able to run a computation is not always enough to offer its stage. A tab drops `stage_llm_gemma_nano_chrome_full` again when its browser's own language model is not ready, and it drops `stage_llm_qwen3_5_0_8b_full`, `stage_llm_llama3_2_1b_full`, or `stage_llm_gemma_4_e2b_full` again when its browser lacks WebGPU, 16-bit float shader support, or enough free storage for whichever of the three it was checking. The three are checked separately rather than together, so a tab offering one of them is never made to download another's weights — which matters most for `stage_llm_gemma_4_e2b_full`, whose download is several times either of the others. The Node.js worker in `packages/worker_openai` drops the stages `--stage-names` asked for, `stage_llm_llama3_2_1b_full` and `stage_llm_qwen3_5_0_8b_full` among them, for the same kind of reason, when the local server it was pointed at cannot be reached or does not hold the model it was told to serve. A tab downloads the shards for the language-model shard stages it offers, and downloads and loads whichever of the complete Qwen3.5-0.8B, Llama 3.2 1B Instruct, or Gemma 4 E2B models the stages it offers need, before it registers, so that none of them is downloaded while a task waits for it. All of this happens between asking for the pipelines and registering.
 
 ## The values carried between stages
 
@@ -312,4 +368,4 @@ Every value sent to a stage or returned by one is built by `StagePayloadFactory`
 - The computation that runs the complete Qwen3.5-0.8B model, which either kind of worker can implement: [`packages/worker_webpage/web/src/stages/stage_helper_llm_qwen3_5_0_8b_full.ts`](../packages/worker_webpage/web/src/stages/stage_helper_llm_qwen3_5_0_8b_full.ts) for a worker browser tab, and [`packages/worker_openai/src/stages/stage_helper_llm_qwen3_5_0_8b_full.ts`](../packages/worker_openai/src/stages/stage_helper_llm_qwen3_5_0_8b_full.ts) for the one worker package that is a command line process rather than a browser page.
 - The computation that runs the complete Llama 3.2 1B Instruct model, which either kind of worker can implement: [`packages/worker_webpage/web/src/stages/stage_helper_llm_llama3_2_1b_full.ts`](../packages/worker_webpage/web/src/stages/stage_helper_llm_llama3_2_1b_full.ts) for a worker browser tab, and [`packages/worker_openai/src/stages/stage_helper_llm_llama3_2_1b_full.ts`](../packages/worker_openai/src/stages/stage_helper_llm_llama3_2_1b_full.ts) for the one worker package that is a command line process rather than a browser page, forwarding the prompt to a local server speaking the OpenAI-compatible API instead.
 - Submitting a task from the command line: [`packages/consumer_cli/src/cli.ts`](../packages/consumer_cli/src/cli.ts), [`packages/consumer_cli/src/gateway_connection/consumer_client.ts`](../packages/consumer_cli/src/gateway_connection/consumer_client.ts), and [`packages/consumer_cli/src/libs/task_input_factory.ts`](../packages/consumer_cli/src/libs/task_input_factory.ts).
-- Submitting a task through the OpenAI completion interface, which is the second way a task can be submitted: [`packages/consumer_openai`](../packages/consumer_openai). That server turns one chat completion request into one task of one of the five task types above, chosen by the request's `model` field, and reuses the same `ConsumerClient` and `TaskInputFactory` as the command line client.
+- Submitting a task through the OpenAI completion interface, which is the second way a task can be submitted: [`packages/consumer_openai`](../packages/consumer_openai). That server turns one chat completion request into one task of one of the six task types above, chosen by the request's `model` field, and reuses the same `ConsumerClient` and `TaskInputFactory` as the command line client.
