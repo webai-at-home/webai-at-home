@@ -19,9 +19,9 @@ The `benchmark` subcommand: it measures how long one OpenAI-compatible endpoint 
 - A warm-up request is never reported. It exists so that the first measured request is not the one that loaded the model.
 - A model that cannot be measured is recorded as a failure and the sweep carries on. Only a run in which no model at all could be measured throws, because a report of nothing but failures measured nothing.
 - Every one of the four formats names the models that could not be measured, and `benchmark_command.ts` names them on standard error as well, so a report written to a file with `-o/--output` cannot look complete while a model it was asked for is missing from it.
-- A model asked for and not measured sets exit code `1`. There are no verdicts here, so that is the only thing a finished run can report as wrong.
+- A model asked for and not measured is named on the error stream and listed in the report, and sets no exit code. There are no verdicts here, so that is the only thing a finished run can report as wrong, and it is reported in words rather than in an exit code.
 - Nothing here counts a verdict or writes `PASS`, `FAIL`, `SKIP`, or `WARN`. Those belong to `../conformance/` alone.
-- `benchmark_command.ts` is the only file here that prints or sets an exit code, and it writes a file only through `../report_writer.ts`.
+- `benchmark_command.ts` is the only file here that prints, and it writes a file only through `../report_writer.ts`. Nothing here sets an exit code.
 
 ## Background
 

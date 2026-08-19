@@ -77,7 +77,9 @@ Three in-session commands, and no more: `/reset` clears the history and keeps th
 
 `conformance` and `benchmark` both accept `-f/--format text|markdown|json|junit` and `-o/--output <path>`. `chat` accepts neither; it is a terminal session, not a report.
 
-Exit code `0` when nothing failed, `1` when a test failed or a model asked for could not be measured, `2` when the run itself could not start — an unusable command line, or nothing listening at the endpoint, which one `GET /models` finds out before the first measurement rather than after every test has failed the same way. `chat` returns only `0` or `2`. `--ci` never changes which of these is returned.
+Exit code `0` whenever the run finished and wrote its report, and `2` when the run itself could not start — an unusable command line, nothing listening at the endpoint, which one `GET /models` finds out before the first measurement rather than after every test has failed the same way, or an output file that cannot be written. `--ci` never changes which of the two is returned.
+
+A failed test does **not** change the exit code, and neither does a model `benchmark` was asked to measure and could not. A verdict is what this program was run to find out, so returning a failing code for one made every shell that called it, and npm above it, print an error block over a run that worked perfectly and wrote its report. Read the report to find out what the endpoint did; read the exit code only to find out whether there is a report at all.
 
 The `report:*` scripts of `package.json` write markdown reports into [`data/conformance_reports/`](data/conformance_reports/) and [`data/benchmark_reports/`](data/benchmark_reports/).
 

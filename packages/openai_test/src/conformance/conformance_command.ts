@@ -2,7 +2,6 @@
 import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
 import { reportFormats, type CompletionMode, type CompletionTarget } from '../completion_types.js';
-import { exitCodes } from '../exit_codes.js';
 import { EndpointReachability } from '../endpoint_reachability.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportWriter } from '../report_writer.js';
@@ -163,7 +162,6 @@ export class ConformanceCommand {
 
 		const report = ConformanceCommand._renderReport(runs, skippedModels, rawOptions, target.baseUrl, args, invokedName);
 		ReportWriter.write(report, rawOptions.output);
-		ConformanceCommand._setExitCode(runs);
 	}
 
 	///////////////////////////////////////////////////////////////////////////////
@@ -420,24 +418,4 @@ export class ConformanceCommand {
 		}
 	}
 
-	/**
-	 * Sets the exit code of section 29 of issue #181.
-	 *
-	 * A failure sets `1` whether or not `--ci` was given, because a failing conformance run is a
-	 * failing run in any context, and a continuous integration file that wants to depend on that
-	 * writes `--ci` to say so rather than to change the behaviour. A `WARN` never sets it, and
-	 * neither does a `SKIP`: both are answers about the endpoint rather than faults.
-	 *
-	 * A sweep fails when any one of its runs failed. A model that measured badly is not excused by
-	 * another model that measured well.
-	 *
-	 * @param runs Every run this invocation produced.
-	 * @returns Nothing.
-	 */
-	private static _setExitCode(runs: readonly ConformanceRun[]): void {
-		const failedCount = runs.reduce((total, run) => total + ReportSummary.of(run.records).failedCount, 0);
-		if (failedCount > 0) {
-			process.exitCode = exitCodes.someFailed;
-		}
-	}
 }

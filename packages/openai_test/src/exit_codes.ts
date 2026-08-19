@@ -8,18 +8,20 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
- * What this program returns to the shell, kept from section 29 of
- * [issue #181](https://github.com/webai-at-home/webai-at-home/issues/181) and applied to all three
- * subcommands.
+ * What this program returns to the shell.
  *
- * `benchmark` reports numbers rather than verdicts and `chat` has no verdicts at all, so only
- * `conformance` ever returns `someFailed`.
+ * A run that finished returns `runFinished`, whatever the verdicts in its report were. A failed test,
+ * a `WARN`, a `SKIP`, and a model `benchmark` could not measure are all findings the report states,
+ * and a finding is not a reason to return a failing code: the shell that called this program, and
+ * npm above it, print an error block for a non-zero code, which reads as the program having broken
+ * when it has just measured something and said so.
+ *
+ * `runnerError` is what is left, and it means the report was never written. Read the verdicts in
+ * the report to find out what the endpoint did.
  */
 export const exitCodes = {
-	/** Nothing failed. */
-	allPassed: 0,
-	/** One or more tests failed. */
-	someFailed: 1,
+	/** The run finished and wrote its report, whatever the report says. */
+	runFinished: 0,
 	/** The run itself could not start: an unusable command line, an unreachable endpoint, or an unwritable output file. */
 	runnerError: 2,
 } as const;

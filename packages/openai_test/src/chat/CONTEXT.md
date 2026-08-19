@@ -21,7 +21,7 @@ The `chat` subcommand: a session somebody types turns into, where the history ac
 - A turn the endpoint would not answer ends the turn, never the session, and leaves the history exactly as it was. A session that stopped on the first refusal would throw away everything already typed.
 - `-m/--model` takes exactly one model identifier. `all`, `list`, a comma-separated list, and a pattern are refused by name rather than silently sent to the first model they match.
 - `chat` accepts no `-f/--format` and no `-o/--output`. It is a terminal session, not a report.
-- `chat` produces no verdict and sets no failing exit code. It returns `0`, or `2` when the run could not start at all — not even a refused turn changes that.
+- `chat` produces no verdict and sets no failing exit code. It returns `0`, or `2` when the run could not start at all — not even a refused turn changes that. All three subcommands now answer this way.
 - `chat_renderer.ts` returns strings and prints nothing, so a test reads what would have been shown. The answer is the one thing it does not build, since that arrives piece by piece.
 
 ## Background

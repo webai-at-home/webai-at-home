@@ -3,7 +3,6 @@ import { OpenaiPackageClient } from '../clients/openai_package_client.js';
 import { RawHttpClient } from '../clients/raw_http_client.js';
 import { reportFormats, type BenchmarkReport } from '../completion_types.js';
 import { EndpointReachability } from '../endpoint_reachability.js';
-import { exitCodes } from '../exit_codes.js';
 import { ModelResolver } from '../model_resolver.js';
 import { ReportWriter } from '../report_writer.js';
 import { SharedOptions, type RawEndpointOptions } from '../shared_options.js';
@@ -98,7 +97,6 @@ export class BenchmarkCommand {
 		});
 		BenchmarkCommand._announceFailures(report);
 		ReportWriter.write(ReportRenderer.formatBenchmarkReport(report, rawOptions.format), rawOptions.output);
-		BenchmarkCommand._setExitCode(report);
 	}
 
 	///////////////////////////////////////////////////////////////////////////////
@@ -121,20 +119,4 @@ export class BenchmarkCommand {
 		}
 	}
 
-	/**
-	 * Sets the exit code a model that could not be measured earns.
-	 *
-	 * A benchmark has no verdicts, so the only thing that can be wrong with a run that produced a
-	 * report is a model it was asked to measure and could not. That is exit code `1`, the same code
-	 * a failed conformance test sets; a run that could not start at all is `2` and is thrown rather
-	 * than reported.
-	 *
-	 * @param report The report the run produced.
-	 * @returns Nothing.
-	 */
-	private static _setExitCode(report: BenchmarkReport): void {
-		if ((report.failures ?? []).length > 0) {
-			process.exitCode = exitCodes.someFailed;
-		}
-	}
 }
