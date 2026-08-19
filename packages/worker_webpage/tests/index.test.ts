@@ -4,6 +4,7 @@ import Test from 'node:test';
 
 // local imports
 import { ToolCallReader } from '../web/src/stages/tool_call_reader.js';
+import { StageCatalog } from '../web/src/stages/stage_catalog.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -160,4 +161,30 @@ Test('builds the tool declarations in the shape the chat template reads them', (
 			},
 		},
 	]);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	StageCatalog, for the Gemma 4 E2B stage
+//
+//	`worker_stage_offer.ts` is what puts this stage into its own full-model list, and it is not
+//	asserted here: importing it pulls in `stage_helper_llm_qwen3_0_6b_sharded.ts`, which reads
+//	`import.meta.env.BASE_URL` at module scope and so needs Vite rather than plain Node. That list
+//	being separate from the other two is checked by running the worker page instead. Do not merge
+//	the three full-model lists: a tab offering one of the other two would then be made to download
+//	Gemma 4 E2B's roughly 3111 MB, several times either of theirs.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+Test('the settings panel lists the Gemma 4 E2B stage, so a volunteer can choose it', () => {
+	const entry = StageCatalog.entries.find((one) => one.name === 'stage_llm_gemma_4_e2b_full');
+
+	Assert.notEqual(entry, undefined);
+	Assert.ok(entry?.description.includes('WebGPU'));
+});
+
+Test('the settings panel says how large the Gemma 4 E2B download is, which no other stage needs to', () => {
+	const entry = StageCatalog.entries.find((one) => one.name === 'stage_llm_gemma_4_e2b_full');
+
+	Assert.ok(entry?.description.includes('3111 MB'));
 });

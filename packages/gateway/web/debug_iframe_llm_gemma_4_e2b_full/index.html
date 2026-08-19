@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>WebAI Gemma 4 E2B full-model iframe debug</title>
+    <link rel="stylesheet" href="/debug_iframe_llm_gemma_4_e2b_full/css/main.css">
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-85Z9VG7BQP"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-85Z9VG7BQP');
+    </script>
+</head>
+
+<body>
+    <iframe class="home-frame" src="/monitor" title="WebAI gateway monitor page"></iframe>
+
+    <div class="worker-column">
+        <iframe allow="screen-wake-lock" data-worker-name="llm-gemma-4-e2b-full"
+            data-enabled-stages="stage_llm_gemma_4_e2b_full" title="WebAI Gemma 4 E2B full-model worker page"></iframe>
+    </div>
+
+    <script type="module" src="/_shared/debug_iframe_worker_frames.ts"></script>
+</body>
+
+</html>

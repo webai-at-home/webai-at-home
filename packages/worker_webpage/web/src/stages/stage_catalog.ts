@@ -55,5 +55,9 @@ export class StageCatalog {
 			name: 'stage_llm_llama3_2_1b_full',
 			description: 'Generates text with the complete Llama 3.2 1B Instruct language model, downloaded and held entirely by this browser tab.',
 		},
+		{
+			name: 'stage_llm_gemma_4_e2b_full',
+			description: 'Generates text with the complete Gemma 4 E2B language model, downloaded and held entirely by this browser tab. Needs WebGPU and downloads about 3111 MB.',
+		},
 	];
 }

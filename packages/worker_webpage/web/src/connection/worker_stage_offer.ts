@@ -4,6 +4,7 @@ import { StageHelperLlmQwen3_0_6bSharded } from '../stages/stage_helper_llm_qwen
 import { StageHelperLlmGemmaNanoChromeFull } from '../stages/stage_helper_llm_gemma_nano_chrome_full';
 import { StageHelperLlmQwen3_5_0_8bFull } from '../stages/stage_helper_llm_qwen3_5_0_8b_full';
 import { StageHelperLlmLlama3_2_1bFull } from '../stages/stage_helper_llm_llama3_2_1b_full';
+import { StageHelperLlmGemma4E2bFull } from '../stages/stage_helper_llm_gemma_4_e2b_full';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -54,10 +55,13 @@ export class WorkerStageOffer {
 	 * offered stages that need the language model built into the browser, the offered stages that
 	 * need the complete Qwen3.5-0.8B model downloaded and held by this browser, and the offered
 	 * stages that need the complete Llama 3.2 1B Instruct model downloaded and held by this
-	 * browser. The two full-model lists are kept apart, rather than combined into one, so that a
-	 * tab offering only one of the two downloaded full models checks the readiness of and
-	 * downloads only that one — combining them would have a tab offering only the Llama stage
-	 * check Qwen3.5-0.8B's WebGPU and storage requirements and download Qwen3.5-0.8B's weights.
+	 * browser, and the offered stages that need the complete Gemma 4 E2B model downloaded and held
+	 * by this browser. The three full-model lists are kept apart, rather than combined into one, so
+	 * that a tab offering only one of the three downloaded full models checks the readiness of and
+	 * downloads only that one — combining them would have a tab offering only the Llama stage check
+	 * Qwen3.5-0.8B's WebGPU and storage requirements and download Qwen3.5-0.8B's weights. Keeping
+	 * Gemma 4 E2B apart matters most of the three: it is about 3111 MB, several times either of the
+	 * others, so a tab dragged into downloading it by a combined list would pay the largest price.
 	 */
 	static offeredStages(
 		pipelines: { stages: { name: string; computation: string }[] }[],
@@ -68,12 +72,14 @@ export class WorkerStageOffer {
 		builtInModelStageNames: string[];
 		qwen3_5_0_8bFullModelStageNames: string[];
 		llama3_2_1bFullModelStageNames: string[];
+		gemma4E2bFullModelStageNames: string[];
 	} {
 		const stageNames: string[] = [];
 		const llmShardIndexes: number[] = [];
 		const builtInModelStageNames: string[] = [];
 		const qwen3_5_0_8bFullModelStageNames: string[] = [];
 		const llama3_2_1bFullModelStageNames: string[] = [];
+		const gemma4E2bFullModelStageNames: string[] = [];
 		for (const pipeline of pipelines) {
 			for (const [stageIndex, stage] of pipeline.stages.entries()) {
 				if (WorkerStageOffer.implementsComputation(stage.computation) === false) {
@@ -109,9 +115,15 @@ export class WorkerStageOffer {
 				) {
 					llama3_2_1bFullModelStageNames.push(stage.name);
 				}
+				if (
+					StageHelperLlmGemma4E2bFull.implementsComputation(stage.computation)
+					&& gemma4E2bFullModelStageNames.includes(stage.name) === false
+				) {
+					gemma4E2bFullModelStageNames.push(stage.name);
+				}
 			}
 		}
-		return { stageNames, llmShardIndexes, builtInModelStageNames, qwen3_5_0_8bFullModelStageNames, llama3_2_1bFullModelStageNames };
+		return { stageNames, llmShardIndexes, builtInModelStageNames, qwen3_5_0_8bFullModelStageNames, llama3_2_1bFullModelStageNames, gemma4E2bFullModelStageNames };
 	}
 
 	/**
@@ -127,6 +139,7 @@ export class WorkerStageOffer {
 			|| StageHelperLlmQwen3_0_6bSharded.implementsComputation(computation)
 			|| StageHelperLlmGemmaNanoChromeFull.implementsComputation(computation)
 			|| StageHelperLlmQwen3_5_0_8bFull.implementsComputation(computation)
-			|| StageHelperLlmLlama3_2_1bFull.implementsComputation(computation);
+			|| StageHelperLlmLlama3_2_1bFull.implementsComputation(computation)
+			|| StageHelperLlmGemma4E2bFull.implementsComputation(computation);
 	}
 }

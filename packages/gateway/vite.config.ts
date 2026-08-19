@@ -32,6 +32,7 @@ export default defineConfig({
 				debugIframeLlmGemmaNanoChromeFull: Path.resolve(import.meta.dirname, 'web/debug_iframe_llm_gemma_nano_chrome_full/index.html'),
 				debugIframeLlmQwen3_5_0_8bFull: Path.resolve(import.meta.dirname, 'web/debug_iframe_llm_qwen3_5_0_8b_full/index.html'),
 				debugIframeLlmLlama3_2_1bFull: Path.resolve(import.meta.dirname, 'web/debug_iframe_llm_llama3_2_1b_full/index.html'),
+				debugIframeLlmGemma4E2bFull: Path.resolve(import.meta.dirname, 'web/debug_iframe_llm_gemma_4_e2b_full/index.html'),
 			},
 		},
 	},

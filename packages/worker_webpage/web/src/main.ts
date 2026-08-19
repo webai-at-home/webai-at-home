@@ -6,6 +6,7 @@ import { StageHelperLlmQwen3_0_6bSharded } from './stages/stage_helper_llm_qwen3
 import { StageHelperLlmGemmaNanoChromeFull } from './stages/stage_helper_llm_gemma_nano_chrome_full';
 import { StageHelperLlmQwen3_5_0_8bFull } from './stages/stage_helper_llm_qwen3_5_0_8b_full';
 import { StageHelperLlmLlama3_2_1bFull } from './stages/stage_helper_llm_llama3_2_1b_full';
+import { StageHelperLlmGemma4E2bFull } from './stages/stage_helper_llm_gemma_4_e2b_full';
 import type { ModelDownloadProgress } from './stages/model_download_progress.js';
 import { GatewayConfig } from './connection/gateway_config';
 import { GatewayLink } from './connection/gateway_link';
@@ -87,6 +88,7 @@ type OfferedStages = {
 	builtInModelStageNames: string[];
 	qwen3_5_0_8bFullModelStageNames: string[];
 	llama3_2_1bFullModelStageNames: string[];
+	gemma4E2bFullModelStageNames: string[];
 };
 
 /** How often the quiet tone's own state is checked for a change worth reflecting in the page. */
@@ -494,6 +496,7 @@ export class WorkerPage {
 			StageHelperLlmGemmaNanoChromeFull.clearEveryGeneration();
 			StageHelperLlmQwen3_5_0_8bFull.clearEveryGeneration();
 			StageHelperLlmLlama3_2_1bFull.clearEveryGeneration();
+			StageHelperLlmGemma4E2bFull.clearEveryGeneration();
 			this.isRegistered = false;
 			// The account belongs to the connection that proved it, so the next connection proves it
 			// again. The key pair itself stays in this browser's storage and is the same account.
@@ -718,6 +721,7 @@ export class WorkerPage {
 				StageHelperLlmGemmaNanoChromeFull.clearGeneration(message.taskId, message.stageAssignmentId);
 				StageHelperLlmQwen3_5_0_8bFull.clearGeneration(message.taskId, message.stageAssignmentId);
 				StageHelperLlmLlama3_2_1bFull.clearGeneration(message.taskId, message.stageAssignmentId);
+				StageHelperLlmGemma4E2bFull.clearGeneration(message.taskId, message.stageAssignmentId);
 			}
 			return;
 		}
@@ -889,6 +893,14 @@ export class WorkerPage {
 					message.generationSettings,
 				);
 			}
+			if (StageHelperLlmGemma4E2bFull.implementsComputation(computation)) {
+				return StageHelperLlmGemma4E2bFull.compute(
+					taskId,
+					stageAssignmentId,
+					value as Exclude<StagePayload, number>,
+					message.generationSettings,
+				);
+			}
 			return Promise.resolve(StageHelperDevFormula.compute(computation, value as number));
 		};
 		runComputation()
@@ -922,6 +934,7 @@ export class WorkerPage {
 				StageHelperLlmGemmaNanoChromeFull.clearGeneration(taskId, stageAssignmentId);
 				StageHelperLlmQwen3_5_0_8bFull.clearGeneration(taskId, stageAssignmentId);
 				StageHelperLlmLlama3_2_1bFull.clearGeneration(taskId, stageAssignmentId);
+				StageHelperLlmGemma4E2bFull.clearGeneration(taskId, stageAssignmentId);
 				const failedMessage: ClientMessage = {
 					type: 'stage.failed',
 					taskId,
@@ -1034,6 +1047,25 @@ export class WorkerPage {
 			} else {
 				this.statusEl.textContent = 'Downloading model files';
 				await StageHelperLlmLlama3_2_1bFull.preload((progress) => {
+					this.applyModelDownloadProgress(progress);
+				});
+			}
+		}
+		if (offered.gemma4E2bFullModelStageNames.length > 0) {
+			this.statusEl.textContent = 'Checking Gemma 4 E2B requirements';
+			this.statusEl.className = 'badge rounded-pill text-bg-warning';
+			const readiness = await StageHelperLlmGemma4E2bFull.readiness();
+			if (readiness.status !== 'ready') {
+				stageNames = stageNames.filter((stageName) => offered.gemma4E2bFullModelStageNames.includes(stageName) === false);
+				this.eventLog.add({
+					direction: 'local',
+					type: 'worker.full_model',
+					timestamp: new Date().toISOString(),
+					message: readiness.message,
+				});
+			} else {
+				this.statusEl.textContent = 'Downloading model files';
+				await StageHelperLlmGemma4E2bFull.preload((progress) => {
 					this.applyModelDownloadProgress(progress);
 				});
 			}
