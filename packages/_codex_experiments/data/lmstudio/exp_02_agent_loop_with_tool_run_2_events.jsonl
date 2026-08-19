@@ -1,0 +1,11 @@
+{"type":"thread.started","thread_id":"01a01ab3-5815-7211-b18e-9fd59dbe909b"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `google/gemma-4-e2b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'echo \"agent loop ready\" > agent_loop.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'echo \"agent loop ready\" > agent_loop.txt'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -lc 'cat agent_loop.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -lc 'cat agent_loop.txt'","aggregated_output":"agent loop ready\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_3","type":"command_execution","command":"/bin/zsh -lc 'ls agent_loop.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"command_execution","command":"/bin/zsh -lc 'ls agent_loop.txt'","aggregated_output":"agent_loop.txt\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"done<environment_context>/Users/jetienne/webwork/webai-at-home/packages/_codex_experiments/workspaces/lmstudio/run_2"}}
+{"type":"turn.completed","usage":{"input_tokens":35644,"cached_input_tokens":30976,"cache_write_input_tokens":0,"output_tokens":801,"reasoning_output_tokens":764}}

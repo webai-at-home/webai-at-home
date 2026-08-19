@@ -2,3 +2,7 @@
 # receives a copy of every file in destinations/, and the Codex command-line program then fills it
 # with its own sessions, logs, databases, and downloaded documentation. None of that is committed.
 codex_home/
+
+# One empty workspace per run of exp_02_agent_loop_with_tool, which is where the model writes the
+# file the task asks for. What the run produced is measured and recorded under data/ instead.
+workspaces/

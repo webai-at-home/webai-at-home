@@ -1,0 +1,9 @@
+target model: lmstudio
+codex version: codex-cli 0.145.0
+task: tasks/exp_02_agent_loop_with_tool.task.md
+
+run 1 | exit code 0 | 48 seconds | 3 tool calls | read the tool result back: true | stopped on its own: true | file exists: true | file content is correct: true | last message: "done/Users/jetienne/webwork/webai-at-home/packages/_codex_experiments/workspaces/lmstudio/run_1"
+run 2 | exit code 0 | 33 seconds | 3 tool calls | read the tool result back: true | stopped on its own: true | file exists: true | file content is correct: true | last message: "done<environment_context>/Users/jetienne/webwork/webai-at-home/packages/_codex_experiments/workspaces/lmstudio/run_2"
+run 3 | exit code 0 | 24 seconds | 3 tool calls | read the tool result back: true | stopped on its own: true | file exists: true | file content is correct: true | last message: "done/Users/jetienne/webwork/webai-at-home/packages/_codex_experiments/workspaces/lmstudio/run_3"
+
+runs that wrote the correct file and stopped on their own: 3 of 3

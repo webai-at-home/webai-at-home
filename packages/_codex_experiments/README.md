@@ -34,6 +34,26 @@ Each run writes the raw events, the last message, and the result under `data/<ta
 
 The `CODEX_HOME` of the person running the experiment is never read and never written. The Codex command-line program writes its own sessions, logs, databases, and downloaded documentation into the `CODEX_HOME` it is given, so `codex_home/` is generated on every run and is never committed.
 
-## `exp_02_agent_loop_with_tool` And `exp_03_prompt_size_measure`
+## `exp_02_agent_loop_with_tool`
 
-Not started. `exp_02_agent_loop_with_tool` gives the Codex command-line program one small task with a checkable result and measures whether the model can hold an agent loop together. `exp_03_prompt_size_measure` puts a recording proxy in front of the target model, measures the size of the prompt in tokens, and lists every request field the Codex command-line program sends.
+One small task with a checkable result, run three times against each target model.
+
+```bash
+npm run exp_02_agent_loop_with_tool:lmstudio --workspace @webai/codex-experiments
+```
+
+```bash
+npm run exp_02_agent_loop_with_tool:ollama --workspace @webai/codex-experiments
+```
+
+```bash
+npm run exp_02_agent_loop_with_tool:webai_at_home --workspace @webai/codex-experiments
+```
+
+Add `-- --repeats <count>` to run the task more or fewer times. The task is fixed text in [`tasks/exp_02_agent_loop_with_tool.task.md`](tasks/exp_02_agent_loop_with_tool.task.md), so every target model is given exactly the same task, word for word, and each run gets an empty workspace of its own under `workspaces/`.
+
+Four things are measured for every run: how many tool calls the model made, whether it wrote anything after its last tool call, whether the turn ended on its own, and whether the file the task asks for holds exactly the right line. The results are read in [`data/exp_02_agent_loop_with_tool_results.md`](data/exp_02_agent_loop_with_tool_results.md): LM Studio did the whole task correctly three times out of three, Ollama answered `done` three times without making a single tool call or creating any file, and WebAI@Home never started a turn.
+
+## `exp_03_prompt_size_measure`
+
+Not started. It puts a recording proxy in front of the target model, measures the size of the prompt in tokens, and lists every request field the Codex command-line program sends. It also settles why Ollama reports the same input token count for every prompt.

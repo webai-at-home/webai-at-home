@@ -1,7 +1,7 @@
-import ChildProcess from 'node:child_process';
 import Fs from 'node:fs';
 import Path from 'node:path';
 import { Command } from 'commander';
+import { CodexRun } from './codex_run.js';
 
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
@@ -40,17 +40,8 @@ export class Exp01OneTurnWithNoTool {
 	/** The question asked by this experiment. It needs no tool, so only the connection is tested. */
 	static readonly question = 'Reply with exactly one word and nothing else: ready';
 
-	/** The folder of this package, holding `target_models/`, `data/`, and `src/`. */
-	static readonly packageDirectory = Path.resolve(__dirname, '..');
-
-	/** The folder holding one configuration file per target model, which is committed. */
-	static readonly targetModelsDirectory = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'target_models');
-
-	/**
-	 * The folder given to the Codex command-line program as its `CODEX_HOME`. It is generated, it
-	 * holds a copy of every target model configuration file, and it is never committed.
-	 */
-	static readonly codexHomeDirectory = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'codex_home');
+	/** The name of this experiment, which names every file it writes. */
+	static readonly experimentName = 'exp_01_one_turn_with_no_tool';
 
 	/**
 	 * Runs this experiment against one target model and writes the recorded run under `data/`.
@@ -59,57 +50,39 @@ export class Exp01OneTurnWithNoTool {
 	 * @returns The result of the run, already written to disk.
 	 */
 	static run(targetModelName: string): Exp01OneTurnWithNoToolResult {
-		const configurationPath = Path.join(Exp01OneTurnWithNoTool.targetModelsDirectory, `${targetModelName}.target_model.toml`);
-		if (Fs.existsSync(configurationPath) === false) {
-			throw new Error(`no such target model: ${targetModelName}, expected ${configurationPath}`);
+		if (CodexRun.targetModelExists(targetModelName) === false) {
+			throw new Error(`no such target model: ${targetModelName}, expected ${CodexRun.targetModelFilePath(targetModelName)}`);
 		}
 
-		Exp01OneTurnWithNoTool._prepareCodexHome();
-
-		const outputDirectory = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'data', targetModelName);
+		const outputDirectory = Path.join(CodexRun.packageDirectory, 'data', targetModelName);
 		Fs.mkdirSync(outputDirectory, {
 			recursive: true,
 		});
 
-		const lastMessagePath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_last_message.txt');
-		const eventsPath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_events.jsonl');
-		const standardErrorPath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_stderr.txt');
-		const resultPath = Path.join(outputDirectory, 'exp_01_one_turn_with_no_tool_result.txt');
+		const lastMessagePath = Path.join(outputDirectory, `${Exp01OneTurnWithNoTool.experimentName}_last_message.txt`);
+		const eventsPath = Path.join(outputDirectory, `${Exp01OneTurnWithNoTool.experimentName}_events.jsonl`);
+		const standardErrorPath = Path.join(outputDirectory, `${Exp01OneTurnWithNoTool.experimentName}_stderr.txt`);
+		const resultPath = Path.join(outputDirectory, `${Exp01OneTurnWithNoTool.experimentName}_result.txt`);
 
-		const startedAt = Date.now();
-		const codexRun = ChildProcess.spawnSync(
-			'codex',
-			[
-				'exec',
-				'--profile', targetModelName,
-				'--cd', Exp01OneTurnWithNoTool.packageDirectory,
-				'--sandbox', 'read-only',
-				'--skip-git-repo-check',
-				'--json',
-				'--output-last-message', lastMessagePath,
-				Exp01OneTurnWithNoTool.question,
-			],
-			{
-				env: {
-					...process.env,
-					CODEX_HOME: Exp01OneTurnWithNoTool.codexHomeDirectory,
-				},
-				stdio: ['ignore', 'pipe', 'pipe'],
-				encoding: 'utf8',
-				maxBuffer: 64 * 1024 * 1024,
-			},
-		);
-		const finishedAt = Date.now();
+		const codexRunResult = CodexRun.execute([
+			'--profile', targetModelName,
+			'--cd', CodexRun.packageDirectory,
+			'--sandbox', 'read-only',
+			'--skip-git-repo-check',
+			'--json',
+			'--output-last-message', lastMessagePath,
+			Exp01OneTurnWithNoTool.question,
+		]);
 
-		Fs.writeFileSync(eventsPath, codexRun.stdout ?? '');
-		Fs.writeFileSync(standardErrorPath, codexRun.stderr ?? '');
+		Fs.writeFileSync(eventsPath, codexRunResult.eventsText);
+		Fs.writeFileSync(standardErrorPath, codexRunResult.standardErrorText);
 
 		const result: Exp01OneTurnWithNoToolResult = {
 			targetModelName: targetModelName,
 			question: Exp01OneTurnWithNoTool.question,
-			exitCode: codexRun.status ?? 1,
-			seconds: Math.round((finishedAt - startedAt) / 1000),
-			codexVersion: Exp01OneTurnWithNoTool._readCodexVersion(),
+			exitCode: codexRunResult.exitCode,
+			seconds: codexRunResult.seconds,
+			codexVersion: CodexRun.readVersion(),
 			lastMessage: Exp01OneTurnWithNoTool._readTextFile(lastMessagePath),
 		};
 
@@ -135,7 +108,7 @@ export class Exp01OneTurnWithNoTool {
 	static main(): void {
 		const command = new Command();
 		command
-			.name('exp_01_one_turn_with_no_tool')
+			.name(Exp01OneTurnWithNoTool.experimentName)
 			.description('The first experiment of issue #213: one whole turn with a question that needs no tool')
 			.argument('<target_model>', 'the target model to run against: lmstudio, ollama, or webai_at_home')
 			.action((targetModelName: string) => {
@@ -166,47 +139,6 @@ export class Exp01OneTurnWithNoTool {
 	///////////////////////////////////////////////////////////////////////////////
 
 	/**
-	 * Copies every `<target model>.target_model.toml` file into the generated `codex_home` folder as
-	 * `<target model>.config.toml`, which is the name the Codex command-line program reads when it
-	 * is given `--profile <target model>`. That folder is its `CODEX_HOME`. The two folders are
-	 * kept apart because the Codex command-line program writes its own sessions, logs, databases,
-	 * and downloaded documentation into its `CODEX_HOME`, and none of that belongs next to the
-	 * committed target model configuration files.
-	 *
-	 * @returns Nothing.
-	 */
-	private static _prepareCodexHome(): void {
-		Fs.mkdirSync(Exp01OneTurnWithNoTool.codexHomeDirectory, {
-			recursive: true,
-		});
-		for (const fileName of Fs.readdirSync(Exp01OneTurnWithNoTool.targetModelsDirectory)) {
-			if (fileName.endsWith('.target_model.toml') === false) {
-				continue;
-			}
-			const targetModelName = fileName.slice(0, fileName.length - '.target_model.toml'.length);
-			Fs.copyFileSync(
-				Path.join(Exp01OneTurnWithNoTool.targetModelsDirectory, fileName),
-				Path.join(Exp01OneTurnWithNoTool.codexHomeDirectory, `${targetModelName}.config.toml`),
-			);
-		}
-	}
-
-	/**
-	 * Reads the version of the installed Codex command-line program.
-	 *
-	 * @returns The version line it prints, or `unknown` when it cannot be run.
-	 */
-	private static _readCodexVersion(): string {
-		const versionRun = ChildProcess.spawnSync('codex', ['--version'], {
-			encoding: 'utf8',
-		});
-		if (versionRun.status !== 0) {
-			return 'unknown';
-		}
-		return (versionRun.stdout ?? '').trim();
-	}
-
-	/**
 	 * Reads a text file written by the run, tolerating a file the run never created.
 	 *
 	 * @param filePath The file to read.
@@ -227,7 +159,12 @@ export class Exp01OneTurnWithNoTool {
 	 * @returns One line per error event, or an empty string when the run recorded none.
 	 */
 	private static _readRecordedErrors(targetModelName: string): string {
-		const eventsPath = Path.join(Exp01OneTurnWithNoTool.packageDirectory, 'data', targetModelName, 'exp_01_one_turn_with_no_tool_events.jsonl');
+		const eventsPath = Path.join(
+			CodexRun.packageDirectory,
+			'data',
+			targetModelName,
+			`${Exp01OneTurnWithNoTool.experimentName}_events.jsonl`,
+		);
 		const eventsText = Exp01OneTurnWithNoTool._readTextFile(eventsPath);
 		if (eventsText === '') {
 			return '';
