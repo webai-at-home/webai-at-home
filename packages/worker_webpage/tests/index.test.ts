@@ -4,6 +4,7 @@ import Test from 'node:test';
 
 // local imports
 import { ToolCallReader } from '../web/src/stages/tool_call_reader.js';
+import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call_reader.js';
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -161,6 +162,135 @@ Test('builds the tool declarations in the shape the chat template reads them', (
 			},
 		},
 	]);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Gemma4E2bToolCallReader
+//
+//	Every answer text asserted against here is the raw text `onnx-community/gemma-4-E2B-it-ONNX` at
+//	`q4f16` on WebGPU really generated, captured from the live milestone 0 de-risk gate run for
+//	[issue #216](https://github.com/webai-at-home/webai-at-home/issues/216), decoded with
+//	`skip_special_tokens: false`. The two shapes written by hand say so where they are written, and
+//	they are written only because both tools of that gate take one string and so no captured answer
+//	carries a value of any other type.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** The raw text the model wrote when it was asked about the weather, captured from the live gate run. */
+const capturedGemmaWeatherCall = '<|tool_call>call:get_current_weather{city:<|"|>Paris<|"|>}<tool_call|><|tool_response>';
+
+/** The raw text the model wrote when it was asked about the time, captured from the live gate run. */
+const capturedGemmaTimeCall = '<|tool_call>call:get_current_time{city:<|"|>Paris<|"|>}<tool_call|><|tool_response>';
+
+Test('reads the tool call Gemma 4 E2B really wrote, with its name and its arguments', () => {
+	Assert.deepEqual(Gemma4E2bToolCallReader.read(capturedGemmaWeatherCall, declaredTools), [
+		{
+			name: 'get_current_weather',
+			argumentValues: {
+				city: 'Paris',
+			},
+		},
+	]);
+	Assert.deepEqual(Gemma4E2bToolCallReader.read(capturedGemmaTimeCall, declaredTools), [
+		{
+			name: 'get_current_time',
+			argumentValues: {
+				city: 'Paris',
+			},
+		},
+	]);
+});
+
+Test('the <|tool_response> the model writes after a call is not read as a second tool call', () => {
+	// It opens with the same five characters as the opening marker, and this export's own
+	// generation_config.json names it an end-of-sequence token, so it ends every tool call this
+	// reader will ever be given.
+	Assert.equal(Gemma4E2bToolCallReader.read(capturedGemmaWeatherCall, declaredTools).length, 1);
+});
+
+Test('reports no tool call for the answers Gemma 4 E2B really wrote in words', () => {
+	// Both captured from the live gate run. The trailing <turn|> is the end-of-turn marker, which
+	// arrives because this stage has to decode with skip_special_tokens: false to see a tool call at
+	// all, and which must not be mistaken for the opening of one.
+	Assert.deepEqual(Gemma4E2bToolCallReader.read('hello<turn|>', declaredTools), []);
+	Assert.deepEqual(
+		Gemma4E2bToolCallReader.read('The current weather in Paris is 31 degrees Celsius and clear skies.<turn|>', declaredTools),
+		[],
+	);
+});
+
+Test('every argument value is text, even though this format does say which type the model meant', () => {
+	// Written by hand: both tools of the gate take one string, so no captured answer carries a number,
+	// a boolean, or a nested value. The shape is the one the chat template renders, read off the
+	// pinned revision's own chat_template.jinja.
+	const call = '<|tool_call>call:get_current_weather{city:<|"|>Paris<|"|>,days:7,brief:true,at:{hour:9},tags:[<|"|>a<|"|>,2]}<tool_call|>';
+	// Text, not the number 7 and not the boolean true. That is the shape ToolCall.argumentValues
+	// defines, and the consumer that reads the tool's arguments schema converts each value back.
+	Assert.deepEqual(Gemma4E2bToolCallReader.read(call, declaredTools)[0]?.argumentValues, {
+		city: 'Paris',
+		days: '7',
+		brief: 'true',
+		at: '{"hour":9}',
+		tags: '["a",2]',
+	});
+});
+
+Test('a string value keeps the commas and braces written inside it', () => {
+	// Written by hand, for the same reason as the test above. The string markers are what say where
+	// a value ends, so a comma inside one must not end it.
+	const call = '<|tool_call>call:get_current_weather{city:<|"|>Paris, France}<|"|>}<tool_call|>';
+	Assert.deepEqual(Gemma4E2bToolCallReader.read(call, declaredTools)[0]?.argumentValues, {
+		city: 'Paris, France}',
+	});
+});
+
+Test('refuses a Gemma 4 E2B tool call it could not read, rather than dropping it or passing it on half-formed', () => {
+	// The reason this is a failure and not an empty result: a calling program runs whatever tool call
+	// it receives, so a call read wrongly is a call run wrongly on the caller's own machine.
+	Assert.throws(() => Gemma4E2bToolCallReader.read('<|tool_call>get_current_weather(city=Paris)<tool_call|>', declaredTools), /could not read/);
+	Assert.throws(() => Gemma4E2bToolCallReader.read('<|tool_call>call:{city:<|"|>Paris<|"|>}<tool_call|>', declaredTools), /no name/);
+	Assert.throws(() => Gemma4E2bToolCallReader.read('<|tool_call>call:get_current_weather{:<|"|>Paris<|"|>}<tool_call|>', declaredTools), /no name/);
+	// A model that invented a tool is reported, not believed. Running a tool nobody declared is the
+	// worst of the ways this could fail.
+	Assert.throws(
+		() => Gemma4E2bToolCallReader.read('<|tool_call>call:delete_everything{}<tool_call|>', declaredTools),
+		/never declared/,
+	);
+});
+
+Test('reads a Gemma 4 E2B tool call the model left unfinished as far as it got, rather than silently missing it', () => {
+	// This is what a generation cut short by the token cap leaves behind. It must not read as "the
+	// model answered in words", which is what a reader demanding the closing marker would report.
+	Assert.deepEqual(Gemma4E2bToolCallReader.read('<|tool_call>call:get_current_weather{city:<|"|>Par', declaredTools), [
+		{
+			name: 'get_current_weather',
+			argumentValues: {
+				city: 'Par',
+			},
+		},
+	]);
+	// Cut off before the arguments were opened. The name is still worth more to a caller than nothing.
+	Assert.deepEqual(Gemma4E2bToolCallReader.read('<|tool_call>call:get_current_weather', declaredTools), [
+		{
+			name: 'get_current_weather',
+			argumentValues: {},
+		},
+	]);
+});
+
+Test('says when Gemma 4 E2B has started a tool call, so a run does not report the opening of one as an answer', () => {
+	Assert.equal(Gemma4E2bToolCallReader.hasStartedAToolCall(capturedGemmaWeatherCall), true);
+	Assert.equal(Gemma4E2bToolCallReader.hasStartedAToolCall('hello<turn|>'), false);
+	// Reached one piece at a time, the way the streaming callback really sees it: false every time
+	// until the opening marker arrives, and true from then on.
+	let writtenSoFar = '';
+	const sawStarted: boolean[] = [];
+	for (const piece of ['', '<|tool_call>', 'call:get_current_weather{', 'city:<|"|>Paris<|"|>}', '<tool_call|>']) {
+		writtenSoFar += piece;
+		sawStarted.push(Gemma4E2bToolCallReader.hasStartedAToolCall(writtenSoFar));
+	}
+	Assert.deepEqual(sawStarted, [false, true, true, true, true]);
 });
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -2,17 +2,16 @@
 
 ## Purpose
 
-One stage helper per stage this browser page can run, the fixed list of every stage it can offer, and the readers of generated text a stage helper needs, for tool calls and for stop sequences.
+One stage helper per stage this page can run, the list of stages it can offer, and the readers of generated text a stage helper needs.
 
 ## Key Exports & Entry Points
 
-- `stage_catalog.ts`: the fixed list of every stage this page can offer to run.
-- `stage_helper_dev_formula.ts`: the development formula stages, exercising the pipeline with no model.
-- `stage_helper_llm_qwen3_0_6b_sharded.ts`: one Qwen3-0.6B shard, its sampler written by hand over the logits.
-- `stage_helper_llm_qwen3_5_0_8b_full.ts`, `stage_helper_llm_llama3_2_1b_full.ts`, `stage_helper_llm_gemma_4_e2b_full.ts`, `stage_helper_llm_gemma_nano_chrome_full.ts`: three complete models and one browser engine.
-- `tool_call_reader.ts`: reading the tool calls Qwen3.5 writes out of its generated text.
-- `stop_sequence_watcher.ts`: stopping an answer at a consumer's stop sequence without forwarding it.
-- `model_download_progress.ts`: the steps a stage helper reports while a model downloads.
+- `stage_catalog.ts`: the fixed list of stages this page can offer.
+- `stage_helper_dev_formula.ts`: the development formula stages, with no model.
+- One `stage_helper_llm_*_full.ts` per complete model, plus `stage_helper_llm_qwen3_0_6b_sharded.ts` for one shard with a hand-written sampler.
+- `tool_call_reader.ts`, `gemma_4_e2b_tool_call_reader.ts`: the tool calls Qwen3.5 and Gemma 4 E2B write.
+- `stop_sequence_watcher.ts`: stopping an answer at a stop sequence without forwarding it.
+- `model_download_progress.ts`: the steps reported while a model downloads.
 
 ## Rules
 
@@ -23,10 +22,12 @@ One stage helper per stage this browser page can run, the fixed list of every st
 - A stop sequence goes through `StopSequenceWatcher`, never one chunk at a time: it can straddle two, and a forwarded chunk cannot be recalled.
 - A stage helper samples only for an answer asking for a temperature or a `topP`, so a consumer asking for nothing still gets greedy decoding.
 - `stage_helper_llm_qwen3_5_0_8b_full.ts` reads `reasoningEffort` as `enable_thinking`: `none` off, any level above it on, nothing asked for does not think ([#192](https://github.com/webai-at-home/webai-at-home/issues/192)).
-- `stage_helper_llm_gemma_4_e2b_full.ts` asks for `webgpu` unconditionally and refuses without it. WebAssembly would be too slow to be worth offering ([issue #211](https://github.com/webai-at-home/webai-at-home/issues/211)).
+- `stage_helper_llm_gemma_4_e2b_full.ts` asks for `webgpu` unconditionally and refuses without it. WebAssembly would be too slow to be worth offering ([#211](https://github.com/webai-at-home/webai-at-home/issues/211)).
+- Each tool call reader reads one format; Gemma 4 E2B's markers are special tokens, so its stage decodes with `skip_special_tokens: false` ([#216](https://github.com/webai-at-home/webai-at-home/issues/216)).
 - This folder imports from no other folder of this package.
 
 ## Background
 
-- Token counts and stop reasons come from [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150) and [#154](https://github.com/webai-at-home/webai-at-home/issues/154).
+- Token counts and stop reasons come from [#150](https://github.com/webai-at-home/webai-at-home/issues/150) and [#154](https://github.com/webai-at-home/webai-at-home/issues/154).
 - The control rules come from [#196](https://github.com/webai-at-home/webai-at-home/issues/196), whose gate found Transformers.js acts on neither `top_p` nor a seed.
+- Qwen3.5's tool call format was measured in the gate of [#115](https://github.com/webai-at-home/webai-at-home/issues/115).
