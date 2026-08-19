@@ -123,27 +123,4 @@ export class ToolCallReader {
 		}
 		return toolCalls;
 	}
-
-	/**
-	 * Builds the tool declarations to hand to the chat template, from the ones the history
-	 * carried.
-	 *
-	 * The template renders these back out as JSON into the prompt, in the shape the OpenAI Chat
-	 * Completions interface spells them, which is the shape it was written against. So this is the
-	 * one place in this worker where that interface's spelling is rebuilt, from this project's own
-	 * naming, on the way into a chat template rather than on the way out to a client.
-	 *
-	 * @param declaredTools The tools the history declared.
-	 * @returns The declarations in the shape `apply_chat_template` takes them.
-	 */
-	static toChatTemplateTools(declaredTools: readonly ToolDeclaration[]): Record<string, unknown>[] {
-		return declaredTools.map((tool) => ({
-			type: 'function',
-			function: {
-				name: tool.name,
-				...(tool.description === undefined ? {} : { description: tool.description }),
-				parameters: tool.parametersJsonSchema,
-			},
-		}));
-	}
 }

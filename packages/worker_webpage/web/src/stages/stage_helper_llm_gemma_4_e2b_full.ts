@@ -1,5 +1,7 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, type Message, type TextGenerationPipeline } from '@huggingface/transformers';
-import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
+import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
+import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
+import { ChatTemplateTools } from './chat_template_tools.js';
 import type { FullModelReadiness } from './stage_helper_llm_qwen3_5_0_8b_full.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 
@@ -105,6 +107,25 @@ type TaskGenerationState = {
 	idleTimer: ReturnType<typeof setTimeout> | undefined;
 	/** The pieces of the answer received so far, joined. */
 	text: string;
+	/**
+	 * The tools the history declared, empty when it declared none.
+	 *
+	 * Read once, from the run that starts the answer, and kept for the runs that carry it on, because
+	 * only the first run of a task carries the history. It decides three things: whether the
+	 * declarations reach the chat template, whether the generated text is decoded keeping the special
+	 * tokens a tool call is written with, and whether the answer may be reported one piece at a time.
+	 */
+	declaredTools: readonly ToolDeclaration[];
+	/**
+	 * Every token identifier the model has generated for this answer, in order.
+	 *
+	 * Kept because one answer may have to be decoded two ways. A run that declared tools decodes
+	 * keeping the special tokens, so that a tool call can be found at all, and then decodes these same
+	 * identifiers again with the special tokens skipped when the model answered in words instead — so
+	 * the answer a consumer receives never carries an end-of-turn marker, and is arrived at by
+	 * decoding rather than by cutting markers off text by hand.
+	 */
+	generatedTokenIds: number[];
 	/** How many pieces have been read, which bounds how long one answer may be read for. */
 	pieceCount: number;
 	/**
@@ -174,9 +195,25 @@ type TaskGenerationState = {
  *   about this model has been measured yet, and milestone 5 of issue #211 is where they are widened
  *   from a live run. Do not wire a control through here before that row names it: a control acted on
  *   without being declared is exactly as wrong as one declared without being acted on.
- * - It reads no tool call, because this task type declares no tools. The chat template carries tool
- *   macros and an OpenAI-compatible server honoured tool calling for this model in issue #210, but
- *   that was a different route with a different engine, and it deserves its own gate.
+ *
+ * It does read tool calls, since milestone 2 of
+ * https://github.com/webai-at-home/webai-at-home/issues/216, and the format it reads them in was
+ * measured in that issue's milestone 0 rather than taken from what this model family is known to do.
+ * Two things about that are worth knowing before this file is changed:
+ *
+ * - A run that declared tools decodes the generated text **keeping** the special tokens, because
+ *   every marker a tool call is written with is a special token of this tokenizer. A run that
+ *   declared none keeps skipping them, so nothing about an answer to a task that declared no tool
+ *   changes at all.
+ * - Nothing here watches for a complete tool call to stop generation on. The `<|tool_response>` the
+ *   model writes after a call is token 50, which this export's own `generation_config.json` names an
+ *   end-of-sequence token, so the model writes the call, opens the place the tool's answer goes, and
+ *   stops by itself.
+ *
+ * A history carrying a finished tool round trip is not rendered back yet. That is milestone 3 of the
+ * same issue, and until it is done `task_type_llm_gemma_4_e2b_full` still refuses a request that
+ * declares a tool — `taskTypeNamesAcceptingTools` in `packages/consumer_cli` is the gate, and it
+ * opens in milestone 5.
  *
  * The model is loaded once per page and shared by every task this browser runs. Only the generation
  * in progress is kept per task.
@@ -297,7 +334,15 @@ export class StageHelperLlmGemma4E2bFull {
 		const state = payload.isContinuation === true
 			? StageHelperLlmGemma4E2bFull.heldGeneration(taskId, stageAssignmentId)
 			: StageHelperLlmGemma4E2bFull.newGeneration(taskId, stageAssignmentId);
-		const wantsPieces = generationSettings?.isStreaming === true;
+		if (payload.isContinuation !== true) {
+			state.declaredTools = payload.history?.tools ?? [];
+		}
+		// A history that declared tools is never read in pieces, even when the consumer asked for
+		// pieces. Until the model has finished writing, a piece of a tool call is indistinguishable
+		// from a piece of an answer — the two begin the same way — so reporting pieces would send a
+		// consumer the raw `<|tool_call>` markup of a request it was supposed to receive as structured
+		// data. One run reads the whole thing and returns either an answer or the tool calls.
+		const wantsPieces = generationSettings?.isStreaming === true && state.declaredTools.length === 0;
 		// A run that returns a piece leaves the answer open behind it, so it is the one kind of run
 		// that must not release what it was reading. Every other way out of this method — the finished
 		// answer, and every failure — releases it.
@@ -325,7 +370,18 @@ export class StageHelperLlmGemma4E2bFull {
 				}
 			}
 			StageHelperLlmGemma4E2bFull.refuseIfReplaced(state, stageAssignmentId);
-			return StagePayloadFactory.llmDone(state.text, undefined, StageHelperLlmGemma4E2bFull.usageOf(state));
+			// A tool call that cannot be read throws out of here, which fails the stage and names what
+			// could not be read. That is deliberate: a calling program runs whatever tool call it
+			// receives, so a call read wrongly is a call run wrongly on the caller's own machine.
+			const toolCalls = Gemma4E2bToolCallReader.read(state.text, state.declaredTools);
+			if (toolCalls.length > 0) {
+				return StagePayloadFactory.llmToolCalls(toolCalls, StageHelperLlmGemma4E2bFull.usageOf(state));
+			}
+			return StagePayloadFactory.llmDone(
+				await StageHelperLlmGemma4E2bFull.answerTextOf(state),
+				undefined,
+				StageHelperLlmGemma4E2bFull.usageOf(state),
+			);
 		} finally {
 			if (leavesAnswerOpen === false) {
 				StageHelperLlmGemma4E2bFull.clearGeneration(taskId, stageAssignmentId);
@@ -423,6 +479,8 @@ export class StageHelperLlmGemma4E2bFull {
 			unreportedText: '',
 			idleTimer: undefined,
 			text: '',
+			declaredTools: [],
+			generatedTokenIds: [],
 			pieceCount: 0,
 			isReleased: false,
 			promptTokenCount: undefined,
@@ -546,6 +604,7 @@ export class StageHelperLlmGemma4E2bFull {
 			add_generation_prompt: true,
 			enable_thinking: false,
 			return_dict: false,
+			...ChatTemplateTools.templateOption(state.declaredTools),
 		});
 		state.promptTokenCount = promptTensor.data?.length;
 		const criteria = new InterruptableStoppingCriteria();
@@ -600,12 +659,19 @@ export class StageHelperLlmGemma4E2bFull {
 		state: TaskGenerationState,
 	): ReadableStream<string> {
 		let isCancelled = false;
-		const tokenIds: number[] = [];
+		const tokenIds = state.generatedTokenIds;
+		// A run that declared tools has to keep the special tokens, because every marker a tool call is
+		// written with is a special token of this tokenizer and skipping them would strip the call down
+		// to text no reader could find it in. A run that declared none keeps skipping them, so a task
+		// submitted before tool calling existed receives byte for byte the answer it always did — and
+		// so an answer reported one piece at a time never carries a marker, which is the one case
+		// nothing could strip after the fact, a forwarded piece being impossible to recall.
+		const keepsSpecialTokens = state.declaredTools.length > 0;
 		return new ReadableStream<string>({
 			start(controller) {
 				const streamer = new TextStreamer(generator.tokenizer, {
 					skip_prompt: true,
-					skip_special_tokens: true,
+					skip_special_tokens: keepsSpecialTokens === false,
 					callback_function: (chunk: string) => {
 						if (isCancelled === false && chunk !== '') {
 							controller.enqueue(chunk);
@@ -617,7 +683,15 @@ export class StageHelperLlmGemma4E2bFull {
 						}
 					},
 				});
-				generator(StageHelperLlmGemma4E2bFull.messagesOf(promptOrHistory), {
+				// A history that declared tools is rendered into a prompt here and generated from as
+				// text. The text-generation pipeline applies the chat template itself when it is handed
+				// a message list, and exposes no way to pass tool declarations through when it does, so
+				// a message list would silently produce a prompt with no tools in it. Every task that
+				// declared no tool still goes through the message list, exactly as it always has.
+				const input = state.declaredTools.length === 0
+					? StageHelperLlmGemma4E2bFull.messagesOf(promptOrHistory)
+					: StageHelperLlmGemma4E2bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools);
+				generator(input, {
 					max_new_tokens: MAX_NEW_TOKENS,
 					do_sample: false,
 					return_full_text: false,
@@ -640,6 +714,61 @@ export class StageHelperLlmGemma4E2bFull {
 				isCancelled = true;
 				criteria.interrupt();
 			},
+		});
+	}
+
+	/**
+	 * The answer to report, for a run whose model wrote words rather than asking for a tool.
+	 *
+	 * A run that declared no tool decoded with the special tokens skipped already, so the text it
+	 * read is the answer, byte for byte as this stage has always reported it.
+	 *
+	 * A run that declared tools had to keep the special tokens, so its text ends in the end-of-turn
+	 * marker the model wrote, which no consumer asked for. The answer is arrived at by decoding the
+	 * same token identifiers a second time with the special tokens skipped, rather than by cutting
+	 * markers off the text: the set of markers this model may write is the model's, not this file's,
+	 * and a list of them written here would be one more thing to keep in step with the model.
+	 *
+	 * @param state The generation state holding the text read and the tokens it came from.
+	 * @returns The answer text to report.
+	 */
+	private static async answerTextOf(state: TaskGenerationState): Promise<string> {
+		if (state.declaredTools.length === 0) {
+			return state.text;
+		}
+		const generator = await StageHelperLlmGemma4E2bFull.loadedGenerator();
+		return (
+			generator.tokenizer as unknown as {
+				decode: (tokenIds: number[], options: Record<string, unknown>) => string;
+			}
+		).decode(state.generatedTokenIds, { skip_special_tokens: true });
+	}
+
+	/**
+	 * Renders a history into the prompt text to generate from, with the declared tools in it.
+	 *
+	 * Used only when tools were declared. Every other task hands its message list to the pipeline and
+	 * lets the pipeline apply the template, exactly as before.
+	 *
+	 * @param generator The loaded text-generation pipeline, read for its tokenizer's chat template.
+	 * @param promptOrHistory The prompt or history submitted with the task.
+	 * @param declaredTools The tools the history declared.
+	 * @returns The prompt text to generate from.
+	 */
+	private static renderedPrompt(
+		generator: TextGenerationPipeline,
+		promptOrHistory: string | HistoryInput,
+		declaredTools: readonly ToolDeclaration[],
+	): string {
+		return (
+			generator.tokenizer as unknown as {
+				apply_chat_template: (messages: unknown[], options: Record<string, unknown>) => string;
+			}
+		).apply_chat_template(StageHelperLlmGemma4E2bFull.messagesOf(promptOrHistory), {
+			tokenize: false,
+			add_generation_prompt: true,
+			enable_thinking: false,
+			...ChatTemplateTools.templateOption(declaredTools),
 		});
 	}
 

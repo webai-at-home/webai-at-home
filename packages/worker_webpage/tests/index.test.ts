@@ -4,6 +4,7 @@ import Test from 'node:test';
 
 // local imports
 import { ToolCallReader } from '../web/src/stages/tool_call_reader.js';
+import { ChatTemplateTools } from '../web/src/stages/chat_template_tools.js';
 import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call_reader.js';
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
 
@@ -140,7 +141,7 @@ Test('says when a complete tool call has been written, so generation stops inste
 });
 
 Test('builds the tool declarations in the shape the chat template reads them', () => {
-	Assert.deepEqual(ToolCallReader.toChatTemplateTools([{ name: 'get_current_time', description: 'Reports the time.', parametersJsonSchema: { type: 'object' } }]), [
+	Assert.deepEqual(ChatTemplateTools.of([{ name: 'get_current_time', description: 'Reports the time.', parametersJsonSchema: { type: 'object' } }]), [
 		{
 			type: 'function',
 			function: {
@@ -153,7 +154,7 @@ Test('builds the tool declarations in the shape the chat template reads them', (
 		},
 	]);
 	// A tool whose name says enough leaves the description out entirely, rather than declaring it empty.
-	Assert.deepEqual(ToolCallReader.toChatTemplateTools([{ name: 'get_current_time', parametersJsonSchema: {} }]), [
+	Assert.deepEqual(ChatTemplateTools.of([{ name: 'get_current_time', parametersJsonSchema: {} }]), [
 		{
 			type: 'function',
 			function: {
@@ -162,6 +163,22 @@ Test('builds the tool declarations in the shape the chat template reads them', (
 			},
 		},
 	]);
+});
+
+Test('declaring no tool adds nothing at all to the chat template call, rather than an empty list', () => {
+	// Byte for byte the prompt it always was, for every task submitted before tool calling existed.
+	Assert.deepEqual(ChatTemplateTools.templateOption([]), {});
+	Assert.deepEqual(ChatTemplateTools.templateOption([{ name: 'get_current_time', parametersJsonSchema: {} }]), {
+		tools: [
+			{
+				type: 'function',
+				function: {
+					name: 'get_current_time',
+					parameters: {},
+				},
+			},
+		],
+	});
 });
 
 ///////////////////////////////////////////////////////////////////////////////

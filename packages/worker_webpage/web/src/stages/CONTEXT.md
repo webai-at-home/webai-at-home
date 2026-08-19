@@ -7,9 +7,9 @@ One stage helper per stage this page can run, the list of stages it can offer, a
 ## Key Exports & Entry Points
 
 - `stage_catalog.ts`: the fixed list of stages this page can offer.
-- `stage_helper_dev_formula.ts`: the development formula stages, with no model.
-- One `stage_helper_llm_*_full.ts` per complete model, plus `stage_helper_llm_qwen3_0_6b_sharded.ts` for one shard with a hand-written sampler.
+- One `stage_helper_<stage name>.ts` per stage, named as the rule below says.
 - `tool_call_reader.ts`, `gemma_4_e2b_tool_call_reader.ts`: the tool calls Qwen3.5 and Gemma 4 E2B write.
+- `chat_template_tools.ts`: a history's tool declarations, in the shape every chat template reads them.
 - `stop_sequence_watcher.ts`: stopping an answer at a stop sequence without forwarding it.
 - `model_download_progress.ts`: the steps reported while a model downloads.
 

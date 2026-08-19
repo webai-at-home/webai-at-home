@@ -2,6 +2,7 @@ import { pipeline, TextStreamer, InterruptableStoppingCriteria, type Message, ty
 import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
 import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 import { ToolCallReader } from './tool_call_reader.js';
+import { ChatTemplateTools } from './chat_template_tools.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -558,7 +559,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			add_generation_prompt: true,
 			enable_thinking: StageHelperLlmQwen3_5_0_8bFull.isThinkingEnabled(generationSettings),
 			return_dict: false,
-			...StageHelperLlmQwen3_5_0_8bFull.toolTemplateOption(state.declaredTools),
+			...ChatTemplateTools.templateOption(state.declaredTools),
 		});
 		state.promptTokenCount = promptTensor.data?.length;
 		const criteria = new InterruptableStoppingCriteria();
@@ -566,25 +567,6 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 		state.stopSequenceWatcher = new StopSequenceWatcher(generationSettings?.stopSequences ?? []);
 		state.reader = StageHelperLlmQwen3_5_0_8bFull.createGenerationStream(generator, promptOrHistory, criteria, state, generationSettings).getReader();
 		return state.reader;
-	}
-
-	/**
-	 * Builds the `tools` option handed to the chat template, or nothing at all when the history
-	 * declared no tool.
-	 *
-	 * Nothing is added to the call when there are no tools, rather than an empty list, so that every
-	 * task submitted before tool calling existed produces byte for byte the prompt it always did.
-	 *
-	 * @param declaredTools The tools the history declared.
-	 * @returns The option to spread into the chat template call, empty when no tool was declared.
-	 */
-	private static toolTemplateOption(declaredTools: readonly ToolDeclaration[]): Record<string, unknown> {
-		if (declaredTools.length === 0) {
-			return {};
-		}
-		return {
-			tools: ToolCallReader.toChatTemplateTools(declaredTools),
-		};
 	}
 
 	/**
@@ -922,7 +904,7 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			tokenize: false,
 			add_generation_prompt: true,
 			enable_thinking: StageHelperLlmQwen3_5_0_8bFull.isThinkingEnabled(generationSettings),
-			...StageHelperLlmQwen3_5_0_8bFull.toolTemplateOption(declaredTools),
+			...ChatTemplateTools.templateOption(declaredTools),
 		});
 	}
 }
