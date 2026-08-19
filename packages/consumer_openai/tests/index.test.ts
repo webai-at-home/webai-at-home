@@ -309,12 +309,16 @@ Test('refuses a generation control the model named cannot honour, rather than dr
 ///////////////////////////////////////////////////////////////////////////////
 
 Test('offers one model for each task type the cluster runs', () => {
-	Assert.deepEqual(ModelCatalog.modelIds, ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full']);
+	Assert.deepEqual(ModelCatalog.modelIds, ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full', 'llm_gemma_4_e2b_full']);
 	Assert.equal(ModelCatalog.taskTypeNameOf('dev_formula'), 'dev_formula');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_qwen3_0_6b_sharded'), 'llm_qwen3_0_6b_sharded');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_gemma_nano_chrome_full'), 'llm_gemma_nano_chrome_full');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_qwen3_5_0_8b_full'), 'llm_qwen3_5_0_8b_full');
 	Assert.equal(ModelCatalog.taskTypeNameOf('llm_llama3_2_1b_full'), 'llm_llama3_2_1b_full');
+	// This one is here without `model_catalog.ts` having been touched: `ModelCatalog.modelIds` is
+	// `taskTypeNames` itself, so a task type added in `@webai/consumer-cli` reaches `GET /v1/models`
+	// and the check on a request's `model` field at the same moment, and the two cannot drift apart.
+	Assert.equal(ModelCatalog.taskTypeNameOf('llm_gemma_4_e2b_full'), 'llm_gemma_4_e2b_full');
 	// The task type name itself is not a model identifier, and neither is a name nobody offers.
 	Assert.equal(ModelCatalog.taskTypeNameOf('task_type_dev_formula'), undefined);
 	Assert.equal(ModelCatalog.taskTypeNameOf('gpt-4o'), undefined);
@@ -323,7 +327,7 @@ Test('offers one model for each task type the cluster runs', () => {
 Test('lists the models in the shape an OpenAI client reads', () => {
 	const list = ModelCatalog.list(1_700_000_000);
 	Assert.equal(list.object, 'list');
-	Assert.equal(list.data.length, 5);
+	Assert.equal(list.data.length, 6);
 	Assert.deepEqual(list.data[0], { id: 'dev_formula', object: 'model', created: 1_700_000_000, owned_by: 'webai-at-home' });
 });
 

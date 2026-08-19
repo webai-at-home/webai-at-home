@@ -32,6 +32,8 @@
     "sample:llm_qwen3_5_0_8b_full": "npx tsx src/cli.ts submit --task_type llm_qwen3_5_0_8b_full --consumer_name llm-qwen3-5-0-8b-full-consumer 'What is the capital of France?' | jq",
     "presample:llm_llama3_2_1b_full": "npm run build:dependencies",
     "sample:llm_llama3_2_1b_full": "npx tsx src/cli.ts submit --task_type llm_llama3_2_1b_full --consumer_name llm-llama3-2-1b-full-consumer 'What is the capital of France?' | jq",
+    "presample:llm_gemma_4_e2b_full": "npm run build:dependencies",
+    "sample:llm_gemma_4_e2b_full": "npx tsx src/cli.ts submit --task_type llm_gemma_4_e2b_full --consumer_name llm-gemma-4-e2b-full-consumer 'What is the capital of France?' | jq",
     "presample:status": "npm run build:dependencies",
     "sample:status": "npx tsx src/cli.ts status --gateway-url ws://localhost:8787 -f json | jq",
     "presample:capacity": "npm run build:dependencies",

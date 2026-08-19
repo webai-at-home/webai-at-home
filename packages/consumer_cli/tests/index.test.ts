@@ -43,7 +43,7 @@ Test('validates large-language-model input', () => {
 });
 
 Test('builds the task input for every task type a consumer may submit', () => {
-	Assert.deepEqual(taskTypeNames, ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full']);
+	Assert.deepEqual(taskTypeNames, ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full', 'llm_gemma_4_e2b_full']);
 	Assert.equal(TaskInputFactory.isTaskTypeName('llm_gemma_nano_chrome_full'), true);
 	Assert.equal(TaskInputFactory.isTaskTypeName('task_type_llm_gemma_nano_chrome_full'), false);
 	Assert.deepEqual(TaskInputFactory.createTaskInput('dev_formula', '5'), { taskType: 'task_type_dev_formula', input: 5 });
@@ -54,12 +54,15 @@ Test('builds the task input for every task type a consumer may submit', () => {
 	Assert.throws(() => TaskInputFactory.createTaskInput('llm_qwen3_5_0_8b_full', '  '), /Input must be a non-empty string/);
 	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_llama3_2_1b_full', 'hello'), { taskType: 'task_type_llm_llama3_2_1b_full', input: 'hello' });
 	Assert.throws(() => TaskInputFactory.createTaskInput('llm_llama3_2_1b_full', '  '), /Input must be a non-empty string/);
+	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_gemma_4_e2b_full', 'hello'), { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello' });
+	Assert.throws(() => TaskInputFactory.createTaskInput('llm_gemma_4_e2b_full', '  '), /Input must be a non-empty string/);
 });
 
-Test('accepts a whole history for the two task types whose worker can hand one to its chat template, and refuses it for every other', () => {
-	Assert.deepEqual(taskTypeNamesAcceptingHistory, ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full']);
+Test('accepts a whole history for the three task types whose worker can hand one to its chat template, and refuses it for every other', () => {
+	Assert.deepEqual(taskTypeNamesAcceptingHistory, ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full', 'llm_gemma_4_e2b_full']);
 	Assert.equal(TaskInputFactory.acceptsHistory('llm_qwen3_5_0_8b_full'), true);
 	Assert.equal(TaskInputFactory.acceptsHistory('llm_llama3_2_1b_full'), true);
+	Assert.equal(TaskInputFactory.acceptsHistory('llm_gemma_4_e2b_full'), true);
 	Assert.equal(TaskInputFactory.acceptsHistory('llm_qwen3_0_6b_sharded'), false);
 	Assert.equal(TaskInputFactory.acceptsHistory('llm_gemma_nano_chrome_full'), false);
 	Assert.equal(TaskInputFactory.acceptsHistory('dev_formula'), false);
@@ -67,6 +70,7 @@ Test('accepts a whole history for the two task types whose worker can hand one t
 	const history = { messages: [{ role: 'user' as const, content: 'What is the capital of France?' }] };
 	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_qwen3_5_0_8b_full', history), { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: history });
 	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_llama3_2_1b_full', history), { taskType: 'task_type_llm_llama3_2_1b_full', input: history });
+	Assert.deepEqual(TaskInputFactory.createTaskInput('llm_gemma_4_e2b_full', history), { taskType: 'task_type_llm_gemma_4_e2b_full', input: history });
 	// A task type that only takes a prompt refuses a history plainly, rather than reading
 	// some part of it or silently dropping the rest.
 	Assert.throws(() => TaskInputFactory.createTaskInput('llm_gemma_nano_chrome_full', history), /takes a single prompt, not a whole history/);

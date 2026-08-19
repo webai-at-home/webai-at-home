@@ -10,7 +10,7 @@ import type { HistoryInput, GenerationSettings, TaskInput } from '@webai/protoco
  * The task types a consumer may submit, each named as its task type without the leading
  * `task_type_`. This is the list the `-t/--task_type` command line option accepts.
  */
-export const taskTypeNames = ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full'] as const;
+export const taskTypeNames = ['dev_formula', 'llm_qwen3_0_6b_sharded', 'llm_gemma_nano_chrome_full', 'llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full', 'llm_gemma_4_e2b_full'] as const;
 
 /** One of the task types a consumer may submit. */
 export type TaskTypeName = typeof taskTypeNames[number];
@@ -19,18 +19,19 @@ export type TaskTypeName = typeof taskTypeNames[number];
  * The task types that accept a whole history, rather than only one prompt.
  *
  * These are exactly the task types whose stage helper can hand a message list to its model: the
- * complete Qwen3.5-0.8B model and the complete Llama 3.2 1B Instruct model, whose workers each
- * apply the model's chat template through `@huggingface/transformers`. Llama 3.2 1B Instruct's
- * task type can also be run by a worker that forwards the messages to a local server speaking the
- * OpenAI-compatible API instead of downloading and running the model itself, but that is a choice
- * of which worker is assigned the task, not something a consumer names here.
+ * complete Qwen3.5-0.8B model, the complete Llama 3.2 1B Instruct model, and the complete Gemma 4
+ * E2B model, whose workers each apply the model's chat template through
+ * `@huggingface/transformers`. Llama 3.2 1B Instruct's task type can also be run by a worker that
+ * forwards the messages to a local server speaking the OpenAI-compatible API instead of downloading
+ * and running the model itself, but that is a choice of which worker is assigned the task, not
+ * something a consumer names here.
  *
  * The other two language-model task types take a prompt and nothing else. The Chrome built-in
  * model is given one piece of text by the browser's own prompt interface, and the sharded Qwen3
  * worker builds its chat template as a string by hand. Both would have to have a history
  * flattened for them, which is the thing this widening exists to stop, so neither is offered it.
  */
-export const taskTypeNamesAcceptingHistory = ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full'] as const;
+export const taskTypeNamesAcceptingHistory = ['llm_qwen3_5_0_8b_full', 'llm_llama3_2_1b_full', 'llm_gemma_4_e2b_full'] as const;
 
 /** One of the task types that accept a whole history. */
 export type TaskTypeNameAcceptingHistory = typeof taskTypeNamesAcceptingHistory[number];
@@ -51,6 +52,15 @@ export type TaskTypeNameAcceptingHistory = typeof taskTypeNamesAcceptingHistory[
  * declaration, so declaring tools to it would be accepted and dropped, which is the worst of the
  * possible answers — the consumer would receive an answer generated as though it had declared
  * nothing, and be told nothing went wrong.
+ *
+ * `llm_gemma_4_e2b_full` is left out for exactly that reason too, and it is the case most likely to
+ * be added by mistake. Its chat template really does carry tool macros, and an OpenAI-compatible
+ * server really did pass every tool calling test for this model in
+ * [issue #210](https://github.com/webai-at-home/webai-at-home/issues/210) — but that was a local
+ * model server, and no worker in this project reaches this task type that way. Its worker browser
+ * tab reads no tool call, so a declaration would be accepted and dropped. Adding it here needs its
+ * own de-risk gate against the worker browser path first, the same way #115 gated
+ * `llm_qwen3_5_0_8b_full`.
  */
 export const taskTypeNamesAcceptingTools = ['llm_qwen3_5_0_8b_full'] as const;
 
@@ -133,7 +143,32 @@ export class TaskInputFactory {
 		if (type === 'llm_qwen3_0_6b_sharded') return { taskType: 'task_type_llm_qwen3_0_6b_sharded', input: TaskInputFactory.parseLlmInput(TaskInputFactory.requireString(type, value)), ...settings };
 		if (type === 'llm_gemma_nano_chrome_full') return { taskType: 'task_type_llm_gemma_nano_chrome_full', input: TaskInputFactory.parseLlmInput(TaskInputFactory.requireString(type, value)), ...settings };
 		if (type === 'llm_qwen3_5_0_8b_full') return { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: TaskInputFactory.parseLlmOrHistoryInput(value), ...settings };
-		return { taskType: 'task_type_llm_llama3_2_1b_full', input: TaskInputFactory.parseLlmOrHistoryInput(value), ...settings };
+		if (type === 'llm_llama3_2_1b_full') return { taskType: 'task_type_llm_llama3_2_1b_full', input: TaskInputFactory.parseLlmOrHistoryInput(value), ...settings };
+		if (type === 'llm_gemma_4_e2b_full') return { taskType: 'task_type_llm_gemma_4_e2b_full', input: TaskInputFactory.parseLlmOrHistoryInput(value), ...settings };
+		// Every task type above is named, so this line is unreachable and `type` is `never` here.
+		// Written this way on purpose: the last branch used to be an unguarded fallback returning
+		// `task_type_llm_llama3_2_1b_full`, which meant a task type added to `taskTypeNames` and
+		// nowhere else was silently submitted as Llama 3.2 1B Instruct — accepted by the gateway,
+		// answered by the wrong model, and reported to the consumer as though nothing were wrong.
+		// Adding `llm_gemma_4_e2b_full` in
+		// [issue #211](https://github.com/webai-at-home/webai-at-home/issues/211) hit exactly that.
+		// Now the compiler refuses the next one until it is named here.
+		return TaskInputFactory.refuseUnknownTaskType(type);
+	}
+
+	/**
+	 * Refuses a task type {@link TaskInputFactory.createTaskInput} does not name.
+	 *
+	 * Unreachable while every member of `TaskTypeName` is named there, and that is the point: the
+	 * `never` parameter makes a task type added to `taskTypeNames` and not to `createTaskInput` a
+	 * compile error rather than a task submitted as the wrong model.
+	 *
+	 * @param type The task type no branch matched, typed `never` so this cannot be called.
+	 * @returns Nothing; it always throws.
+	 * @throws Always, naming the task type, if a build ever reaches it.
+	 */
+	private static refuseUnknownTaskType(type: never): never {
+		throw new Error(`No task input can be built for the task type "${String(type)}", which createTaskInput does not name.`);
 	}
 
 	///////////////////////////////////////////////////////////////////////////////
