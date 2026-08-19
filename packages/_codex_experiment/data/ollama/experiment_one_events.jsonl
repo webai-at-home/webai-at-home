@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a01a95-2074-7d23-abcf-b79baf234aba"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `gemma4:e2b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"reasoning","text":"The user is asking for a single-word response: \"ready\".\nThis is a direct instruction that does not require any tool use.\nI should simply respond with the requested word."}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"ready"}}
+{"type":"turn.completed","usage":{"input_tokens":2051,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":44,"reasoning_output_tokens":0}}

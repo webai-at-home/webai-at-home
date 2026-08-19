@@ -1,0 +1,11 @@
+# Destination: LM Studio, serving google/gemma-4-e2b on this machine.
+# Used as `CODEX_HOME=<this folder> codex exec --profile lmstudio ...`.
+
+model = "google/gemma-4-e2b"
+model_provider = "lmstudio_destination"
+
+[model_providers.lmstudio_destination]
+name = "LM Studio"
+base_url = "http://localhost:1234/v1"
+wire_api = "responses"
+requires_openai_auth = false

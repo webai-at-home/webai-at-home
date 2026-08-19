@@ -1,0 +1,20 @@
+{
+	"name": "@webai/codex-experiment",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"experiment_one:lmstudio": "tsx src/experiment_one_connect.ts lmstudio",
+		"experiment_one:ollama": "tsx src/experiment_one_connect.ts ollama",
+		"experiment_one:webai_at_home": "tsx src/experiment_one_connect.ts webai_at_home",
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "npm run typecheck"
+	},
+	"dependencies": {
+		"commander": "^12.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2",
+		"tsx": "^4.19.2"
+	}
+}

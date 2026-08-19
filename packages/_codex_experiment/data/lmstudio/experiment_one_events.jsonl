@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"01a01a94-df33-7a73-8e03-2e076c500904"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `google/gemma-4-e2b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"ready"}}
+{"type":"turn.completed","usage":{"input_tokens":8132,"cached_input_tokens":4864,"cache_write_input_tokens":0,"output_tokens":119,"reasoning_output_tokens":118}}

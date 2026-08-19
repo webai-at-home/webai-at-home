@@ -1,0 +1,12 @@
+# Destination: WebAI@Home, the OpenAI-compatible server of packages/consumer_openai, in front of a
+# gateway running task_type_llm_gemma_4_e2b_full.
+# Used as `CODEX_HOME=<this folder> codex exec --profile webai_at_home ...`.
+
+model = "llm_gemma_4_e2b_full"
+model_provider = "webai_at_home_destination"
+
+[model_providers.webai_at_home_destination]
+name = "WebAI@Home"
+base_url = "http://localhost:8788/v1"
+wire_api = "responses"
+requires_openai_auth = false

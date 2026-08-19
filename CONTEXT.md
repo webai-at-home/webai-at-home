@@ -12,7 +12,7 @@ The root of an npm workspaces monorepo exploring whether idle web browsers can w
 - [`packages/worker_webpage`](packages/worker_webpage/), [`packages/worker_openai`](packages/worker_openai/): the two workers.
 - [`packages/consumer_cli`](packages/consumer_cli/), [`packages/consumer_openai`](packages/consumer_openai/): the two ways to submit a task.
 - [`packages/webai_at_home_cli`](packages/webai_at_home_cli/): the published `webai-at-home` program.
-- [`packages/openai_api_tool_TOREMOVE`](packages/openai_api_tool_TOREMOVE/), [`packages/docker_server`](packages/docker_server/), [`packages/flow_viewer`](packages/flow_viewer/), and the `packages/_*` experiments.
+- [`packages/openai_api_tool_TOREMOVE`](packages/openai_api_tool_TOREMOVE/), [`packages/docker_server`](packages/docker_server/), [`packages/flow_viewer`](packages/flow_viewer/), and the `packages/_*` experiments, among them [`packages/_codex_experiment`](packages/_codex_experiment/), which runs the Codex command-line program against a small local model.
 
 ## Rules
 

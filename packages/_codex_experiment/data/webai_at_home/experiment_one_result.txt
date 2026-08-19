@@ -1,0 +1,5 @@
+destination: webai_at_home
+question: Reply with exactly one word and nothing else: ready
+exit code: 1
+seconds: 7
+codex version: codex-cli 0.145.0
