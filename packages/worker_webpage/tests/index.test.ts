@@ -5,6 +5,7 @@ import Test from 'node:test';
 // local imports
 import { ToolCallReader } from '../web/src/stages/tool_call_reader.js';
 import { ChatTemplateTools } from '../web/src/stages/chat_template_tools.js';
+import { Gemma4E2bHistoryMessages } from '../web/src/stages/gemma_4_e2b_history_messages.js';
 import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call_reader.js';
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
 
@@ -308,6 +309,99 @@ Test('says when Gemma 4 E2B has started a tool call, so a run does not report th
 		sawStarted.push(Gemma4E2bToolCallReader.hasStartedAToolCall(writtenSoFar));
 	}
 	Assert.deepEqual(sawStarted, [false, true, true, true, true]);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Gemma4E2bHistoryMessages
+//
+//	The identifiers minted here are not decoration. Gemma 4 E2B's chat template names a tool result
+//	by matching the result's `tool_call_id` against a call's `id`, and this project's protocol
+//	carries no identifier at all. Handing the template neither was measured against the real template
+//	in milestone 3 of [issue #216](https://github.com/webai-at-home/webai-at-home/issues/216): with
+//	one call it happens to work, and with two calls it names every result after the last call,
+//	silently. That is what these tests exist to stop coming back.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+Test('a prompt becomes one user message', () => {
+	Assert.deepEqual(Gemma4E2bHistoryMessages.of('What is the weather?'), [
+		{ role: 'user', content: 'What is the weather?' },
+	]);
+});
+
+Test('a history with no tool call is passed through unchanged', () => {
+	Assert.deepEqual(
+		Gemma4E2bHistoryMessages.of({ messages: [{ role: 'system', content: 'Be brief.' }, { role: 'user', content: 'Hello' }] }),
+		[{ role: 'system', content: 'Be brief.' }, { role: 'user', content: 'Hello' }],
+	);
+});
+
+Test('each tool result is given the identifier of the call it answers, paired by position', () => {
+	// Two calls is the case that fails without identifiers: the template names both results after the
+	// last call. The order of the messages is what says which call a result answers, so that is what
+	// the pairing reads.
+	const messages = Gemma4E2bHistoryMessages.of({
+		messages: [
+			{ role: 'user', content: 'Weather and time in Paris?' },
+			{
+				role: 'assistant',
+				content: '',
+				toolCalls: [
+					{ name: 'get_current_weather', argumentValues: { city: 'Paris' } },
+					{ name: 'get_current_time', argumentValues: { city: 'Paris' } },
+				],
+			},
+			{ role: 'tool', content: '{"celsius":31}' },
+			{ role: 'tool', content: '{"hour":9}' },
+		],
+	});
+	Assert.deepEqual(messages, [
+		{ role: 'user', content: 'Weather and time in Paris?' },
+		{
+			role: 'assistant',
+			content: '',
+			tool_calls: [
+				{ id: 'call_1_0', type: 'function', function: { name: 'get_current_weather', arguments: { city: 'Paris' } } },
+				{ id: 'call_1_1', type: 'function', function: { name: 'get_current_time', arguments: { city: 'Paris' } } },
+			],
+		},
+		{ role: 'tool', content: '{"celsius":31}', tool_call_id: 'call_1_0' },
+		{ role: 'tool', content: '{"hour":9}', tool_call_id: 'call_1_1' },
+	]);
+});
+
+Test('the pairing stops at the first message that is not a tool result, as the template scan does', () => {
+	// A tool result that does not follow a call is not rendered by this template at all, so giving it
+	// the identifier of an older call would pair it with a call it does not answer.
+	const messages = Gemma4E2bHistoryMessages.of({
+		messages: [
+			{ role: 'user', content: 'Weather in Paris?' },
+			{ role: 'assistant', content: '', toolCalls: [{ name: 'get_current_weather', argumentValues: { city: 'Paris' } }] },
+			{ role: 'tool', content: '{"celsius":31}' },
+			{ role: 'assistant', content: 'It is 31 degrees Celsius.' },
+			{ role: 'tool', content: 'stray' },
+		],
+	});
+	Assert.equal((messages[2] as unknown as { tool_call_id?: string }).tool_call_id, 'call_1_0');
+	Assert.equal((messages[4] as unknown as { tool_call_id?: string }).tool_call_id, undefined);
+});
+
+Test('a second assistant message asking for tools mints identifiers of its own', () => {
+	// Identifiers have to be unique across the whole history, not within one message, or a later
+	// result would match an earlier call.
+	const messages = Gemma4E2bHistoryMessages.of({
+		messages: [
+			{ role: 'user', content: 'Weather in Paris?' },
+			{ role: 'assistant', content: '', toolCalls: [{ name: 'get_current_weather', argumentValues: { city: 'Paris' } }] },
+			{ role: 'tool', content: '{"celsius":31}' },
+			{ role: 'user', content: 'And in Lyon?' },
+			{ role: 'assistant', content: '', toolCalls: [{ name: 'get_current_weather', argumentValues: { city: 'Lyon' } }] },
+			{ role: 'tool', content: '{"celsius":29}' },
+		],
+	});
+	Assert.equal((messages[2] as unknown as { tool_call_id?: string }).tool_call_id, 'call_1_0');
+	Assert.equal((messages[5] as unknown as { tool_call_id?: string }).tool_call_id, 'call_4_0');
 });
 
 ///////////////////////////////////////////////////////////////////////////////

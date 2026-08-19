@@ -1,7 +1,8 @@
-import { pipeline, TextStreamer, InterruptableStoppingCriteria, type Message, type TextGenerationPipeline } from '@huggingface/transformers';
+import { pipeline, TextStreamer, InterruptableStoppingCriteria, type TextGenerationPipeline } from '@huggingface/transformers';
 import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
 import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
+import { Gemma4E2bHistoryMessages } from './gemma_4_e2b_history_messages.js';
 import type { FullModelReadiness } from './stage_helper_llm_qwen3_5_0_8b_full.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 
@@ -210,10 +211,11 @@ type TaskGenerationState = {
  *   end-of-sequence token, so the model writes the call, opens the place the tool's answer goes, and
  *   stops by itself.
  *
- * A history carrying a finished tool round trip is not rendered back yet. That is milestone 3 of the
- * same issue, and until it is done `task_type_llm_gemma_4_e2b_full` still refuses a request that
- * declares a tool — `taskTypeNamesAcceptingTools` in `packages/consumer_cli` is the gate, and it
- * opens in milestone 5.
+ * A history carrying a finished tool round trip renders back, since milestone 3 of the same issue —
+ * see {@link Gemma4E2bHistoryMessages.of}, which is where the identifier this template
+ * needs and the protocol does not carry is minted. Until milestone 5,
+ * `task_type_llm_gemma_4_e2b_full` still refuses a request that declares a tool:
+ * `taskTypeNamesAcceptingTools` in `packages/consumer_cli` is the gate, and that is where it opens.
  *
  * The model is loaded once per page and shared by every task this browser runs. Only the generation
  * in progress is kept per task.
@@ -599,7 +601,7 @@ export class StageHelperLlmGemma4E2bFull {
 			generator.tokenizer as unknown as {
 				apply_chat_template: (messages: unknown[], options: Record<string, unknown>) => { data?: ArrayLike<number> };
 			}
-		).apply_chat_template(StageHelperLlmGemma4E2bFull.messagesOf(promptOrHistory), {
+		).apply_chat_template(Gemma4E2bHistoryMessages.of(promptOrHistory), {
 			tokenize: true,
 			add_generation_prompt: true,
 			enable_thinking: false,
@@ -689,7 +691,7 @@ export class StageHelperLlmGemma4E2bFull {
 				// a message list would silently produce a prompt with no tools in it. Every task that
 				// declared no tool still goes through the message list, exactly as it always has.
 				const input = state.declaredTools.length === 0
-					? StageHelperLlmGemma4E2bFull.messagesOf(promptOrHistory)
+					? Gemma4E2bHistoryMessages.of(promptOrHistory)
 					: StageHelperLlmGemma4E2bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools);
 				generator(input, {
 					max_new_tokens: MAX_NEW_TOKENS,
@@ -764,7 +766,7 @@ export class StageHelperLlmGemma4E2bFull {
 			generator.tokenizer as unknown as {
 				apply_chat_template: (messages: unknown[], options: Record<string, unknown>) => string;
 			}
-		).apply_chat_template(StageHelperLlmGemma4E2bFull.messagesOf(promptOrHistory), {
+		).apply_chat_template(Gemma4E2bHistoryMessages.of(promptOrHistory), {
 			tokenize: false,
 			add_generation_prompt: true,
 			enable_thinking: false,
@@ -846,25 +848,4 @@ export class StageHelperLlmGemma4E2bFull {
 		return Array.isArray(eosTokenId) ? eosTokenId : [eosTokenId];
 	}
 
-	/**
-	 * Builds the message list handed to the text-generation pipeline, from either a prompt or a
-	 * history.
-	 *
-	 * A single prompt becomes one user message. A history becomes its messages, each carrying the role
-	 * it was given, so `@huggingface/transformers` applies the model's own chat template to real turns
-	 * — a system message reaches the slot the template has for it — instead of receiving one user
-	 * message whose content happens to be a flattened transcript.
-	 *
-	 * A history's `toolCalls` are not rendered, unlike the Qwen3.5-0.8B helper, because this task type
-	 * declares no tools and so no history reaching it can carry a tool call.
-	 *
-	 * @param promptOrHistory The prompt or history submitted with the task.
-	 * @returns The message list to pass to the text-generation pipeline.
-	 */
-	private static messagesOf(promptOrHistory: string | HistoryInput): Message[] {
-		if (typeof promptOrHistory === 'string') {
-			return [{ role: 'user', content: promptOrHistory }];
-		}
-		return promptOrHistory.messages.map((message): Message => ({ role: message.role, content: message.content }));
-	}
 }
