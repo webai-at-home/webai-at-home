@@ -2,13 +2,13 @@
 
 ## Summary
 
-- Time to First Character: 467.05 ms average
-- Time to Last Character: 2249.29 ms average
-- Output Characters per Second: 61.72 characters/second average
+- Time to First Character: 361.15 ms average
+- Time to Last Character: 1979.99 ms average
+- Output Characters per Second: 67.33 characters/second average
 
 ## Measurement Run
 
-- Generated: 2026-08-19T02:10:10.614Z
+- Generated: 2026-08-19T03:18:25.569Z
 - Endpoint: `http://localhost:1234/v1`
 - Model: `google/gemma-4-e2b`
 
@@ -53,10 +53,10 @@ None of the five is a token count. A character is what both ends can count witho
 
 | Metric | Average | Median | Minimum | Maximum |
 | --- | ---: | ---: | ---: | ---: |
-| Time to First Character | 467.05 ms | 467.05 ms | 467.05 ms | 467.05 ms |
-| Time to Last Character | 2249.29 ms | 2249.29 ms | 2249.29 ms | 2249.29 ms |
-| Output Characters per Second | 61.72 chars/s | 61.72 chars/s | 61.72 chars/s | 61.72 chars/s |
-| Output Characters | 110.00 chars | 110.00 chars | 110.00 chars | 110.00 chars |
+| Time to First Character | 361.15 ms | 361.15 ms | 361.15 ms | 361.15 ms |
+| Time to Last Character | 1979.99 ms | 1979.99 ms | 1979.99 ms | 1979.99 ms |
+| Output Characters per Second | 67.33 chars/s | 67.33 chars/s | 67.33 chars/s | 67.33 chars/s |
+| Output Characters | 109.00 chars | 109.00 chars | 109.00 chars | 109.00 chars |
 
 Input Characters: 14, the same for every request below.
 
@@ -64,4 +64,4 @@ Input Characters: 14, the same for every request below.
 
 | Request | Time to First Character | Time to Last Character | Output Characters per Second | Output Characters |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 467.05 ms | 2249.29 ms | 61.72 chars/s | 110 chars |
+| 1 | 361.15 ms | 1979.99 ms | 67.33 chars/s | 109 chars |
