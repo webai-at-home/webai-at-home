@@ -50,10 +50,29 @@ The server listens on port 8788, and an OpenAI client is pointed at `http://loca
 ## Endpoints
 
 - `POST /v1/chat/completions` — runs one cluster task and answers with the generated text, either in one piece or as the answer is written.
+- `POST /v1/responses` — the same, in the OpenAI Responses interface, which is the only one the Codex command-line program speaks. See below.
 - `GET /v1/models` — lists the models the cluster offers.
 - `GET /health` — reports whether this server holds a registered connection to the central gateway and how many requests are waiting for a task. It answers 200 when the connection is up and 503 when it is not, and it requires no key.
 
 The web server is Express, which is what [issue #70](https://github.com/webai-at-home/webai-at-home/issues/70) asks of every web-serving package in this repository.
+
+## `POST /v1/responses`
+
+The Responses interface is a second spelling of the same request, and it runs the same cluster task: the request is translated onto the message list, the tools, and the answer shapes `POST /v1/chat/completions` already uses, and nothing reaches the cluster a second way.
+
+```bash
+curl -N http://localhost:8788/v1/responses -H 'Content-Type: application/json' -d '{"model":"llm_gemma_4_e2b_full","stream":true,"instructions":"Answer with one word.","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"What is the capital of France?"}]}]}'
+```
+
+A streamed answer is a sequence of named server-sent events: `response.created`, `response.in_progress`, then for each item `response.output_item.added`, its own middle events, and `response.output_item.done`, and finally `response.completed`. A message item carries `response.content_part.added`, one `response.output_text.delta` per piece, `response.output_text.done`, and `response.content_part.done`. A tool call carries `response.function_call_arguments.done`. An answer that was not streamed is one `response` object holding the same items.
+
+Three things are worth knowing before pointing a client at it:
+
+- **`instructions` and every system message are joined into one system message at the front.** The chat template of `llm_qwen3_5_0_8b_full` refuses a second system message outright, and the Codex command-line program sends both an `instructions` field and a `developer` message in every request.
+- **A tool kind this cluster cannot run is carried nowhere, and named in the `X-Webai-Unsupported-Tool-Kinds` response header.** The Codex command-line program declares a `web_search` tool, which a server is expected to perform itself, and a `namespace` tool holding sub-agent tools. A `function` tool is never dropped: declaring one to a model that cannot read tools is refused with HTTP 400, exactly as on the chat completion route.
+- **An item kind this cluster does not carry, such as `reasoning`, is left out of the history rather than refused**, because a client hands back every item it was given and refusing would fail every second turn.
+
+The request and answer shapes are not guessed. They are the traffic recorded between the Codex command-line program and a server it accepts, in [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213), and the endpoint itself comes from [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214).
 
 ## The models it offers
 

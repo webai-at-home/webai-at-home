@@ -2,29 +2,31 @@
 
 ## Purpose
 
-Everything specific to the shape of the OpenAI Chat Completions interface: the request and response bodies, the errors, which model name maps to which cluster task type, and the translation between a request and the cluster task it becomes.
+The shapes of the two OpenAI interfaces this server serves, Chat Completions and Responses: request and response bodies, errors, which model name maps to which task type, and the translation into a cluster task.
 
 ## Key Exports & Entry Points
 
-- `openai_types.ts`: the request bodies this server accepts and the response bodies it returns.
+- `openai_types.ts`: the Chat Completions request and response bodies.
+- `responses_types.ts`, `responses_translator.ts`: the Responses shapes, and the carrying of such a request onto what this folder already has.
 - `openai_error.ts`: `OpenaiError`, a failure, with the HTTP status and the response body it is answered with.
-- `model_catalog.ts`: `ModelCatalog`, the models this server offers, and the cluster task type behind each one. Which of them the cluster can currently run is `../libs/model_availability.ts`'s question, not this folder's.
-- `history_builder.ts` and `prompt_flattener.ts`: turning a request's messages into the history a task carries, or into the single piece of text a task carries.
-- `generation_settings_builder.ts`: turning a chat completion request's controls into task generation settings.
+- `model_catalog.ts`: `ModelCatalog`, the models this server offers and the task type behind each one. Which of them the cluster can run right now is `../libs/model_availability.ts`'s question.
+- `history_builder.ts`, `prompt_flattener.ts`: a request's messages become the history a task carries, or its single piece of text.
+- `generation_settings_builder.ts`: a chat completion request's controls become task generation settings.
 - `finish_reason_translator.ts`: turning a worker's own stop reason into an OpenAI value.
 - `tool_translator.ts`: carrying tools between the OpenAI spelling and this project's own.
-- `response_format_reader.ts`: reading a request's `response_format`, and refusing a shape the chosen task type cannot produce.
+- `response_format_reader.ts`: reads `response_format`, and refuses a shape the chosen task type cannot produce.
 
 ## Rules
 
-- This folder imports from no other folder of this package: it is the translation layer `../http/` and `../libs/` both sit on top of, never the other way.
+- This folder imports from no other folder of this package: it is the translation layer `../http/` and `../libs/` sit on top of, never the other way.
 - The model names in `model_catalog.ts` are task type names from [`docs/naming_scheme.md`](../../../../docs/naming_scheme.md).
-- `finish_reason_translator.ts` refuses to answer a reason with no OpenAI value — `interrupted` — rather than inventing one, and answers `stop_sequence` as `stop`, never as `length`, because an answer that ended on a stop sequence the consumer asked for is a finished answer.
-- `generation_settings_builder.ts` never drops a generation control it cannot honour; refusing it is `../http/openai_routes.ts`'s job, not this folder's.
-
-- `response_format_reader.ts` reads `@webai/protocol`'s `StructuredOutputSupport` rather than keeping a list of its own, so a task type starts producing a shape by gaining an entry there and nothing here changes.
+- `finish_reason_translator.ts` refuses `interrupted`, which has no OpenAI value, rather than inventing one, and answers `stop_sequence` as `stop`, never `length`: an answer that ended on a stop sequence the consumer asked for is finished.
+- `generation_settings_builder.ts` never drops a generation control it cannot honour; refusing it is `../http/openai_routes.ts`'s job.
+- `responses_translator.ts` joins `instructions` and every system message into one leading system message, because the chat template of `llm_qwen3_5_0_8b_full` refuses a second one, and leaves out an item kind this cluster does not carry rather than refusing the request.
+- `response_format_reader.ts` reads `@webai/protocol`'s `StructuredOutputSupport` rather than keeping a list of its own, so a task type gains a shape there and nothing here changes.
 
 ## Background
 
 - `response_format_reader.ts` comes from [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
 - The finish reason and generation settings rules come from [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150) and [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
+- The Responses shapes come from [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214); carrying two system messages was found live to fail the whole request.

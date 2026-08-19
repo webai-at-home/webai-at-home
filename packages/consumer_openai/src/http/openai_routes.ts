@@ -28,11 +28,15 @@ import {
 	ChatCompletionRequestSchema,
 	type ChatCompletionAnswerChunk,
 	type ChatCompletionChunkChoice,
+	type ChatCompletionMessage,
 	type ChatCompletionResponse,
 	type ChatCompletionUsage,
 	type ChatCompletionUsageChunk,
 	type HealthResponse,
 } from '../api/openai_types.js';
+import { ResponsesTranslator } from '../api/responses_translator.js';
+import { ResponsesRequestSchema, type ResponsesResponse, type ResponsesTool } from '../api/responses_types.js';
+import { ResponsesStreamWriter } from './responses_stream_writer.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -140,6 +144,12 @@ export class OpenaiRoutes {
 			next();
 		});
 
+		// The Responses route is tracked the same way, and for the same reason.
+		router.use('/v1/responses', (request, response, next) => {
+			this._beginTransaction(request, response);
+			next();
+		});
+
 		router.use('/v1', (request, response, next) => {
 			try {
 				this._checkApiKey(request);
@@ -170,6 +180,16 @@ export class OpenaiRoutes {
 		router.post('/v1/chat/completions', (request, response) => {
 			const transaction = this.transactions.get(request);
 			void this._handleChatCompletion(request, response, transaction).catch((failure: unknown) =>
+				OpenaiRoutes._sendFailure(response, failure, transaction),
+			);
+		});
+
+		// The Responses interface of the same models, added in
+		// [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214). It catches its
+		// own failures for the same reason the route above does.
+		router.post('/v1/responses', (request, response) => {
+			const transaction = this.transactions.get(request);
+			void this._handleResponses(request, response, transaction).catch((failure: unknown) =>
 				OpenaiRoutes._sendFailure(response, failure, transaction),
 			);
 		});
@@ -394,6 +414,317 @@ export class OpenaiRoutes {
 		// known before the response headers must be sent — a streamed response sends its headers
 		// with its first chunk, before the cluster has finished generating the rest of the answer.
 		response.status(200).set({ 'X-Webai-Generation-Time-Ms': String(generationTimeMs) }).json(completion);
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	Responses
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Answers one `POST /v1/responses` request by running one cluster task.
+	 *
+	 * The Responses interface is a second spelling of a request this server already runs, and it is
+	 * carried onto that one rather than given a second way of reaching the cluster: `instructions`
+	 * and `input` become the message list through `ResponsesTranslator`, the flat tool declarations
+	 * become the nested ones `ToolTranslator` already carries, and `HistoryBuilder`,
+	 * `GenerationSettingsBuilder`, and `ClusterTaskRunner` do the rest unchanged.
+	 *
+	 * Every rule the chat completion route follows is followed here. A tool declared to a model
+	 * that cannot read one is refused rather than dropped. A `tool_choice` this server cannot
+	 * enforce is refused rather than accepted and ignored. `usage` is present only when the worker
+	 * reported both counts, and is never estimated.
+	 *
+	 * See [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214).
+	 *
+	 * @param request The incoming request.
+	 * @param response The response to answer with.
+	 * @param transaction This request's transaction record, absent only in a test that builds
+	 * routes without going through {@link router}.
+	 * @throws OpenaiError when the request cannot be read or the cluster cannot serve it.
+	 */
+	private async _handleResponses(
+		request: Express.Request,
+		response: Express.Response,
+		transaction: ChatCompletionTransaction | undefined,
+	): Promise<void> {
+		const parsed = ResponsesRequestSchema.safeParse(request.body);
+		if (parsed.success === false) {
+			throw OpenaiRoutes._responsesSchemaFailureOf(parsed.error);
+		}
+		const body = parsed.data;
+		if (transaction !== undefined) {
+			transaction.model = body.model;
+		}
+		const taskTypeName = ModelCatalog.taskTypeNameOf(body.model);
+		if (taskTypeName === undefined) {
+			throw OpenaiError.unknownModel(body.model, ModelCatalog.modelIds);
+		}
+
+		const declaredTools = ToolTranslator.toProtocolTools(ResponsesTranslator.toChatTools(body.tools));
+		if (declaredTools !== undefined && TaskInputFactory.acceptsTools(taskTypeName) === false) {
+			throw OpenaiError.unsupportedToolDeclarations(body.model, taskTypeNamesAcceptingTools);
+		}
+		if (body.tool_choice !== null && body.tool_choice !== undefined && body.tool_choice !== 'auto' && body.tool_choice !== 'none') {
+			throw OpenaiError.unenforceableToolChoice(
+				typeof body.tool_choice === 'string' ? `"${body.tool_choice}"` : `naming the function "${body.tool_choice.name}"`,
+			);
+		}
+		const toolsToDeclare = body.tool_choice === 'none' ? undefined : declaredTools;
+
+		const chatMessages = ResponsesTranslator.toChatMessages(body.instructions, body.input);
+		if (chatMessages.length === 0) {
+			throw OpenaiError.unusableMessages(
+				`The request to ${body.model} carries neither instructions nor any input item this server can read.`,
+			);
+		}
+
+		const promptOrHistory = TaskInputFactory.acceptsHistory(taskTypeName)
+			? HistoryBuilder.build(chatMessages, toolsToDeclare)
+			: PromptFlattener.flatten(chatMessages);
+		const isStreaming = body.stream === true;
+		// The Responses interface of the Codex command-line program carries no generation control
+		// at all, measured in exp_03_prompt_size_measure of
+		// [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213). The builder is
+		// still what decides the settings, so that a control arriving here one day is refused by
+		// the same rule rather than by a second one written here.
+		const generationSettings = GenerationSettingsBuilder.build(
+			{
+				model: body.model,
+				messages: chatMessages as ChatCompletionMessage[],
+			},
+			taskTypeName,
+			isStreaming,
+		);
+		let taskInput: TaskInput;
+		try {
+			taskInput = TaskInputFactory.createTaskInput(taskTypeName, promptOrHistory, generationSettings);
+		} catch (error: unknown) {
+			throw OpenaiError.unusableMessages(
+				`The model ${body.model} cannot take this request: ` +
+					`${error instanceof Error ? error.message : String(error)}.`,
+			);
+		}
+
+		// A caller that hangs up before the answer arrives has its task cancelled, for the same
+		// reason and in the same way as on the chat completion route.
+		const abortController = new AbortController();
+		response.on('close', () => {
+			if (response.writableEnded === false) {
+				abortController.abort();
+			}
+		});
+
+		const onCorrelationIds = (ids: { taskRequestId: string; taskId?: string }): void => {
+			if (transaction === undefined) {
+				return;
+			}
+			transaction.gatewayTaskRequestId = ids.taskRequestId;
+			if (ids.taskId !== undefined) {
+				transaction.gatewayTaskId = ids.taskId;
+			}
+		};
+
+		const answerShell: ResponsesResponse = {
+			id: `resp_${Crypto.randomUUID()}`,
+			object: 'response',
+			created_at: Math.floor(Date.now() / 1000),
+			completed_at: null,
+			status: 'in_progress',
+			incomplete_details: null,
+			model: body.model,
+			output: [],
+			error: null,
+			tool_choice: typeof body.tool_choice === 'string' ? body.tool_choice : 'auto',
+			parallel_tool_calls: body.parallel_tool_calls === true,
+			usage: null,
+		};
+
+		if (isStreaming === true) {
+			await this._streamResponses(
+				answerShell,
+				taskInput,
+				response,
+				transaction,
+				abortController.signal,
+				onCorrelationIds,
+				declaredTools,
+				OpenaiRoutes._unsupportedToolKindsHeaderOf(body.tools),
+			);
+			return;
+		}
+
+		const generationStartedAt = performance.now();
+		const answer = await this.runner.run(taskInput, body.model, abortController.signal, onCorrelationIds);
+		const generationTimeMs = Math.round(performance.now() - generationStartedAt);
+
+		answerShell.status = 'completed';
+		answerShell.completed_at = Math.floor(Date.now() / 1000);
+		answerShell.output = ResponsesTranslator.toOutputItems(answer.text, answer.toolCalls, declaredTools);
+		answerShell.usage = ResponsesTranslator.toUsage(answer) ?? null;
+
+		if (transaction !== undefined) {
+			transaction.respondedAt = new Date();
+			transaction.outcome = 'completed';
+			transaction.status = 200;
+			transaction.responseType = 'response';
+			transaction.responseBody = answerShell;
+		}
+		if (response.writableEnded === true) {
+			return;
+		}
+		response
+			.status(200)
+			.set({
+				'X-Webai-Generation-Time-Ms': String(generationTimeMs),
+				...OpenaiRoutes._unsupportedToolKindsHeaderOf(body.tools),
+			})
+			.json(answerShell);
+	}
+
+	/**
+	 * Names the kinds of tool a request declared that this server carries nowhere, as a response
+	 * header, so that a caller reads which of its declarations never reached the model.
+	 *
+	 * This follows Rule 3 of this project's OpenAI compatibility requirement: a value the interface
+	 * has no field for travels in an `X-Webai-*` response header, or not at all.
+	 *
+	 * @param tools The `tools` field of the request, absent or null when it declared none.
+	 * @returns The header to set, or nothing at all when every declared tool was carried.
+	 */
+	private static _unsupportedToolKindsHeaderOf(tools: ResponsesTool[] | null | undefined): Record<string, string> {
+		const kinds = ResponsesTranslator.unsupportedToolKinds(tools);
+		if (kinds.length === 0) {
+			return {};
+		}
+		return {
+			'X-Webai-Unsupported-Tool-Kinds': kinds.join(', '),
+		};
+	}
+
+	/**
+	 * Turns a `POST /v1/responses` body that does not match the schema into the failure to answer
+	 * with.
+	 *
+	 * It is not the chat completion one: that one ends by saying a message's content must be a
+	 * single piece of text, which is true there and false here, because this interface writes
+	 * content as a list of parts.
+	 *
+	 * @param failure What the schema reported.
+	 * @returns The failure to answer with.
+	 */
+	private static _responsesSchemaFailureOf(failure: z.ZodError): OpenaiError {
+		const reasons = failure.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
+		const firstPathPart = failure.issues[0]?.path[0];
+		const param = typeof firstPathPart === 'string' ? firstPathPart : null;
+		return OpenaiError.invalidRequest(`The request body is not one this server can read. ${reasons}.`, param);
+	}
+
+	/**
+	 * Answers one `POST /v1/responses` request as its answer is written, as named server-sent
+	 * events.
+	 *
+	 * The order and the shape of those events are the ones recorded between the Codex command-line
+	 * program and a server it accepts, and they are written by `ResponsesStreamWriter`. A failure
+	 * after the first event is written into the stream as `response.failed`, because the status
+	 * line is gone by then; a failure before it is thrown and answered with a status like any
+	 * other.
+	 *
+	 * @param answerShell The answer being built, already carrying its identifier and its model.
+	 * @param taskInput The task to run, already asking for its answer in pieces.
+	 * @param response The response to write the stream to.
+	 * @param transaction This request's transaction record, absent only in a test.
+	 * @param abortSignal Reports that whoever sent the request has gone.
+	 * @param onCorrelationIds Told the identifiers this request is submitted under.
+	 * @param declaredTools The tools the request declared, read for the types each argument was
+	 * declared with when a tool call has to be written out.
+	 * @param unsupportedToolKindsHeader Names the kinds of tool this server carried nowhere, empty
+	 * when every declared tool was carried.
+	 * @throws OpenaiError when the task fails before any event has been written.
+	 */
+	private async _streamResponses(
+		answerShell: ResponsesResponse,
+		taskInput: TaskInput,
+		response: Express.Response,
+		transaction: ChatCompletionTransaction | undefined,
+		abortSignal: AbortSignal,
+		onCorrelationIds: (ids: { taskRequestId: string; taskId?: string }) => void,
+		declaredTools: ToolDeclaration[] | undefined,
+		unsupportedToolKindsHeader: Record<string, string>,
+	): Promise<void> {
+		const writer = new ResponsesStreamWriter(response, answerShell);
+		const messageItemId = `msg_${Crypto.randomUUID()}`;
+		let isMessageStarted = false;
+		let writtenText = '';
+
+		try {
+			writer.start(unsupportedToolKindsHeader);
+			if (transaction !== undefined) {
+				transaction.status = 200;
+				transaction.responseType = 'response.stream';
+			}
+
+			const answer = await this.runner.run(taskInput, answerShell.model, abortSignal, onCorrelationIds, (piece) => {
+				if (isMessageStarted === false) {
+					isMessageStarted = true;
+					writer.startMessageItem(messageItemId);
+				}
+				writtenText = writtenText + piece;
+				writer.writeTextPiece(messageItemId, piece);
+			});
+
+			// An answer that produced no pieces at all still has to be sent, which happens when the
+			// stage that ran it produced its whole answer in one go. An answer that is only a tool
+			// call carries no text at all, and opens no message item.
+			if (isMessageStarted === false && answer.text !== '') {
+				isMessageStarted = true;
+				writer.startMessageItem(messageItemId);
+				writtenText = answer.text;
+				writer.writeTextPiece(messageItemId, answer.text);
+			}
+			if (isMessageStarted === true) {
+				writer.finishMessageItem({
+					id: messageItemId,
+					type: 'message',
+					role: 'assistant',
+					status: 'completed',
+					content: [
+						{
+							type: 'output_text',
+							text: writtenText,
+							annotations: [],
+						},
+					],
+				});
+			}
+
+			for (const item of ResponsesTranslator.toOutputItems('', answer.toolCalls, declaredTools)) {
+				writer.writeFunctionCallItem(item);
+			}
+
+			writer.finish(ResponsesTranslator.toUsage(answer));
+
+			if (transaction !== undefined) {
+				transaction.respondedAt = new Date();
+				transaction.outcome = 'completed';
+				transaction.responseBody = writer.answer;
+			}
+		} catch (failure: unknown) {
+			if (writer.hasWritten === false) {
+				throw failure;
+			}
+			const openaiError = failure instanceof OpenaiError ? failure : undefined;
+			writer.fail(
+				openaiError === undefined ? 'server_error' : openaiError.body.error.code ?? 'server_error',
+				failure instanceof Error ? failure.message : String(failure),
+			);
+			if (transaction !== undefined) {
+				transaction.respondedAt = new Date();
+				transaction.outcome = 'failed';
+				transaction.responseBody = writer.answer;
+			}
+		}
 	}
 
 	/**
