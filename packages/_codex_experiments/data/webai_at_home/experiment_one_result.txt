@@ -1,4 +1,4 @@
-destination: webai_at_home
+target model: webai_at_home
 question: Reply with exactly one word and nothing else: ready
 exit code: 1
 seconds: 7

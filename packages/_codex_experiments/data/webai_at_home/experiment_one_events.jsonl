@@ -1,4 +1,4 @@
-{"type":"thread.started","thread_id":"01a01a9f-565a-7550-9e58-1a6652c7ded5"}
+{"type":"thread.started","thread_id":"01a01aa6-9b97-75a2-98aa-223044aa3b25"}
 {"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `llm_gemma_4_e2b_full` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
 {"type":"turn.started"}
 {"type":"error","message":"Reconnecting... 1/5 (unexpected status 404 Not Found: <!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /v1/responses</pre>\n</body>\n</html>, url: http://localhost:8788/v1/responses)"}

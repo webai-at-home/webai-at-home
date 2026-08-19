@@ -1,4 +1,4 @@
-# Experiment One — Connect The Codex Command-Line Program To A Destination
+# Experiment One — Connect The Codex Command-Line Program To One Target Model
 
 The question of experiment one, from [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213):
 
@@ -8,15 +8,15 @@ The question needed one correction before it could be answered, and the correcti
 
 ## Result
 
-| Destination | Base address | Model identifier | Exit code | Seconds | Input tokens reported | Last message |
+| Target model | Base address | Model identifier | Exit code | Seconds | Input tokens reported | Last message |
 | --- | --- | --- | --- | --- | --- | --- |
-| LM Studio | `http://localhost:1234/v1` | `google/gemma-4-e2b` | 0 | 11 | 8157 | `ready` |
-| Ollama | `http://localhost:11434/v1` | `gemma4:e2b` | 0 | 14 | 2051 | `ready` |
+| LM Studio | `http://localhost:1234/v1` | `google/gemma-4-e2b` | 0 | 23 | 8157 | `ready` |
+| Ollama | `http://localhost:11434/v1` | `gemma4:e2b` | 0 | 13 | 2051 | `ready` |
 | WebAI@Home | `http://localhost:8788/v1` | `llm_gemma_4_e2b_full` | 1 | 7 | none, the turn failed | none, the turn failed |
 
-Two destinations out of three pass the gate. The plan continues.
+Two target models out of three pass the gate. The plan continues.
 
-Every run was made with `codex-cli 0.145.0` and the question `Reply with exactly one word and nothing else: ready`, which needs no tool at all. The raw events, the last message, and the result of each run are in the folder of that destination, next to this file.
+Every run was made with `codex-cli 0.145.0` and the question `Reply with exactly one word and nothing else: ready`, which needs no tool at all. The raw events, the last message, and the result of each run are in the folder of that target model, next to this file.
 
 ## The Request Format Changed
 
@@ -26,10 +26,10 @@ The Codex command-line program no longer speaks the chat-completions request for
 Error loading config.toml: `wire_api = "chat"` is no longer supported.
 How to fix: set `wire_api = "responses"` in your provider config.
 More info: https://github.com/openai/codex/discussions/7782
-in `model_providers.lmstudio_destination.wire_api`
+in `model_providers.lmstudio_target_model.wire_api`
 ```
 
-Every destination must therefore serve `POST /v1/responses`. LM Studio and Ollama both do, and both were confirmed by hand before any run of the Codex command-line program. This also means the conformance report of `google/gemma-4-e2b` measures a request format the Codex command-line program does not use, so none of its results carry over unchanged.
+Every target model must therefore serve `POST /v1/responses`. LM Studio and Ollama both do, and both were confirmed by hand before any run of the Codex command-line program. This also means the conformance report of `google/gemma-4-e2b` measures a request format the Codex command-line program does not use, so none of its results carry over unchanged.
 
 ## Why WebAI@Home Failed
 
@@ -44,7 +44,7 @@ The Codex command-line program retried five times before giving up. This is a mi
 ## Recorded On The Way
 
 - **The prompt is large.** For a question of eight words needing no tool, LM Studio reported 8157 input tokens. That is the base prompt of the Codex command-line program, and experiment three measures it properly.
-- **The two destinations disagree on the count.** Ollama reported 2051 input tokens for the same question. The two destinations cannot both be right, which is the reason experiment three measures the prompt from recorded traffic rather than from what a destination reports.
+- **The two target models disagree on the count.** Ollama reported 2051 input tokens for the same question. The two target models cannot both be right, which is the reason experiment three measures the prompt from recorded traffic rather than from what a target model reports.
 - **Neither model is known to the Codex command-line program.** Both runs recorded `Model metadata for ... not found. Defaulting to fallback metadata; this can degrade performance and cause issues.`, so the context window it assumes is a fallback and not the real one of Gemma 4 E2B.
 - **The model already leaks its prompt, sometimes.** The runs recorded here answer exactly `ready`, but one earlier LM Studio run answered `ready` followed by the `<environment_context>` block of its own prompt. Nothing about the run changed between the two, because the seed parameter does not work on this endpoint. The turn still completed, so the gate passes, but this is the failure experiment two measures.
 
