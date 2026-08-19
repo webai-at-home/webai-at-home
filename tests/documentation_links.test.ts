@@ -20,8 +20,11 @@ const REPOSITORY_ROOT_PATH = Path.resolve(__dirname, '..');
  *
  * `.claude` is skipped because it holds git worktrees of other branches, whose documentation is
  * checked by the tests of those branches rather than by this one.
+ *
+ * `codex_home` is skipped because it is the CODEX_HOME of packages/_codex_experiments, which the
+ * Codex command-line program fills with its own sessions, logs, and downloaded documentation.
  */
-const SKIPPED_DIRECTORY_NAMES = ['node_modules', 'dist', '.git', '.venv', 'data', '.claude'];
+const SKIPPED_DIRECTORY_NAMES = ['node_modules', 'dist', '.git', '.venv', 'data', '.claude', 'codex_home'];
 
 /** One place a markdown file points at something, and where in the file it points from. */
 type Mention = {

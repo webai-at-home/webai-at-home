@@ -1,6 +1,5 @@
 import ChildProcess from 'node:child_process';
 import Fs from 'node:fs';
-import Os from 'node:os';
 import Path from 'node:path';
 import { Command } from 'commander';
 
@@ -48,11 +47,9 @@ export class ExperimentOneConnect {
 
 	/**
 	 * The folder given to the Codex command-line program as its `CODEX_HOME`. It is generated, it
-	 * holds a copy of every destination configuration file, and it sits outside this repository
-	 * because the Codex command-line program fills it with sessions, logs, databases, and downloaded
-	 * documentation of its own.
+	 * holds a copy of every destination configuration file, and it is never committed.
 	 */
-	static readonly codexHomeDirectory = Path.join(Os.homedir(), '.webai-at-home', 'codex_experiment', 'codex_home');
+	static readonly codexHomeDirectory = Path.join(ExperimentOneConnect.packageDirectory, 'codex_home');
 
 	/**
 	 * Runs experiment one against one destination and writes the recorded run under `data/`.
@@ -170,9 +167,9 @@ export class ExperimentOneConnect {
 	/**
 	 * Copies every destination configuration file into the generated `codex_home` folder, which is
 	 * the folder given to the Codex command-line program as its `CODEX_HOME`. The two folders are
-	 * kept apart, and the generated one sits outside this repository, because the Codex
-	 * command-line program writes its own sessions, logs, and databases into its `CODEX_HOME`, and
-	 * none of that belongs in the repository.
+	 * kept apart because the Codex command-line program writes its own sessions, logs, databases,
+	 * and downloaded documentation into its `CODEX_HOME`, and none of that belongs next to the
+	 * committed destination configuration files.
 	 *
 	 * @returns Nothing.
 	 */

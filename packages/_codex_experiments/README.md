@@ -1,4 +1,4 @@
-# `@webai/codex-experiment`
+# `@webai/codex-experiments`
 
 Runs the Codex command-line program against a small local model instead of against the OpenAI service, and records what breaks. The plan and the milestones are in [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213).
 
@@ -13,24 +13,24 @@ There are three experiments and three destinations, and every experiment is run 
 ## Experiment One — Connect The Codex Command-Line Program To A Destination
 
 ```bash
-npm run experiment_one:lmstudio --workspace @webai/codex-experiment
+npm run experiment_one:lmstudio --workspace @webai/codex-experiments
 ```
 
 ```bash
-npm run experiment_one:ollama --workspace @webai/codex-experiment
+npm run experiment_one:ollama --workspace @webai/codex-experiments
 ```
 
 ```bash
-npm run experiment_one:webai_at_home --workspace @webai/codex-experiment
+npm run experiment_one:webai_at_home --workspace @webai/codex-experiments
 ```
 
 Each run asks one question that needs no tool at all, and writes the raw events, the last message, and the result under `data/<destination>/`. The results are read in [`data/experiment_one_results.md`](data/experiment_one_results.md): LM Studio and Ollama pass, and WebAI@Home fails because it does not serve `POST /v1/responses`.
 
 ## How A Destination Is Chosen
 
-`destinations/` holds one configuration file per destination, named `<destination>.config.toml`. Before every run those files are copied into `~/.webai-at-home/codex_experiment/codex_home/`, which is given to the Codex command-line program as its `CODEX_HOME`, and the destination is chosen with `--profile <destination>`.
+`destinations/` holds one configuration file per destination, named `<destination>.config.toml`. Before every run those files are copied into the generated `codex_home/` folder, which is given to the Codex command-line program as its `CODEX_HOME`, and the destination is chosen with `--profile <destination>`.
 
-The `CODEX_HOME` of the person running the experiment is never read and never written. The Codex command-line program writes its own sessions, logs, databases, and downloaded documentation into the `CODEX_HOME` it is given, which is why the generated folder sits outside this repository rather than next to the committed `destinations/` folder.
+The `CODEX_HOME` of the person running the experiment is never read and never written. The Codex command-line program writes its own sessions, logs, databases, and downloaded documentation into the `CODEX_HOME` it is given, so `codex_home/` is generated on every run and is never committed.
 
 ## Experiment Two And Experiment Three
 

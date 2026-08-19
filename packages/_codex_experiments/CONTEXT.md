@@ -1,4 +1,4 @@
-# Directory Context: `/packages/_codex_experiment`
+# Directory Context: `/packages/_codex_experiments`
 
 ## Purpose
 
@@ -6,15 +6,15 @@ Runs the Codex command-line program against a small local model instead of again
 
 ## Key Exports & Entry Points
 
-- `src/experiment_one_connect.ts`: experiment one, which connects the Codex command-line program to one destination and completes one whole turn with a question that needs no tool at all. Command to run this folder: `npm run experiment_one:lmstudio --workspace @webai/codex-experiment`, and the same for `experiment_one:ollama` and `experiment_one:webai_at_home`.
+- `src/experiment_one_connect.ts`: experiment one, which connects the Codex command-line program to one destination and completes one whole turn with a question that needs no tool at all. Command to run this folder: `npm run experiment_one:lmstudio --workspace @webai/codex-experiments`, and the same for `experiment_one:ollama` and `experiment_one:webai_at_home`.
 - `destinations/`: one committed configuration file per destination, named `<destination>.config.toml`, which the Codex command-line program layers on with `--profile <destination>`.
 - `data/`: one folder per destination, holding the recorded events, the last message, and the result of every run, and [`data/experiment_one_results.md`](data/experiment_one_results.md), which reads them.
-- `~/.webai-at-home/codex_experiment/codex_home/`: generated, and outside this repository. It is the `CODEX_HOME` given to the Codex command-line program, and the destination configuration files are copied into it before every run.
+- `codex_home/`: generated, never committed. It is the `CODEX_HOME` given to the Codex command-line program, and the destination configuration files are copied into it before every run.
 
 ## Rules
 
 - The leading underscore marks this package as an experiment. It is private, it is not part of the root build script, and no working package may import from it.
-- A run never uses the `CODEX_HOME` of the person running it. It always uses the generated `codex_home` folder under `~/.webai-at-home/codex_experiment/`, so that the configuration of that person is neither read nor written, and so that the sessions, logs, and databases the Codex command-line program writes there stay out of this repository.
+- A run never uses the `CODEX_HOME` of the person running it. It always uses the generated `codex_home/` folder of this package, so that the configuration of that person is neither read nor written.
 - The destination is a setting, not a stage. Every experiment runs against all three destinations with the same question and the same measurement, so a difference in the result can be blamed on the destination.
 - `wire_api` is `responses` in every destination configuration file. The Codex command-line program refuses `wire_api = "chat"` since version 0.145.0.
 - A recording that answers a question is committed. Bulk recordings are not.

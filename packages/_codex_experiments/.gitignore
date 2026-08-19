@@ -1,0 +1,4 @@
+# The CODEX_HOME given to the Codex command-line program by src/experiment_one_connect.ts. It
+# receives a copy of every file in destinations/, and the Codex command-line program then fills it
+# with its own sessions, logs, databases, and downloaded documentation. None of that is committed.
+codex_home/
