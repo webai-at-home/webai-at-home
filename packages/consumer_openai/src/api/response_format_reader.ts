@@ -1,7 +1,7 @@
 import type { TaskTypeName } from '@webai/consumer-cli';
-import { StructuredOutputSupport, type ResponseFormatName, type TaskType, type ToolDeclaration } from '@webai/protocol';
+import { JsonSchemaCompiler, StructuredOutputSupport, type ResponseFormat, type TaskType, type ToolDeclaration } from '@webai/protocol';
 import { OpenaiError } from './openai_error.js';
-import type { ChatCompletionRequest } from './openai_types.js';
+import type { ChatCompletionRequest, ChatCompletionResponseFormat } from './openai_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,17 +46,18 @@ export class ResponseFormatReader {
 	 * @param declaredTools The tools that will actually be declared to the model, which is not the
 	 * same as the tools the request carries: a request asking for `tool_choice: "none"` declares
 	 * none, and may ask for a shape.
-	 * @returns The response format to produce the answer in, or `undefined` when the request asked
-	 * for nothing unusual, so that such a request is answered exactly as it was before this field
-	 * was read at all.
-	 * @throws OpenaiError when the model cannot produce the shape the request asked for, or when the
-	 * request asks for a shape beside tools it declares.
+	 * @returns The response format to produce the answer in, carrying the schema when the request
+	 * named one, or `undefined` when the request asked for nothing unusual, so that such a request is
+	 * answered exactly as it was before this field was read at all.
+	 * @throws OpenaiError when the model cannot produce the shape the request asked for, when the
+	 * request asks for a shape beside tools it declares, or when it carries a schema no worker of
+	 * this cluster could enforce.
 	 */
 	static read(
 		body: ChatCompletionRequest,
 		taskTypeName: TaskTypeName,
 		declaredTools?: readonly ToolDeclaration[],
-	): ResponseFormatName | undefined {
+	): ResponseFormat | undefined {
 		const responseFormat = body.response_format;
 		if (responseFormat === undefined || responseFormat === null || responseFormat.type === 'text') {
 			return undefined;
@@ -75,6 +76,54 @@ export class ResponseFormatReader {
 		if (declaredTools !== undefined && declaredTools.length > 0) {
 			throw OpenaiError.shapeBesideToolDeclarations(responseFormat.type, body.model);
 		}
-		return responseFormat.type;
+		if (responseFormat.type === 'json_object') {
+			return {
+				type: 'json_object',
+			};
+		}
+		return ResponseFormatReader._schemaFormatOf(responseFormat.json_schema, body.model);
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	//	Helpers
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
+	/**
+	 * Reads the schema of a `json_schema` request, or refuses the request.
+	 *
+	 * The schema is compiled here and the compiled form thrown away, because compiling it is how a
+	 * schema no worker could enforce is found. A worker compiles it again when it enforces it, and
+	 * both compile it with `JsonSchemaCompiler` from `@webai/protocol`, so what a consumer accepts
+	 * and what a worker enforces cannot drift apart.
+	 *
+	 * `strict` and `description` are read past. `description` describes the schema rather than
+	 * constraining a value, and `strict` asks for the schema to be followed exactly, which is the
+	 * only thing a worker of this cluster does with a schema at all — a request that asked for less
+	 * is over-satisfied rather than under-satisfied, and one that asked for exactly gets exactly.
+	 *
+	 * @param jsonSchema The `json_schema` object of the request, as the client sent it.
+	 * @param modelId The model the request asked for, named in any refusal.
+	 * @returns The response format to carry with the task.
+	 * @throws OpenaiError when the request carries no schema, or one no worker could enforce.
+	 */
+	private static _schemaFormatOf(
+		jsonSchema: Extract<ChatCompletionResponseFormat, { type: 'json_schema' }>['json_schema'],
+		modelId: string,
+	): ResponseFormat {
+		if (jsonSchema.schema === undefined) {
+			throw OpenaiError.unenforceableSchema(modelId, 'it carries no schema at all, and json_schema is a request to follow one');
+		}
+		try {
+			JsonSchemaCompiler.compile(jsonSchema.schema);
+		} catch (error: unknown) {
+			throw OpenaiError.unenforceableSchema(modelId, error instanceof Error ? error.message : String(error));
+		}
+		return {
+			type: 'json_schema',
+			name: jsonSchema.name,
+			schema: jsonSchema.schema,
+		};
 	}
 }

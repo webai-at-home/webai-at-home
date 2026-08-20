@@ -1,9 +1,9 @@
-import { JsonGrammar, type JsonGrammarState } from './json_grammar.js';
+import { JsonSchemaGrammar, type CompiledSchemaNode, type JsonSchemaGrammarState } from '@webai/protocol';
 import type { VocabularyTable } from './vocabulary_table.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	JsonGrammarMaskCache — works out which entries of the vocabulary a grammar state allows, once
+//	JsonSchemaMaskCache — works out which entries of the vocabulary a schema state allows, once
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -41,13 +41,14 @@ export type GrammarMask = {
  *
  * - The mask a grammar state produces depends only on the state and the vocabulary, never on the
  *   task, so a mask worked out for one answer is exactly right for the next.
- * - There are very few distinct states. Milestone 0 of
+ * - There are few distinct states. Milestone 0 of
  *   [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) reached **8** distinct
- *   states across the 36 steps of one answer, so 28 of those steps never scanned the vocabulary at
- *   all. Shared across tasks, the scans happen once for the life of the loaded model rather than
- *   once per answer.
+ *   states across the 36 steps of one answer under `json_object`, and milestone 6 measured 13 to 26
+ *   under a schema, against answers of 20 to 60 steps. Shared across tasks, the scans happen once
+ *   for the life of the loaded model and the schema rather than once per answer, and a reused mask
+ *   costs 0.06 milliseconds against a scan's 55.
  */
-export class JsonGrammarMaskCache {
+export class JsonSchemaMaskCache {
 	/** The text every entry of the vocabulary writes. */
 	readonly vocabularyTable: VocabularyTable;
 
@@ -57,13 +58,20 @@ export class JsonGrammarMaskCache {
 	/** One mask per grammar state signature seen so far. */
 	private readonly masksBySignature = new Map<string, GrammarMask>();
 
+	/** The compiled schema every answer masked by this cache has to satisfy. */
+	private readonly nodes: readonly CompiledSchemaNode[];
+
 	/**
 	 * @param vocabularyTable The text every entry of the vocabulary writes.
 	 * @param endOfSequenceTokenIds The identifiers that end a sequence for this model.
+	 * @param nodes The compiled schema. One cache belongs to one schema as well as to one model,
+	 * because a mask is what a state of **this** schema allows: a state signature names schema node
+	 * indices, so the same signature means something else under another schema.
 	 */
-	constructor(vocabularyTable: VocabularyTable, endOfSequenceTokenIds: readonly number[]) {
+	constructor(vocabularyTable: VocabularyTable, endOfSequenceTokenIds: readonly number[], nodes: readonly CompiledSchemaNode[]) {
 		this.vocabularyTable = vocabularyTable;
 		this.endOfSequenceTokenIds = endOfSequenceTokenIds;
+		this.nodes = nodes;
 	}
 
 	/** How many distinct grammar states this cache has worked a mask out for. */
@@ -80,8 +88,8 @@ export class JsonGrammarMaskCache {
 	 * would leave the sampler nothing to choose and the answer would be nonsense rather than a
 	 * refusal.
 	 */
-	maskFor(state: JsonGrammarState): GrammarMask {
-		const signature = JsonGrammar.signatureOf(state);
+	maskFor(state: JsonSchemaGrammarState): GrammarMask {
+		const signature = JsonSchemaGrammar.signatureOf(state);
 		const alreadyWorkedOut = this.masksBySignature.get(signature);
 		if (alreadyWorkedOut !== undefined) {
 			return alreadyWorkedOut;
@@ -133,11 +141,11 @@ export class JsonGrammarMaskCache {
 	 * @returns The mask.
 	 * @throws When no entry could legally come next.
 	 */
-	private _workOutMask(state: JsonGrammarState, signature: string): GrammarMask {
+	private _workOutMask(state: JsonSchemaGrammarState, signature: string): GrammarMask {
 		// A finished value may be followed by one thing only: the end of the turn. Whitespace after it
 		// would be legal JSON and is refused anyway, because a model allowed to write spaces for as
 		// long as its budget lasts is a model that stops on the budget rather than on the answer.
-		if (JsonGrammar.isComplete(state) === true) {
+		if (JsonSchemaGrammar.isComplete(this.nodes, state) === true) {
 			if (this.endOfSequenceTokenIds.length === 0) {
 				throw new Error('The model declares no end-of-sequence token, so a finished value could never be ended.');
 			}
@@ -147,6 +155,13 @@ export class JsonGrammarMaskCache {
 			};
 		}
 
+		// A space, a tab, or a line break outside a string is JSON's own layout and carries nothing, so
+		// an entry writing only those is never offered. It is not a tidiness rule: a model able to
+		// write a space and nothing else writes spaces until its budget is gone, because writing one
+		// leaves the reader in the state it was already in and the same choice comes round again. Live
+		// on Gemma 4 E2B, one masked question that the model wanted to answer in prose was answered
+		// with 400 characters of nothing but spaces and line breaks, under every schema tried.
+		const isInsideString = JsonSchemaGrammar.isInsideString(state);
 		const size = this.vocabularyTable.size;
 		// A flag per entry rather than a list, because which of the two lists is worth building is not
 		// known until the scan has finished counting.
@@ -159,7 +174,11 @@ export class JsonGrammarMaskCache {
 			if (this.vocabularyTable.kindOf(tokenId) !== 'text') {
 				continue;
 			}
-			if (JsonGrammar.acceptsText(state, this.vocabularyTable.textOf(tokenId)) === true) {
+			const text = this.vocabularyTable.textOf(tokenId);
+			if (isInsideString === false && text.trim() === '') {
+				continue;
+			}
+			if (JsonSchemaGrammar.acceptsText(this.nodes, state, text) === true) {
 				isLegal[tokenId] = 1;
 				legalCount = legalCount + 1;
 			}

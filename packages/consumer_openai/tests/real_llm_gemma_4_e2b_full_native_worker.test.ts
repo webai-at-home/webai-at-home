@@ -15,12 +15,12 @@ import { RealTestHelper } from './real_test_helper.js';
 // protocol and consumer CLI packages, starts the central gateway, this package's own OpenAI-compatible server,
 // and one worker process from @webai/worker-openai, then sends chat completions through the `openai` package.
 //
-// This is the end-to-end proof for milestone 5 of
-// [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219), which entered `json_object` into the
-// `task_type_llm_gemma_4_e2b_full` row of `structured_output_support.ts`. Until that row was widened, every
-// request below was refused at submission and none of the code it exercises could be reached from a consumer at
-// all. What this test proves is that the promise the row now makes is kept by the whole path — the
-// OpenAI-compatible server, the central gateway, the native worker, and the local model server behind it —
+// This is the end-to-end proof for milestones 5 and 6 of
+// [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219), which entered `json_object` and then
+// `json_schema` into the `task_type_llm_gemma_4_e2b_full` row of `structured_output_support.ts`. Until that row
+// was widened, every request below was refused at submission and none of the code it exercises could be reached
+// from a consumer at all. What this test proves is that the promise the row now makes is kept by the whole path —
+// the OpenAI-compatible server, the central gateway, the native worker, and the local model server behind it —
 // rather than only by the parts of it that were measured one at a time.
 //
 // It needs a server speaking the OpenAI-compatible API running locally with the model already downloaded. By
@@ -49,6 +49,40 @@ const localModelId = process.env.WEBAI_LOCAL_MODEL ?? 'google/gemma-4-e2b';
 
 /** The question every test below asks, which names the keys so the model has an object to write. */
 const questionNamingTwoKeys = 'Give the capital of France and its population. Answer with the keys capital and population.';
+
+/** The question the schema tests ask, which names no key at all, because the schema names them. */
+const questionUnderTheSchema = 'Give the capital of France, its population, and whether it is on the coast.';
+
+/** The schema the answer to {@link questionUnderTheSchema} has to satisfy. */
+const capitalSchema = {
+	type: 'object',
+	properties: {
+		capital: {
+			type: 'string',
+		},
+		population: {
+			type: 'integer',
+		},
+		isCoastal: {
+			type: 'boolean',
+		},
+	},
+	required: ['capital', 'population', 'isCoastal'],
+	additionalProperties: false,
+};
+
+/** A schema whose one property may hold three texts and nothing else. */
+const sentimentSchema = {
+	type: 'object',
+	properties: {
+		sentiment: {
+			type: 'string',
+			enum: ['positive', 'negative', 'neutral'],
+		},
+	},
+	required: ['sentiment'],
+	additionalProperties: false,
+};
 
 /** One tool declaration, for the request that asks for a shape and declares a tool in the same call. */
 const weatherTool = {
@@ -176,13 +210,64 @@ NodeTest.test('answers with a JSON object asked for in pieces as well, joined ba
 	Assert.equal(Array.isArray(parsed), false);
 });
 
-NodeTest.test('refuses json_schema, and names the shape this model does produce', {
+NodeTest.test('answers with an object the schema accepts, key by key and type by type', {
+	timeout: 600_000,
+}, async () => {
+	// A schema is a promise about keys and types, and `json_object` is not: the same question under
+	// `json_object` answered `"population": "Approximately 2,141,000 (city proper)"`, which is an
+	// object and is not a number. What is checked here is the promise a schema makes and the other
+	// shape does not.
+	const completion = await clientForTheCluster().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: questionUnderTheSchema }],
+		response_format: {
+			type: 'json_schema',
+			json_schema: {
+				name: 'capital_object',
+				strict: true,
+				schema: capitalSchema,
+			},
+		},
+	});
+
+	const answer = completion.choices[0]?.message.content ?? '';
+	const parsed = JSON.parse(answer) as Record<string, unknown>;
+	Assert.deepEqual(Object.keys(parsed).sort(), ['capital', 'isCoastal', 'population']);
+	Assert.equal(typeof parsed.capital, 'string');
+	Assert.equal(typeof parsed.population, 'number');
+	Assert.equal(Number.isInteger(parsed.population), true);
+	Assert.equal(typeof parsed.isCoastal, 'boolean');
+});
+
+NodeTest.test('answers with a value the enumeration names, and not one of its own', {
+	timeout: 600_000,
+}, async () => {
+	// An enumeration is the part of a schema a prompt cannot stand in for: a model told to answer
+	// `positive`, `negative`, or `neutral` writes `Positive.` often enough that a client has to
+	// forgive it, and a client that forgives it is a client parsing prose again.
+	const completion = await clientForTheCluster().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'The film was wonderful from start to finish. What is the sentiment?' }],
+		response_format: {
+			type: 'json_schema',
+			json_schema: {
+				name: 'sentiment_object',
+				strict: true,
+				schema: sentimentSchema,
+			},
+		},
+	});
+
+	const parsed = JSON.parse(completion.choices[0]?.message.content ?? '') as Record<string, unknown>;
+	Assert.equal(['positive', 'negative', 'neutral'].includes(parsed.sentiment as string), true, String(parsed.sentiment));
+});
+
+NodeTest.test('refuses a schema no worker of this project could hold a model to, rather than enforcing part of it', {
 	timeout: 300_000,
 }, async () => {
-	// The row names one shape and not both. A schema is a promise about keys and types, and neither
-	// worker of this task type can keep that promise yet — the worker browser tab enforces
-	// well-formed JSON and not a schema, and the protocol carries no schema for the native worker to
-	// pass on. Milestone 6 of issue #219 is where the schema itself starts to travel.
+	// The row promises `json_schema`, and this is the boundary of that promise. A keyword left
+	// unenforced would come back reported as though the whole schema had been kept, which is the
+	// failure `structured_output_support.ts` exists to prevent, one level further down.
 	await Assert.rejects(
 		async () => await clientForTheCluster().chat.completions.create({
 			model: 'llm_gemma_4_e2b_full',
@@ -197,6 +282,7 @@ NodeTest.test('refuses json_schema, and names the shape this model does produce'
 						properties: {
 							capital: {
 								type: 'string',
+								minLength: 3,
 							},
 						},
 						required: ['capital'],
@@ -207,10 +293,9 @@ NodeTest.test('refuses json_schema, and names the shape this model does produce'
 		}),
 		(error: unknown) => {
 			const message = (error as Error).message;
-			Assert.match(message, /json_schema/);
-			// The refusal says what may be asked for instead, which is the half of a refusal that
+			// The refusal names the keyword it could not enforce, which is the half of a refusal that
 			// tells its reader what to do next.
-			Assert.match(message, /json_object/);
+			Assert.match(message, /minLength/);
 			return true;
 		},
 	);

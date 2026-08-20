@@ -1,10 +1,10 @@
 import { LogitsProcessor, type Tensor } from '@huggingface/transformers';
-import { JsonGrammar, type JsonGrammarState } from './json_grammar.js';
-import type { JsonGrammarMaskCache } from './json_grammar_mask_cache.js';
+import { JsonSchemaGrammar, type CompiledSchemaNode, type JsonSchemaGrammarState } from '@webai/protocol';
+import type { JsonSchemaMaskCache } from './json_schema_mask_cache.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	JsonGrammarLogitsProcessor — makes a model write JSON by masking everything that would break it
+//	JsonSchemaLogitsProcessor — makes a model write JSON matching a schema, by masking what would break it
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -14,8 +14,8 @@ import type { JsonGrammarMaskCache } from './json_grammar_mask_cache.js';
  * This is the whole of structured output in one class. An ONNX graph's job ends at the logits: it
  * produces a score for every entry of the vocabulary and stops, and which entry is chosen from
  * those scores happens afterwards, in JavaScript. This sits between the two. At every step it
- * advances a {@link JsonGrammar} reader over the tokens the model has written, asks
- * {@link JsonGrammarMaskCache} which entries may legally come next, and applies the mask.
+ * advances a {@link JsonSchemaGrammar} reader over the tokens the model has written, asks
+ * {@link JsonSchemaMaskCache} which entries may legally come next, and applies the mask.
  *
  * `@huggingface/transformers` offers no way to **ask** for a shape — its `constraints` field is
  * declared and never read, and it has no grammar, no `json_schema`, and no guided decoding
@@ -36,12 +36,12 @@ import type { JsonGrammarMaskCache } from './json_grammar_mask_cache.js';
  * milestone 0 gate, which showed this model writing a bare object where the same question
  * unconstrained produced one wrapped in a markdown code fence that `JSON.parse` refuses.
  */
-export class JsonGrammarLogitsProcessor extends LogitsProcessor {
+export class JsonSchemaLogitsProcessor extends LogitsProcessor {
 	/** The masks of this model's vocabulary, shared with every other generation on the same model. */
-	private readonly maskCache: JsonGrammarMaskCache;
+	private readonly maskCache: JsonSchemaMaskCache;
 
 	/** The reader, advanced over the tokens the model has written. */
-	private readonly state: JsonGrammarState;
+	private readonly state: JsonSchemaGrammarState;
 
 	/** How many token identifiers the first call was handed, which is the length of the prompt. */
 	private promptTokenCount: number | undefined = undefined;
@@ -49,15 +49,20 @@ export class JsonGrammarLogitsProcessor extends LogitsProcessor {
 	/** How many written tokens the reader has already been advanced over. */
 	private consumedTokenCount = 0;
 
+	/** The compiled schema the answer has to satisfy. */
+	private readonly nodes: readonly CompiledSchemaNode[];
+
 	/**
-	 * @param maskCache The masks of this model's vocabulary.
-	 * @param isTopLevelObjectRequired Whether the whole answer has to be one object, which is what
-	 * the `json_object` response format asks for, rather than any JSON value.
+	 * @param maskCache The masks of this model's vocabulary under this schema.
+	 * @param nodes The compiled schema, whose node at index 0 is the whole answer's own. A
+	 * `json_object` request compiles to `{ "type": "object" }`, so both shapes arrive here as a
+	 * schema and there is one path and not two.
 	 */
-	constructor(maskCache: JsonGrammarMaskCache, isTopLevelObjectRequired: boolean) {
+	constructor(maskCache: JsonSchemaMaskCache, nodes: readonly CompiledSchemaNode[]) {
 		super();
 		this.maskCache = maskCache;
-		this.state = JsonGrammar.initialState(isTopLevelObjectRequired);
+		this.nodes = nodes;
+		this.state = JsonSchemaGrammar.initialState(0);
 	}
 
 	/**
@@ -71,7 +76,7 @@ export class JsonGrammarLogitsProcessor extends LogitsProcessor {
 	 * @returns `true` when a complete JSON value has been written.
 	 */
 	get isComplete(): boolean {
-		return JsonGrammar.isComplete(this.state);
+		return JsonSchemaGrammar.isComplete(this.nodes, this.state);
 	}
 
 	/**
@@ -124,7 +129,7 @@ export class JsonGrammarLogitsProcessor extends LogitsProcessor {
 				continue;
 			}
 			const text = this.maskCache.vocabularyTable.textOf(tokenId);
-			if (JsonGrammar.acceptText(this.state, text) === false) {
+			if (JsonSchemaGrammar.acceptText(this.nodes, this.state, text) === false) {
 				throw new Error(
 					`The response format could not be enforced: the model wrote ${JSON.stringify(text)}, `
 					+ 'which the JSON reader refuses, although the mask left it legal.',

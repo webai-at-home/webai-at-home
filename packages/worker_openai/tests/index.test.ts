@@ -401,7 +401,7 @@ Test('asks for a json_object answer as the schema that means the same thing, whi
 	// 0.32.14 answer this schema with a JSON object, so this one form is sent to every server and
 	// neither has to be told apart from the other. Measured live through this worker in milestone 4
 	// of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219).
-	const body = await requestBodyOf({ responseFormat: 'json_object' });
+	const body = await requestBodyOf({ responseFormat: { type: 'json_object' } });
 	Assert.deepEqual(body.response_format, {
 		type: 'json_schema',
 		json_schema: {
@@ -423,18 +423,28 @@ Test('sends no response_format field at all when the consumer asked for no shape
 	Assert.equal('response_format' in askedForOneControl, false);
 });
 
-Test('refuses a json_schema answer rather than sending a json_schema request with no schema in it', async () => {
-	// The protocol carries no schema yet, so there is nothing to put beside the type. Sending the
-	// type alone would be a malformed request, and answering some other way in silence is what this
-	// project refuses. Milestone 6 of
-	// [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) carries the schema.
-	await Assert.rejects(
-		async () => await requestBodyOf({ responseFormat: 'json_schema' }),
-		(error: unknown) => {
-			Assert.match((error as Error).message, /carries no schema/);
-			return true;
+Test('sends the schema a json_schema request carries, under the name the request gave it', async () => {
+	// Since milestone 6 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) the
+	// protocol carries the schema itself, so this worker passes it on rather than refusing the shape.
+	const greetingSchema = {
+		type: 'object',
+		properties: {
+			greeting: {
+				type: 'string',
+			},
 		},
-	);
+		required: ['greeting'],
+		additionalProperties: false,
+	};
+	const body = await requestBodyOf({ responseFormat: { type: 'json_schema', name: 'greeting_object', schema: greetingSchema } });
+	Assert.deepEqual(body.response_format, {
+		type: 'json_schema',
+		json_schema: {
+			name: 'greeting_object',
+			strict: true,
+			schema: greetingSchema,
+		},
+	});
 });
 
 Test('fails the stage when the local server ignored the shape and answered in prose', async () => {
@@ -444,10 +454,10 @@ Test('fails the stage when the local server ignored the shape and answered in pr
 	const { client } = fakeChatClient(['capital: Paris'], { promptTokenCount: 33, completionTokenCount: 6, finishReason: 'stop' });
 	await Assert.rejects(
 		async () => await StageHelperLlmQwen3_5_0_8bFull.compute(
-			'task-prose-shape', 'assignment-prose-shape', { text: 'Give the capital of France.' }, { responseFormat: 'json_object' }, client, 'qwen_qwen3.5-0.8b',
+			'task-prose-shape', 'assignment-prose-shape', { text: 'Give the capital of France.' }, { responseFormat: { type: 'json_object' } }, client, 'qwen_qwen3.5-0.8b',
 		),
 		(error: unknown) => {
-			Assert.match((error as Error).message, /not JSON at all: capital: Paris/);
+			Assert.match((error as Error).message, /the schema refuses: capital: Paris/);
 			return true;
 		},
 	);
@@ -461,10 +471,10 @@ Test('fails the stage when the local server answered with JSON that is not an ob
 		const { client } = fakeChatClient([answer], { promptTokenCount: 33, completionTokenCount: 3, finishReason: 'stop' });
 		await Assert.rejects(
 			async () => await StageHelperLlmQwen3_5_0_8bFull.compute(
-				`task-not-object-${answer}`, `assignment-not-object-${answer}`, { text: 'Give the capital of France.' }, { responseFormat: 'json_object' }, client, 'qwen_qwen3.5-0.8b',
+				`task-not-object-${answer}`, `assignment-not-object-${answer}`, { text: 'Give the capital of France.' }, { responseFormat: { type: 'json_object' } }, client, 'qwen_qwen3.5-0.8b',
 			),
 			(error: unknown) => {
-				Assert.match((error as Error).message, /JSON that is not an object/);
+				Assert.match((error as Error).message, /the schema refuses/);
 				return true;
 			},
 		);
@@ -474,7 +484,7 @@ Test('fails the stage when the local server answered with JSON that is not an ob
 Test('reports the object the local server returned when it honoured the shape, in pieces as well as whole', async () => {
 	const { client } = fakeChatClient(['{"capital"', ': "Paris"}'], { promptTokenCount: 33, completionTokenCount: 8, finishReason: 'stop' });
 	const whole = await StageHelperLlmQwen3_5_0_8bFull.compute(
-		'task-shape-whole', 'assignment-shape-whole', { text: 'Give the capital of France.' }, { responseFormat: 'json_object' }, client, 'qwen_qwen3.5-0.8b',
+		'task-shape-whole', 'assignment-shape-whole', { text: 'Give the capital of France.' }, { responseFormat: { type: 'json_object' } }, client, 'qwen_qwen3.5-0.8b',
 	);
 	Assert.deepEqual(whole, { text: '{"capital": "Paris"}', done: true, promptTokenCount: 33, completionTokenCount: 8, stopReason: 'end_of_sequence' });
 });
@@ -484,7 +494,7 @@ Test('leaves alone a shaped answer the local server cut short at its output limi
 	// half an object is not being told nothing. This is the line the worker browser tab draws too.
 	const { client } = fakeChatClient(['{"capital": "Par'], { promptTokenCount: 33, completionTokenCount: 8, finishReason: 'length' });
 	const result = await StageHelperLlmQwen3_5_0_8bFull.compute(
-		'task-shape-length', 'assignment-shape-length', { text: 'Give the capital of France.' }, { responseFormat: 'json_object' }, client, 'qwen_qwen3.5-0.8b',
+		'task-shape-length', 'assignment-shape-length', { text: 'Give the capital of France.' }, { responseFormat: { type: 'json_object' } }, client, 'qwen_qwen3.5-0.8b',
 	);
 	Assert.deepEqual(result, { text: '{"capital": "Par', done: true, promptTokenCount: 33, completionTokenCount: 8, stopReason: 'max_new_tokens' });
 });

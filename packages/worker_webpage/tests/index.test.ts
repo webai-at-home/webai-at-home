@@ -9,12 +9,12 @@ import { Gemma4E2bHistoryMessages } from '../web/src/stages/gemma_4_e2b_history_
 import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call_reader.js';
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
 import { StageHelperLlmGemma4E2bFull } from '../web/src/stages/stage_helper_llm_gemma_4_e2b_full.js';
-import { JsonGrammar } from '../web/src/stages/structured_output/json_grammar.js';
 import { VocabularyTable } from '../web/src/stages/structured_output/vocabulary_table.js';
-import { JsonGrammarMaskCache, type GrammarMask } from '../web/src/stages/structured_output/json_grammar_mask_cache.js';
+import { JsonSchemaMaskCache, type GrammarMask } from '../web/src/stages/structured_output/json_schema_mask_cache.js';
 
 // package imports
 import type { PreTrainedTokenizer } from '@huggingface/transformers';
+import { JsonSchemaCompiler, JsonSchemaGrammar } from '@webai/protocol';
 import type { GenerationSettings, LlmStagePayload } from '@webai/protocol';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -440,101 +440,11 @@ Test('the settings panel says how large the Gemma 4 E2B download is, which no ot
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	JsonGrammar
+//	VocabularyTable and JsonSchemaMaskCache
 //
-//	The reader that enforces `json_object`, from milestone 1 of
-//	[issue #219](https://github.com/webai-at-home/webai-at-home/issues/219). It is the one part of
-//	structured output that can be checked without a model at all, and it is the part that must not
-//	be wrong: every entry of the vocabulary is judged by it at every step, so a reader that accepts
-//	one illegal character makes the whole mask a decoration.
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-
-/** Reads a whole text from a fresh reader, and reports whether it was accepted and finished. */
-function readWholeText(text: string): { isAccepted: boolean; isComplete: boolean } {
-	const state = JsonGrammar.initialState(true);
-	const isAccepted = JsonGrammar.acceptText(state, text);
-	return {
-		isAccepted: isAccepted,
-		isComplete: isAccepted === true && JsonGrammar.isComplete(state),
-	};
-}
-
-Test('accepts the JSON an object response format is meant to produce', () => {
-	for (const text of [
-		'{}',
-		'{"a":1}',
-		'{"a": 1, "b": [1,2,3]}',
-		'{"a": {"b": {"c": null}}}',
-		'{"a": true, "b": false, "c": null}',
-		'{"a": -1.5e-10}',
-		'{"a": "line\\nbreak \\u00e9"}',
-		'{ "a" : [ ] }',
-		'{"a":[{},{"b":[]}]}',
-		'{"a":0}',
-	]) {
-		Assert.deepEqual(readWholeText(text), { isAccepted: true, isComplete: true }, text);
-	}
-});
-
-Test('refuses text that is not a complete JSON object', () => {
-	for (const text of [
-		'[]',
-		'1',
-		'"hello"',
-		'{"a":01}',
-		'{"a":1,}',
-		'{,}',
-		'{"a"1}',
-		'{"a":1',
-		'{"a":+1}',
-		'{"a":1.}',
-		'{"a":1e}',
-		'{"a":"un\tescaped"}',
-		'{"a":.5}',
-		'{"a":[1,]}',
-		'{}x',
-		'{"a":tru}',
-	]) {
-		const reading = readWholeText(text);
-		Assert.equal(reading.isAccepted === true && reading.isComplete === true, false, text);
-	}
-});
-
-Test('lets an answer start only with an object, because that is what json_object asks for', () => {
-	const state = JsonGrammar.initialState(true);
-	const legalFirstCharacters: string[] = [];
-	for (let code = 32; code < 127; code = code + 1) {
-		if (JsonGrammar.acceptsText(state, String.fromCharCode(code)) === true) {
-			legalFirstCharacters.push(String.fromCharCode(code));
-		}
-	}
-
-	Assert.equal(legalFirstCharacters.join(''), ' {');
-});
-
-Test('judges a token that closes two containers at once against the whole stack, not only its top', () => {
-	// A vocabulary entry may carry several characters, so `}}` reaches two levels down. A reader that
-	// looked only at the innermost container would accept `}}}` here and write one bracket too many.
-	const state = JsonGrammar.initialState(true);
-	JsonGrammar.acceptText(state, '{"a":{"b":1');
-
-	Assert.equal(JsonGrammar.acceptsText(state, '}}'), true);
-	Assert.equal(JsonGrammar.acceptsText(state, '}}}'), false);
-});
-
-Test('reports a value as unfinished until its last bracket is written', () => {
-	const state = JsonGrammar.initialState(true);
-	JsonGrammar.acceptText(state, '{"a":{"b":1}');
-
-	Assert.equal(JsonGrammar.isComplete(state), false);
-	Assert.equal(JsonGrammar.acceptText(state, '}'), true);
-	Assert.equal(JsonGrammar.isComplete(state), true);
-});
-
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-//	VocabularyTable and JsonGrammarMaskCache
+//	The reader these two mask with is `JsonSchemaGrammar`, which lives in `@webai/protocol` and is
+//	checked there: three places have to agree about what a schema means, so there is one reader and
+//	not one per worker. What is checked here is the masking, which is this package's own.
 //
 //	Checked against a vocabulary written out by hand rather than a loaded model, so that every
 //	entry's expected verdict can be read off the page. The shapes it is fed are the shapes
@@ -596,10 +506,35 @@ function legalIdentifiersOf(mask: GrammarMask, size: number): number[] {
 	return legalIdentifiers;
 }
 
-/** A mask cache over the hand-written vocabulary. */
-function maskCacheOverTheHandWrittenVocabulary(): JsonGrammarMaskCache {
+/** The schema of `json_object`: any object at all, which is what a `json_object` request asks for. */
+const anyObjectSchema = {
+	type: 'object',
+};
+
+/** The compiled schema every mask below is worked out under. */
+const anyObjectNodes = JsonSchemaCompiler.compile(anyObjectSchema);
+
+/**
+ * A mask cache over the hand-written vocabulary.
+ *
+ * @param nodes The compiled schema to mask under, `anyObjectNodes` unless a check needs another.
+ * @returns The cache.
+ */
+function maskCacheOverTheHandWrittenVocabulary(nodes = anyObjectNodes): JsonSchemaMaskCache {
 	const vocabularyTable = VocabularyTable.build(tokenizerOver(vocabularyTexts, endOfSequenceTokenIds));
-	return new JsonGrammarMaskCache(vocabularyTable, endOfSequenceTokenIds);
+	return new JsonSchemaMaskCache(vocabularyTable, endOfSequenceTokenIds, nodes);
+}
+
+/**
+ * A grammar state that has already read some text, under the schema of `json_object`.
+ *
+ * @param written The text the model has written so far.
+ * @returns The state that text leaves the reader in.
+ */
+function stateAfter(written: string) {
+	const state = JsonSchemaGrammar.initialState(0);
+	Assert.equal(JsonSchemaGrammar.acceptText(anyObjectNodes, state, written), true, written);
+	return state;
 }
 
 Test('reads a vocabulary handed back as a Map, which is what the tokenizer really returns', () => {
@@ -621,29 +556,24 @@ Test('sorts every entry into the text a grammar can judge, a marker, or somethin
 
 Test('leaves legal, at the start, only the entries that can open an object', () => {
 	const maskCache = maskCacheOverTheHandWrittenVocabulary();
-	const state = JsonGrammar.initialState(true);
 
 	// `{` and `{"`, and neither the two markers nor the entry that writes nothing.
-	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(state), vocabularyTexts.length), [3, 8]);
+	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(stateAfter('')), vocabularyTexts.length), [3, 8]);
 });
 
 Test('leaves legal, after an opening brace, only a key or the closing brace', () => {
 	const maskCache = maskCacheOverTheHandWrittenVocabulary();
-	const state = JsonGrammar.initialState(true);
-	JsonGrammar.acceptText(state, '{');
 
 	// `}`, `"`, and `":`, whose colon is an ordinary character inside the key it opens.
-	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(state), vocabularyTexts.length), [4, 5, 7]);
+	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(stateAfter('{')), vocabularyTexts.length), [4, 5, 7]);
 });
 
 Test('leaves legal, once the value is finished, nothing but the end of the turn', () => {
 	const maskCache = maskCacheOverTheHandWrittenVocabulary();
-	const state = JsonGrammar.initialState(true);
-	JsonGrammar.acceptText(state, '{}');
 
 	// Not even whitespace, which JSON would allow: a model free to write spaces until its budget runs
 	// out would stop on the budget rather than on the answer.
-	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(state), vocabularyTexts.length), endOfSequenceTokenIds);
+	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(stateAfter('{}')), vocabularyTexts.length), endOfSequenceTokenIds);
 });
 
 Test('names the entries to remove when most of the vocabulary is legal, and the entries to keep when few are', () => {
@@ -651,20 +581,14 @@ Test('names the entries to remove when most of the vocabulary is legal, and the 
 	// names, so a mask that named its 261040 legal entries cost 47 milliseconds where one naming its
 	// few illegal entries costs nothing. Inside a string almost everything is legal.
 	const maskCache = maskCacheOverTheHandWrittenVocabulary();
-	const atTheStart = JsonGrammar.initialState(true);
-	const insideAKey = JsonGrammar.initialState(true);
-	JsonGrammar.acceptText(insideAKey, '{"');
 
-	Assert.equal(maskCache.maskFor(atTheStart).namesTheEntriesToKeep, true);
-	Assert.equal(maskCache.maskFor(insideAKey).namesTheEntriesToKeep, false);
-	Assert.deepEqual(maskCache.maskFor(insideAKey).tokenIds, [0, 1, 2]);
+	Assert.equal(maskCache.maskFor(stateAfter('')).namesTheEntriesToKeep, true);
+	Assert.equal(maskCache.maskFor(stateAfter('{"')).namesTheEntriesToKeep, false);
+	Assert.deepEqual(maskCache.maskFor(stateAfter('{"')).tokenIds, [0, 1, 2]);
 });
 
 Test('leaves the model its own scores among the entries it keeps, whichever form the mask took', () => {
 	const maskCache = maskCacheOverTheHandWrittenVocabulary();
-	const atTheStart = JsonGrammar.initialState(true);
-	const insideAKey = JsonGrammar.initialState(true);
-	JsonGrammar.acceptText(insideAKey, '{"');
 	const originalScores = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((identifier) => identifier / 10);
 	// Rounded before it is compared, because a `Float32Array` cannot hold 0.3 and keeps
 	// 0.30000001192092896 instead. What is being checked is which entries survived, not the precision
@@ -674,16 +598,39 @@ Test('leaves the model its own scores among the entries it keeps, whichever form
 	);
 
 	const namingWhatToKeep = Float32Array.from(originalScores);
-	maskCache.apply(maskCache.maskFor(atTheStart), namingWhatToKeep);
+	maskCache.apply(maskCache.maskFor(stateAfter('')), namingWhatToKeep);
 	Assert.deepEqual(survivorsOf(namingWhatToKeep), [
 		'masked', 'masked', 'masked', 0.3, 'masked', 'masked', 'masked', 'masked', 0.8, 'masked',
 	]);
 
 	const namingWhatToRemove = Float32Array.from(originalScores);
-	maskCache.apply(maskCache.maskFor(insideAKey), namingWhatToRemove);
+	maskCache.apply(maskCache.maskFor(stateAfter('{"')), namingWhatToRemove);
 	Assert.deepEqual(survivorsOf(namingWhatToRemove), [
 		'masked', 'masked', 'masked', 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
 	]);
+});
+
+Test('never offers an entry that writes only whitespace, outside a string where a space is a character', () => {
+	// Measured live on Gemma 4 E2B: asked a question it wanted to answer in prose, and masked so it
+	// could not, the model wrote 400 characters of nothing but spaces and line breaks and never
+	// opened the object at all. Writing a space leaves the reader exactly where it was, so the same
+	// choice comes round again and the answer ends on the budget rather than on the value. JSON needs
+	// no whitespace anywhere, so none is offered anywhere it is only layout.
+	const textsWithWhitespace = [...vocabularyTexts, ' ', '\n', ' \n ', ' a'];
+	const vocabularyTable = VocabularyTable.build(tokenizerOver(textsWithWhitespace, endOfSequenceTokenIds));
+	const maskCache = new JsonSchemaMaskCache(vocabularyTable, endOfSequenceTokenIds, anyObjectNodes);
+
+	// At the start `{` and `{"` are legal as before, and none of the three whitespace-only entries is.
+	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(stateAfter('')), textsWithWhitespace.length), [3, 8]);
+
+	// Inside a string a space is an ordinary character of the value and is offered again. A raw line
+	// break is not, but that is JSON's own rule and not this one: a string holds `\n` written as two
+	// characters, never the character itself.
+	const legalInsideAString = legalIdentifiersOf(maskCache.maskFor(stateAfter('{"')), textsWithWhitespace.length);
+	Assert.equal(legalInsideAString.includes(10), true, 'a space');
+	Assert.equal(legalInsideAString.includes(13), true, 'a space and a letter');
+	Assert.equal(legalInsideAString.includes(11), false, 'a line break');
+	Assert.equal(legalInsideAString.includes(12), false, 'a space, a line break, and a space');
 });
 
 Test('works a mask out once per grammar state, however many steps reach that state', () => {
@@ -691,10 +638,10 @@ Test('works a mask out once per grammar state, however many steps reach that sta
 	// the vocabulary scan off all but a few steps — and, shared across tasks, off all but the first
 	// answer a loaded model produces.
 	const maskCache = maskCacheOverTheHandWrittenVocabulary();
-	const state = JsonGrammar.initialState(true);
+	const state = stateAfter('');
 	maskCache.maskFor(state);
-	maskCache.maskFor(JsonGrammar.copy(state));
-	maskCache.maskFor(JsonGrammar.copy(state));
+	maskCache.maskFor(JsonSchemaGrammar.copy(state));
+	maskCache.maskFor(JsonSchemaGrammar.copy(state));
 
 	Assert.equal(maskCache.workedOutMaskCount, 1);
 });
@@ -704,10 +651,10 @@ Test('works a mask out once per grammar state, however many steps reach that sta
 //	StageHelperLlmGemma4E2bFull, the response format it produces
 //
 //	Milestone 3 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) made this
-//	stage produce a `json_object`. Producing one needs the model, so what is asserted here is the
-//	half that does not: the two requests this stage refuses rather than answering by ignoring what
-//	was asked for. Both are refused before the model is reached, which is why they can be asserted
-//	at all — a run that would really generate would download about 3111 megabytes.
+//	stage produce a `json_object`, and milestone 6 a `json_schema`. Producing either needs the model,
+//	so what is asserted here is the half that does not: the request this stage refuses rather than
+//	answering by ignoring what was asked for. It is refused before the model is reached, which is why
+//	it can be asserted at all — a run that would really generate would download about 3111 megabytes.
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -742,25 +689,51 @@ async function refusalOf(payload: LlmStagePayload, generationSettings: Generatio
 	}
 }
 
-Test('refuses a request for json_schema rather than answering it with whatever object the model writes', async () => {
-	// This stage enforces well-formed JSON and not a schema. Answering a schema request with an
-	// object whose keys are the model's own guess, and reporting it as though the schema had been
-	// kept, is the exact failure `structured_output_support.ts` exists to prevent.
-	const refusal = await refusalOf({ text: 'Reply with a greeting object.' }, { responseFormat: 'json_schema' });
-
-	Assert.match(refusal, /json_object and not json_schema/);
-});
-
 Test('refuses to produce a shape and call a tool at once, because a masked answer can hold no tool call', async () => {
 	// Every marker a tool call is written with is a special token of this tokenizer, measured live by
-	// milestone 0 of issue #216, and the mask leaves no special token legal until the object is
-	// finished. So the two asked for together are two things that cannot both be given.
+	// milestone 0 of issue #216, and the mask leaves no special token legal until the value is
+	// finished. So the two asked for together are two things that cannot both be given. Neither shape
+	// is any different in this: what masks the markers out is the mask, not what it is masking into.
+	for (const responseFormat of [
+		{
+			type: 'json_object',
+		},
+		{
+			type: 'json_schema',
+			name: 'greeting',
+			schema: {
+				type: 'object',
+			},
+		},
+	] as const) {
+		const refusal = await refusalOf(
+			{ history: { messages: [{ role: 'user', content: 'What is the weather in Paris?' }], tools: oneDeclaredTool } },
+			{ responseFormat: responseFormat },
+		);
+
+		Assert.match(refusal, new RegExp(`cannot both produce a response format of ${responseFormat.type} and call a`));
+	}
+});
+
+Test('refuses a schema it could not hold the model to, before it downloads a model to answer with', async () => {
+	// The consumer refuses such a schema too, in `ResponseFormatReader`, and against this same
+	// compiler. It is refused here as well because a consumer is not the only thing that can submit a
+	// task, and a keyword left unenforced would come back reported as though the schema had been kept.
 	const refusal = await refusalOf(
-		{ history: { messages: [{ role: 'user', content: 'What is the weather in Paris?' }], tools: oneDeclaredTool } },
-		{ responseFormat: 'json_object' },
+		{ text: 'Reply with a greeting.' },
+		{
+			responseFormat: {
+				type: 'json_schema',
+				name: 'greeting',
+				schema: {
+					type: 'string',
+					minLength: 3,
+				},
+			},
+		},
 	);
 
-	Assert.match(refusal, /cannot both produce a response format of json_object and call a tool/);
+	Assert.match(refusal, /uses "minLength"/);
 });
 
 Test('refuses neither of those for a task that asked for no shape, so nothing about such a task changes', async () => {

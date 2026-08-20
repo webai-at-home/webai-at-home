@@ -128,7 +128,9 @@ An ignored field also fails at random, which is what made it hard to notice by h
 
 Both `structured_output` rows in both `consumer_openai` columns are therefore ⊘ rather than ❌ or ⚠️, re-measured on 2026-08-16, and they are steady rather than changing from run to run. `@webai/protocol`'s `StructuredOutputSupport` is what a shape has to be entered into for that to change.
 
-`task_type_llm_gemma_4_e2b_full` was entered into that table on 2026-08-20, under milestone 5 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219), once both of its kinds of worker had been measured producing a `json_object`. The columns above are unchanged, because they are what the run of 2026-08-16 measured; milestone 7 of that issue is the rerun that re-measures the two `structured_output` rows.
+`task_type_llm_gemma_4_e2b_full` was entered into that table on 2026-08-20, under milestone 5 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219), once both of its kinds of worker had been measured producing a `json_object`, and again the same day under milestone 6 for `json_schema`, once both had been measured keeping four schemas covering required properties, integers, booleans, enumerations, arrays, and nesting. The columns above are unchanged, because they are what the run of 2026-08-16 measured; milestone 7 of that issue is the rerun that re-measures the two `structured_output` rows.
+
+A schema this project cannot hold a model to is now refused where it is read, with HTTP 400 and code `unenforceable_schema`, naming the keyword it could not enforce. `JsonSchemaCompiler` in `@webai/protocol` names the keywords it does enforce — `type`, `properties`, `required`, `additionalProperties`, `items`, and `enum` — and refuses every other. Enforcing the part of a schema that is understood, and answering as though the whole of it had been kept, is the same fault as ignoring the field, one level further down.
 
 ### `llm_qwen3_5_0_8b_full` thinks until its budget is gone, and never begins an answer
 

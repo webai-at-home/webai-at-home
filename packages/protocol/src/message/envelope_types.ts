@@ -120,11 +120,21 @@ import type { GatewayMessage } from './gateway_message.js';
  * `GenerationSettingsSchema` is `.strict()`, so a gateway or a worker built before this version
  * refuses the whole settings block once it carries the new field, and a consumer that asked for an
  * object would lose every other control it asked for in the same block.
+ *
+ * Version 11 let a `json_schema` carry its schema. `GenerationSettings.responseFormat` was the name
+ * of a shape and is now the shape itself: `{ "type": "json_object" }`, or `{ "type": "json_schema" }`
+ * with the schema and its name beside it. A name alone was enough while `json_schema` was refused by
+ * every task type, and stopped being enough the moment one honoured it, because a schema is what
+ * that shape means. See milestone 6 of
+ * [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219). Version 10 is refused
+ * rather than read leniently, for the reason every version before it is: the field changed shape, so
+ * a peer built for version 10 refuses the whole settings block over `.strict()` and a consumer that
+ * asked for a shape would lose every other control it asked for in the same block.
  */
-export const protocolVersion = 10;
+export const protocolVersion = 11;
 
 /** The protocol versions the gateway accepts. No earlier version is accepted. */
-export const supportedProtocolVersions: number[] = [10];
+export const supportedProtocolVersions: number[] = [11];
 
 /**
  * The wrapper around every frame sent in either direction.

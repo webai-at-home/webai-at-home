@@ -1081,14 +1081,32 @@ Test('carries a response format the task type honours, in the same block the con
 	const messages = [{ role: 'user', content: 'Reply with a greeting object.' }];
 	const parsed = ChatCompletionRequestSchema.parse({ model: 'llm_llama3_2_1b_full', messages, temperature: 0 });
 
-	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', false, 'json_object'), {
+	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', false, { type: 'json_object' }), {
 		temperature: 0,
-		responseFormat: 'json_object',
+		responseFormat: {
+			type: 'json_object',
+		},
 	});
-	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', true, 'json_schema'), {
+	// A schema travels whole, since milestone 6 of that issue: the shape a `json_schema` names is the
+	// schema itself, and a name with no schema beside it says nothing a worker could enforce.
+	const greetingSchema = {
+		type: 'object',
+		properties: {
+			greeting: {
+				type: 'string',
+			},
+		},
+		required: ['greeting'],
+		additionalProperties: false,
+	};
+	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', true, { type: 'json_schema', name: 'greeting_object', schema: greetingSchema }), {
 		isStreaming: true,
 		temperature: 0,
-		responseFormat: 'json_schema',
+		responseFormat: {
+			type: 'json_schema',
+			name: 'greeting_object',
+			schema: greetingSchema,
+		},
 	});
 });
 
@@ -1102,24 +1120,73 @@ Test('submits no settings block at all for a request that asked for no shape and
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: null }, 'llm_llama3_2_1b_full'), undefined);
 });
 
-Test('carries json_object to the task type that produces one, and still refuses the schema it does not', () => {
+Test('carries both shapes to the task type that produces them, the schema along with the name', () => {
 	const messages = [{ role: 'user', content: 'Give the capital of France, with the key capital.' }];
 	const shaped = ChatCompletionRequestSchema.parse({ model: 'llm_gemma_4_e2b_full', messages, response_format: { type: 'json_object' } });
 
-	Assert.equal(ResponseFormatReader.read(shaped, 'llm_gemma_4_e2b_full'), 'json_object');
-	Assert.deepEqual(GenerationSettingsBuilder.build(shaped, 'llm_gemma_4_e2b_full', false, 'json_object'), { responseFormat: 'json_object' });
+	Assert.deepEqual(ResponseFormatReader.read(shaped, 'llm_gemma_4_e2b_full'), { type: 'json_object' });
+	Assert.deepEqual(GenerationSettingsBuilder.build(shaped, 'llm_gemma_4_e2b_full', false, { type: 'json_object' }), {
+		responseFormat: {
+			type: 'json_object',
+		},
+	});
 
-	// The row names one shape and not both, so the schema is refused by the same table that lets the
-	// object through, and the refusal now names a shape the sender can ask for instead of "text only".
+	// A schema travels whole. The worker is the thing that enforces it, so what reaches the task has
+	// to be the document the request carried and not a summary of it.
+	const capitalSchema = {
+		type: 'object',
+		properties: {
+			capital: {
+				type: 'string',
+			},
+		},
+		required: ['capital'],
+		additionalProperties: false,
+	};
 	const schemaRequest = ChatCompletionRequestSchema.parse({
 		model: 'llm_gemma_4_e2b_full',
 		messages,
-		response_format: { type: 'json_schema', json_schema: { name: 'capital', strict: true, schema: { type: 'object' } } },
+		response_format: { type: 'json_schema', json_schema: { name: 'capital', strict: true, schema: capitalSchema } },
+	});
+
+	Assert.deepEqual(ResponseFormatReader.read(schemaRequest, 'llm_gemma_4_e2b_full'), {
+		type: 'json_schema',
+		name: 'capital',
+		schema: capitalSchema,
+	});
+});
+
+Test('refuses a schema no worker could hold a model to, naming the keyword it could not enforce', () => {
+	// The boundary of the promise the row makes. `JsonSchemaCompiler` names the keywords it enforces
+	// and refuses every other, so the request is refused here rather than answered with a schema
+	// enforced as far as it happened to be understood.
+	const messages = [{ role: 'user', content: 'Give the capital of France, with the key capital.' }];
+	const unenforceable = ChatCompletionRequestSchema.parse({
+		model: 'llm_gemma_4_e2b_full',
+		messages,
+		response_format: {
+			type: 'json_schema',
+			json_schema: { name: 'capital', strict: true, schema: { type: 'object', properties: { capital: { type: 'string', minLength: 3 } } } },
+		},
 	});
 	Assert.throws(
-		() => ResponseFormatReader.read(schemaRequest, 'llm_gemma_4_e2b_full'),
+		() => ResponseFormatReader.read(unenforceable, 'llm_gemma_4_e2b_full'),
 		(error: unknown) => {
-			Assert.match((error as Error).message, /json_object/);
+			Assert.match((error as Error).message, /minLength/);
+			return true;
+		},
+	);
+
+	// A `json_schema` request carrying no schema at all is a request to follow nothing.
+	const schemaless = ChatCompletionRequestSchema.parse({
+		model: 'llm_gemma_4_e2b_full',
+		messages,
+		response_format: { type: 'json_schema', json_schema: { name: 'capital', strict: true } },
+	});
+	Assert.throws(
+		() => ResponseFormatReader.read(schemaless, 'llm_gemma_4_e2b_full'),
+		(error: unknown) => {
+			Assert.match((error as Error).message, /carries no schema at all/);
 			return true;
 		},
 	);

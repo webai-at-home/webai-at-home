@@ -217,6 +217,33 @@ export class OpenaiError extends Error {
 	}
 
 	/**
+	 * The request carried a schema no worker of this cluster could enforce.
+	 *
+	 * A worker holds a model to a schema by allowing only the tokens that schema permits, which it can
+	 * do for the keys a schema requires, the types it declares, and the values it enumerates, and
+	 * cannot do for a keyword it has no rule for. Such a schema is refused rather than enforced in
+	 * part, because a schema enforced in part comes back looking exactly as it should and satisfies
+	 * less than it says. `JsonSchemaCompiler` in `@webai/protocol` is the one place that decides which
+	 * is which, and both this server and the worker that would enforce the schema read it.
+	 *
+	 * @param modelId The model the request asked for.
+	 * @param reason What the compiler said was wrong with the schema, which names the keyword at fault.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static unenforceableSchema(modelId: string, reason: string): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			`The model ${modelId} cannot be held to the schema this request carries, and this server refuses a schema ` +
+				'it would have to enforce in part rather than answering as though the whole of it had been kept: ' +
+				`${reason}. Send the request again with a schema built from type, properties, required, ` +
+				'additionalProperties, items, and enum, or with response_format "json_object" for any object at all.',
+			'response_format',
+			'unenforceable_schema',
+		);
+	}
+
+	/**
 	 * The request declared tools to a model that cannot read them.
 	 *
 	 * Refused for the same reason an unhonourable generation control is: accepting the declarations

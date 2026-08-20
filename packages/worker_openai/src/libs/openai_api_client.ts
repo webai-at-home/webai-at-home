@@ -185,8 +185,8 @@ type OutgoingGenerationControls = {
  * the schema `{ "type": "object" }` with a JSON object, so that one form is the one this client
  * sends and neither server has to be told apart from the other.
  *
- * A consumer asking for `json_schema` itself is refused instead, because it names a schema of its
- * own and the protocol carries no schema to put here. See milestone 6 of that issue.
+ * A consumer asking for `json_schema` carries its own schema, since milestone 6 of that issue, and
+ * that schema is put here as it stands.
  */
 type OutgoingResponseFormat = {
 	type: 'json_schema';
@@ -430,24 +430,23 @@ export class OpenaiApiClient {
 	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
 	 * nothing.
 	 * @returns The field to spread into the request body, empty when no shape was asked for.
-	 * @throws If the consumer asked for `json_schema`, which this client cannot express.
 	 */
 	private static responseFormatFieldOf(generationSettings: GenerationSettings | undefined): { response_format?: OutgoingResponseFormat } {
-		if (generationSettings === undefined || generationSettings.responseFormat === undefined) {
+		const responseFormat = generationSettings?.responseFormat;
+		if (responseFormat === undefined) {
 			return {};
 		}
-		if (generationSettings.responseFormat === 'json_schema') {
-			throw new Error('This worker cannot ask the local server for a json_schema answer, because the protocol carries no schema to send with it.');
-		}
+		// `json_object` means any object, and `{ "type": "object" }` is the schema that says so, so the
+		// two shapes leave here as one kind of request and the server is never told them apart.
+		const schema = responseFormat.type === 'json_object' ? { type: 'object' } : responseFormat.schema;
+		const name = responseFormat.type === 'json_object' ? 'json_object' : responseFormat.name;
 		return {
 			response_format: {
 				type: 'json_schema',
 				json_schema: {
-					name: 'json_object',
+					name: name,
 					strict: true,
-					schema: {
-						type: 'object',
-					},
+					schema: schema,
 				},
 			},
 		};

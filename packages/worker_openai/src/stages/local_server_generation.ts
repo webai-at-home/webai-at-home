@@ -1,4 +1,4 @@
-import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolCall, type ToolDeclaration } from '@webai/protocol';
+import { JsonSchemaCompiler, JsonSchemaGrammar, StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolCall, type ToolDeclaration } from '@webai/protocol';
 import { OpenaiApiClient, type ChatCompletionStreamToolCalls, type ChatCompletionStreamUsage, type StreamedToolCall } from '../libs/openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -508,9 +508,10 @@ export class LocalServerGeneration {
 	 * object. That is the fault `structured_output_support.ts` calls worse than a refusal and worse
 	 * than an honoured request both. This method is the only place this worker can catch it.
 	 *
-	 * A top-level object is required, and a valid JSON value that is not one — a bare number, a
-	 * string, a list — is refused with it, because that is the same shape the worker browser tab's
-	 * grammar allows and the two workers of one task type keep one promise between them.
+	 * The answer is read through `JsonSchemaGrammar` from `@webai/protocol`, which is the same reader
+	 * the worker browser tab masks with. So the two workers of one task type judge an answer by one
+	 * rule rather than by two that could come to disagree, and a `json_object` answer is judged as the
+	 * schema `{ "type": "object" }` rather than by a rule written again here.
 	 *
 	 * An answer the local server cut short at its output limit is left alone, however unfinished the
 	 * JSON it holds is. Running out of room is already reported, as `stopReason: max_new_tokens`, and
@@ -529,14 +530,18 @@ export class LocalServerGeneration {
 		if (state.usage?.finishReason !== 'stop') {
 			return;
 		}
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(state.text);
-		} catch {
-			throw new Error(`The consumer asked for a ${generationSettings.responseFormat} answer, and the local server returned text that is not JSON at all: ${state.text}`);
+		const responseFormat = generationSettings.responseFormat;
+		// `json_object` means any object, and `{ "type": "object" }` is the schema that says so, so
+		// both shapes are checked by reading the answer through one grammar rather than by two rules
+		// that could come to disagree.
+		const schema = responseFormat.type === 'json_object' ? { type: 'object' } : responseFormat.schema;
+		const nodes = JsonSchemaCompiler.compile(schema);
+		const grammarState = JsonSchemaGrammar.initialState(0);
+		if (JsonSchemaGrammar.acceptText(nodes, grammarState, state.text) === false) {
+			throw new Error(`The consumer asked for a ${responseFormat.type} answer, and the local server returned text the schema refuses: ${state.text}`);
 		}
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) === true) {
-			throw new Error(`The consumer asked for a ${generationSettings.responseFormat} answer, and the local server returned JSON that is not an object: ${state.text}`);
+		if (JsonSchemaGrammar.isComplete(nodes, grammarState) === false) {
+			throw new Error(`The consumer asked for a ${responseFormat.type} answer, and the local server returned a value that is not finished: ${state.text}`);
 		}
 	}
 

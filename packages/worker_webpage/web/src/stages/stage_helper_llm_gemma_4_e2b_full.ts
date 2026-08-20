@@ -1,13 +1,13 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, LogitsProcessorList, type TextGenerationPipeline } from '@huggingface/transformers';
-import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ResponseFormatName, type ToolDeclaration } from '@webai/protocol';
+import { JsonSchemaCompiler, StagePayloadFactory, type CompiledSchemaNode, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ResponseFormat, type ToolDeclaration } from '@webai/protocol';
 import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from './gemma_4_e2b_history_messages.js';
 import type { FullModelReadiness } from './stage_helper_llm_qwen3_5_0_8b_full.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 import { VocabularyTable } from './structured_output/vocabulary_table.js';
-import { JsonGrammarMaskCache } from './structured_output/json_grammar_mask_cache.js';
-import { JsonGrammarLogitsProcessor } from './structured_output/json_grammar_logits_processor.js';
+import { JsonSchemaMaskCache } from './structured_output/json_schema_mask_cache.js';
+import { JsonSchemaLogitsProcessor } from './structured_output/json_schema_logits_processor.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -172,14 +172,27 @@ type TaskGenerationState = {
 	 * same reason {@link TaskGenerationState.declaredTools} is: only the first run of a task carries
 	 * the generation settings.
 	 */
-	responseFormat: ResponseFormatName | undefined;
+	responseFormat: ResponseFormat | undefined;
 	/**
 	 * The processor masking this answer into shape, or `undefined` for an answer asked for as prose.
 	 *
 	 * Kept so that the run which finishes the answer can ask whether the value was ever finished. One
 	 * of these belongs to one generation, because the reader inside it is the state of one answer.
 	 */
-	jsonGrammarProcessor: JsonGrammarLogitsProcessor | undefined;
+	jsonSchemaProcessor: JsonSchemaLogitsProcessor | undefined;
+};
+
+/**
+ * One schema compiled, and the masks worked out over this model's vocabulary under it.
+ *
+ * The two travel together because they have to be the same one: a mask the cache worked out is a
+ * mask of a state naming node indices, and a node index means a node of exactly this list.
+ */
+type CompiledSchemaMasking = {
+	/** The compiled schema, whose node at index 0 is the whole answer's own. */
+	nodes: CompiledSchemaNode[];
+	/** The masks of this model's vocabulary under {@link CompiledSchemaMasking.nodes}. */
+	maskCache: JsonSchemaMaskCache;
 };
 
 /**
@@ -288,15 +301,29 @@ export class StageHelperLlmGemma4E2bFull {
 	private static generatorPromise: Promise<TextGenerationPipeline> | undefined;
 
 	/**
-	 * The masks of the loaded model's vocabulary, shared by every task that asks for a shape.
+	 * The text every entry of the loaded model's vocabulary writes, shared by every mask cache.
 	 *
-	 * Built on the first answer that asks for one rather than when the model loads, so a tab that
+	 * Built on the first answer that asks for a shape rather than when the model loads, so a tab that
 	 * only ever answers in prose never pays for it. What it costs is one decode of the whole
 	 * vocabulary, measured at 331 milliseconds for this model by milestone 0 of
 	 * https://github.com/webai-at-home/webai-at-home/issues/219, and it is paid once for the life of
-	 * the loaded model rather than once per answer.
+	 * the loaded model rather than once per answer or once per schema.
 	 */
-	private static maskCache: JsonGrammarMaskCache | undefined;
+	private static vocabularyTable: VocabularyTable | undefined;
+
+	/**
+	 * One mask cache per schema, keyed by that schema written back out as text.
+	 *
+	 * A mask says which entries of the vocabulary a grammar state allows, and a grammar state names
+	 * schema node indices, so the same state under a different schema allows different entries. One
+	 * cache per schema is therefore the smallest thing a cache can belong to. They share one
+	 * {@link StageHelperLlmGemma4E2bFull.vocabularyTable}, which is the expensive part and depends on
+	 * the model alone.
+	 *
+	 * The compiled schema is kept beside its cache because the two have to be the same one: a node
+	 * index in a mask the cache worked out means a node of exactly that list.
+	 */
+	private static maskCachesBySchemaText = new Map<string, CompiledSchemaMasking>();
 
 	/**
 	 * Reports whether this browser can run the stage, without downloading anything.
@@ -513,40 +540,38 @@ export class StageHelperLlmGemma4E2bFull {
 	/**
 	 * Refuses an answer this stage would have to produce by ignoring the shape that was asked for.
 	 *
-	 * Neither of the two cases can reach here from a consumer today, and each is stopped by a
-	 * different thing. `structured_output_support.ts` names `json_object` for this task type and not
-	 * `json_schema`, so `ResponseFormatReader` refuses a schema against that table. A shape asked for
-	 * beside declared tools is refused by that same class, on a rule of its own rather than out of
-	 * that table, because no worker can hold a model to a shape and let it open a tool call at once.
-	 * Both are refused here anyway, because the alternative to a refusal is an answer generated some
-	 * other way with nothing said about it — which is the one failure `structured_output_support.ts`
-	 * exists to prevent, and a consumer is not the only thing that can reach this method.
+	 * The one case cannot reach here from a consumer today: a shape asked for beside declared tools
+	 * is refused by `ResponseFormatReader`, on a rule of its own rather than out of
+	 * `structured_output_support.ts`, because no worker can hold a model to a shape and let it open a
+	 * tool call at once. It is refused here anyway, because the alternative to a refusal is an answer
+	 * generated some other way with nothing said about it — which is the one failure
+	 * `structured_output_support.ts` exists to prevent, and a consumer is not the only thing that can
+	 * reach this method.
+	 *
+	 * A schema naming a keyword the compiler cannot enforce is refused here as well, and for the same
+	 * reason: enforcing the part of a schema that is understood, and reporting the answer as though
+	 * the whole of it had been kept, is the failure rather than the way round it. It is refused
+	 * before the model is reached, so such a request costs no download.
 	 *
 	 * @param state The answer being produced.
 	 * @returns Nothing.
-	 * @throws When the shape asked for is one this stage cannot produce, or one it cannot produce
-	 * together with the tools the history declared.
+	 * @throws When the shape asked for is one this stage cannot produce together with the tools the
+	 * history declared, or a schema this stage could not hold the model to.
 	 */
 	private static refuseAnUnproducibleShape(state: TaskGenerationState): void {
 		if (state.responseFormat === undefined) {
 			return;
 		}
-		if (state.responseFormat === 'json_schema') {
-			// Enforcing well-formed JSON where a schema was asked for would answer with an object whose
-			// keys are the model's own guess and report it as though the schema had been kept.
-			throw new Error(
-				'This stage produces a response format of json_object and not json_schema, and it does not '
-				+ 'answer a request for a schema with whatever object the model happens to write.',
-			);
-		}
+		JsonSchemaCompiler.compile(StageHelperLlmGemma4E2bFull.schemaOf(state.responseFormat));
 		if (state.declaredTools.length > 0) {
 			// Every marker a tool call is written with is a special token of this tokenizer, and the mask
 			// leaves no special token legal until the value is finished. So a masked answer cannot
 			// contain a tool call at all, and the two asked for together are two things that cannot both
 			// be given.
 			throw new Error(
-				'This stage cannot both produce a response format of json_object and call a tool: the '
-				+ 'markers a tool call is written with are masked out for as long as the object is unfinished.',
+				`This stage cannot both produce a response format of ${state.responseFormat.type} and call a `
+				+ 'tool: the markers a tool call is written with are masked out for as long as the value is '
+				+ 'unfinished.',
 			);
 		}
 	}
@@ -568,7 +593,7 @@ export class StageHelperLlmGemma4E2bFull {
 	 * @throws When the model ended its turn part way through the shape it was masked into.
 	 */
 	private static refuseAnUnfinishedShape(state: TaskGenerationState): void {
-		const processor = state.jsonGrammarProcessor;
+		const processor = state.jsonSchemaProcessor;
 		if (processor === undefined || processor.isComplete === true) {
 			return;
 		}
@@ -582,19 +607,51 @@ export class StageHelperLlmGemma4E2bFull {
 	}
 
 	/**
-	 * The masks of this model's vocabulary, built once for the life of the loaded model.
+	 * The schema an answer has to satisfy, whichever of the two shapes was asked for.
+	 *
+	 * A `json_object` request is a request for any object at all, and `{ "type": "object" }` is the
+	 * schema that says so, so both shapes compile to a schema here and the masking below has one path
+	 * rather than two.
+	 *
+	 * @param responseFormat The shape the consumer asked its answer to be in.
+	 * @returns The schema as a JSON Schema document.
+	 */
+	private static schemaOf(responseFormat: ResponseFormat): Record<string, unknown> {
+		if (responseFormat.type === 'json_object') {
+			return {
+				type: 'object',
+			};
+		}
+		return responseFormat.schema;
+	}
+
+	/**
+	 * The masks of this model's vocabulary under one schema, built once for the life of that schema.
 	 *
 	 * @param generator The loaded text-generation pipeline whose vocabulary to mask over.
-	 * @returns The mask cache every answer of this model shares.
+	 * @param schema The schema the answer has to satisfy.
+	 * @returns The compiled schema, and the mask cache every answer under that schema shares.
 	 */
-	private static maskCacheFor(generator: TextGenerationPipeline): JsonGrammarMaskCache {
-		if (StageHelperLlmGemma4E2bFull.maskCache === undefined) {
-			StageHelperLlmGemma4E2bFull.maskCache = new JsonGrammarMaskCache(
-				VocabularyTable.build(generator.tokenizer),
-				StageHelperLlmGemma4E2bFull.eosTokenIdsOf(generator),
-			);
+	private static maskCacheFor(generator: TextGenerationPipeline, schema: Record<string, unknown>): CompiledSchemaMasking {
+		const schemaText = JSON.stringify(schema);
+		const alreadyBuilt = StageHelperLlmGemma4E2bFull.maskCachesBySchemaText.get(schemaText);
+		if (alreadyBuilt !== undefined) {
+			return alreadyBuilt;
 		}
-		return StageHelperLlmGemma4E2bFull.maskCache;
+		if (StageHelperLlmGemma4E2bFull.vocabularyTable === undefined) {
+			StageHelperLlmGemma4E2bFull.vocabularyTable = VocabularyTable.build(generator.tokenizer);
+		}
+		const nodes = JsonSchemaCompiler.compile(schema);
+		const masking: CompiledSchemaMasking = {
+			nodes: nodes,
+			maskCache: new JsonSchemaMaskCache(
+				StageHelperLlmGemma4E2bFull.vocabularyTable,
+				StageHelperLlmGemma4E2bFull.eosTokenIdsOf(generator),
+				nodes,
+			),
+		};
+		StageHelperLlmGemma4E2bFull.maskCachesBySchemaText.set(schemaText, masking);
+		return masking;
 	}
 
 	/**
@@ -626,7 +683,7 @@ export class StageHelperLlmGemma4E2bFull {
 			completionTokenCount: undefined,
 			stopReason: undefined,
 			responseFormat: undefined,
-			jsonGrammarProcessor: undefined,
+			jsonSchemaProcessor: undefined,
 		};
 		StageHelperLlmGemma4E2bFull.stateByTaskId.set(taskId, state);
 		return state;
@@ -754,11 +811,12 @@ export class StageHelperLlmGemma4E2bFull {
 		// to ask for one — its `constraints` field is declared and never read — so the shape is
 		// enforced between the logits and the choice of token instead, which is the one place it can
 		// be. See `structured_output/`.
-		if (state.responseFormat === 'json_object') {
-			state.jsonGrammarProcessor = new JsonGrammarLogitsProcessor(
-				StageHelperLlmGemma4E2bFull.maskCacheFor(generator),
-				true,
+		if (state.responseFormat !== undefined) {
+			const masking = StageHelperLlmGemma4E2bFull.maskCacheFor(
+				generator,
+				StageHelperLlmGemma4E2bFull.schemaOf(state.responseFormat),
 			);
+			state.jsonSchemaProcessor = new JsonSchemaLogitsProcessor(masking.maskCache, masking.nodes);
 		}
 		state.reader = StageHelperLlmGemma4E2bFull.createGenerationStream(generator, promptOrHistory, criteria, state).getReader();
 		return state.reader;
@@ -851,9 +909,9 @@ export class StageHelperLlmGemma4E2bFull {
 				// `GenerationFunctionParameters` declares for it, and neither that nor the iterable is in
 				// the documentation.
 				const maskingOption: { logits_processor?: LogitsProcessorList } = {};
-				if (state.jsonGrammarProcessor !== undefined) {
+				if (state.jsonSchemaProcessor !== undefined) {
 					const logitsProcessors = new LogitsProcessorList();
-					logitsProcessors.push(state.jsonGrammarProcessor);
+					logitsProcessors.push(state.jsonSchemaProcessor);
 					maskingOption.logits_processor = logitsProcessors;
 				}
 				generator(input, {
