@@ -18,6 +18,7 @@ What a task is: the work a consumer submits, the pipeline of stages it runs thro
 - `TaskType` and `StageName` follow [`docs/naming_scheme.md`](../../../../docs/naming_scheme.md); adding a name here means adding its row there too.
 - `generation_control_support.ts` is the one place recording which task type honours which generation control. A consumer reads it before submitting rather than keeping a list of its own.
 - `structured_output_support.ts` is the one place recording which task type honours which response format, read by a consumer before submitting for the same reason `generation_control_support.ts` is.
+- An entry in either of those two tables is what a live run observed and nothing else, and a row is widened only once every worker of that task type has been measured keeping it ([#219](https://github.com/webai-at-home/webai-at-home/issues/219)).
 - `GenerationSettings` carries each of the five generation controls exactly as the consumer asked for it, and never translated for the engine that will run the task. It also carries `responseFormat`, which is not a generation control: it is refused against `structured_output_support.ts` rather than `generation_control_support.ts`.
 - Nothing here imports from `../message/`: `../message/` imports task and pipeline shapes from here, never the other way, because a task shape must not depend on the message that happens to carry it.
 

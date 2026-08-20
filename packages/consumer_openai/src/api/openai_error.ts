@@ -187,6 +187,36 @@ export class OpenaiError extends Error {
 	}
 
 	/**
+	 * The request asked for a shape and declared tools in the same call.
+	 *
+	 * Refused rather than answered by dropping one of the two, which is the only other thing this
+	 * server could do with it. A worker holds a model to a shape by allowing only the tokens that
+	 * shape permits, and every marker that opens a tool call is a token no shape permits, so a
+	 * shaped answer can hold no tool call. Measured on both kinds of worker in milestone 3 and
+	 * milestone 4 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219): the
+	 * worker browser tab refuses the pair outright, and of the two local servers the native worker
+	 * can sit in front of, one kept the tool call and the other asked for no tool at all and
+	 * invented the reading the tool existed to fetch.
+	 *
+	 * @param requestedType The response format type the request asked for.
+	 * @param modelId The model the request asked for.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static shapeBesideToolDeclarations(requestedType: string, modelId: string): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			`The model ${modelId} cannot both answer in a response_format of ${requestedType} and call a tool in one ` +
+				'request, and this server refuses the pair rather than dropping one of them and saying nothing. A ' +
+				'shape is held to by allowing only the tokens it permits, and every marker that opens a tool call is ' +
+				'a token no shape permits. Send the request again with either the tools or the response_format, not ' +
+				'both.',
+			'response_format',
+			'shape_beside_tool_declarations',
+		);
+	}
+
+	/**
 	 * The request declared tools to a model that cannot read them.
 	 *
 	 * Refused for the same reason an unhonourable generation control is: accepting the declarations

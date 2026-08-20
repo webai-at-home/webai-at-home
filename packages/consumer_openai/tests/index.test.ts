@@ -1031,12 +1031,14 @@ Test('refuses a tool_choice it cannot enforce, which is the failure that closed 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-// No task type produces a shape today, measured by the milestone 0 gate of
-// [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191): the one engine in reach
-// that honours `json_schema` is a local server behind `@webai/worker-openai`, and the worker browser
-// tab that can serve the same task type generates through `@huggingface/transformers`, which offers
-// no way to ask for a schema at all. A task type's contract is the intersection of what all of its
-// workers honour, so every entry of `StructuredOutputSupport` is empty and every shape is refused.
+// `llm_gemma_4_e2b_full` produces a `json_object`, since milestone 5 of
+// [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) widened its row once both
+// of its kinds of worker had been measured producing one. Every other task type produces no shape at
+// all, measured for [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191): the one
+// engine in reach that honours `json_schema` is a local server behind `@webai/worker-openai`, and the
+// worker browser tab that can serve the same task type generates through `@huggingface/transformers`,
+// which offers no way to ask for a schema at all. A task type's contract is the intersection of what
+// all of its workers honour, so those entries stay empty and those shapes are refused.
 
 Test('reads the three response_format values this interface defines, and refuses a shape it does not', () => {
 	const messages = [{ role: 'user', content: 'hello' }];
@@ -1098,6 +1100,76 @@ Test('submits no settings block at all for a request that asked for no shape and
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages }, 'llm_llama3_2_1b_full'), undefined);
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } }, 'llm_llama3_2_1b_full'), undefined);
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: null }, 'llm_llama3_2_1b_full'), undefined);
+});
+
+Test('carries json_object to the task type that produces one, and still refuses the schema it does not', () => {
+	const messages = [{ role: 'user', content: 'Give the capital of France, with the key capital.' }];
+	const shaped = ChatCompletionRequestSchema.parse({ model: 'llm_gemma_4_e2b_full', messages, response_format: { type: 'json_object' } });
+
+	Assert.equal(ResponseFormatReader.read(shaped, 'llm_gemma_4_e2b_full'), 'json_object');
+	Assert.deepEqual(GenerationSettingsBuilder.build(shaped, 'llm_gemma_4_e2b_full', false, 'json_object'), { responseFormat: 'json_object' });
+
+	// The row names one shape and not both, so the schema is refused by the same table that lets the
+	// object through, and the refusal now names a shape the sender can ask for instead of "text only".
+	const schemaRequest = ChatCompletionRequestSchema.parse({
+		model: 'llm_gemma_4_e2b_full',
+		messages,
+		response_format: { type: 'json_schema', json_schema: { name: 'capital', strict: true, schema: { type: 'object' } } },
+	});
+	Assert.throws(
+		() => ResponseFormatReader.read(schemaRequest, 'llm_gemma_4_e2b_full'),
+		(error: unknown) => {
+			Assert.match((error as Error).message, /json_object/);
+			return true;
+		},
+	);
+});
+
+Test('refuses a shape asked for beside declared tools, since no worker can hold a shape and open a tool call at once', async () => {
+	const server = await listeningServer();
+	try {
+		const response = await fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_gemma_4_e2b_full',
+				messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+				tools: [{ type: 'function', function: { name: 'get_weather', parameters: {} } }],
+				response_format: { type: 'json_object' },
+			}),
+		});
+		Assert.equal(response.status, 400);
+		const body = await response.json() as { error: { code: string; param: string; message: string } };
+		Assert.equal(body.error.code, 'shape_beside_tool_declarations');
+		Assert.equal(body.error.param, 'response_format');
+		// The refusal says which of the two to drop is the sender's own choice, since either one on
+		// its own is a request this model answers.
+		Assert.match(body.error.message, /either the tools or the response_format, not both/);
+	} finally {
+		server.close();
+	}
+});
+
+Test('lets a request carrying tools it declares to nobody ask for a shape, since tool_choice none declares none', async () => {
+	// `tool_choice: "none"` is honoured by declaring nothing at all, which is the one way this server
+	// can enforce it. A model told about no tool cannot ask for one, so there is no conflict left.
+	const server = await listeningServer();
+	try {
+		const response = await fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_gemma_4_e2b_full',
+				messages: [{ role: 'user', content: 'Give the capital of France, with the key capital.' }],
+				tools: [{ type: 'function', function: { name: 'get_weather', parameters: {} } }],
+				tool_choice: 'none',
+				response_format: { type: 'json_object' },
+			}),
+		});
+		Assert.notEqual(response.status, 400);
+	} finally {
+		server.close();
+	}
 });
 
 Test('refuses a response_format the model cannot produce, rather than answering it in prose', async () => {

@@ -220,12 +220,11 @@ type TaskGenerationState = {
  * so that nothing which would break the object can be chosen — see `structured_output/`. Three
  * things about that are worth knowing before this file is changed:
  *
- * - `structured_output_support.ts` still names no shape for this task type, so no request asking for
- *   one reaches this stage yet: `ResponseFormatReader` refuses every one of them against that table.
- *   The row is widened by milestone 5 of issue #219, and only once the native worker produces the
- *   same shape, because a task type's contract is what all of its workers can keep. That ordering is
- *   the point rather than an oversight — a worker able to keep a promise the task type has not made
- *   is safe, and a promise made before a worker can keep it is not.
+ * - `structured_output_support.ts` names `json_object` for this task type, since milestone 5 of that
+ *   issue, and it was widened only once the native worker produced the same shape, because a task
+ *   type's contract is what all of its workers can keep. That ordering was the point rather than an
+ *   oversight — a worker able to keep a promise the task type has not made is safe, and a promise
+ *   made before a worker can keep it is not.
  * - A run that asked for a shape and declared tools is refused rather than answered. Every marker a
  *   tool call is written with is a special token of this tokenizer, and the mask leaves no special
  *   token legal until the object is finished, so a masked answer cannot contain a tool call at all.
@@ -514,12 +513,14 @@ export class StageHelperLlmGemma4E2bFull {
 	/**
 	 * Refuses an answer this stage would have to produce by ignoring the shape that was asked for.
 	 *
-	 * Neither of the two cases can reach here from a consumer today, because
-	 * `structured_output_support.ts` names no shape for this task type and `ResponseFormatReader`
-	 * refuses every request against that table. They are refused here anyway, because the alternative
-	 * to a refusal is an answer generated some other way with nothing said about it — which is the
-	 * one failure `structured_output_support.ts` exists to prevent, and it would arrive the day that
-	 * row is widened rather than the day this file is next read.
+	 * Neither of the two cases can reach here from a consumer today, and each is stopped by a
+	 * different thing. `structured_output_support.ts` names `json_object` for this task type and not
+	 * `json_schema`, so `ResponseFormatReader` refuses a schema against that table. A shape asked for
+	 * beside declared tools is refused by that same class, on a rule of its own rather than out of
+	 * that table, because no worker can hold a model to a shape and let it open a tool call at once.
+	 * Both are refused here anyway, because the alternative to a refusal is an answer generated some
+	 * other way with nothing said about it — which is the one failure `structured_output_support.ts`
+	 * exists to prevent, and a consumer is not the only thing that can reach this method.
 	 *
 	 * @param state The answer being produced.
 	 * @returns Nothing.

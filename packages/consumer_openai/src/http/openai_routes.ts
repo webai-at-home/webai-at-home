@@ -296,7 +296,10 @@ export class OpenaiRoutes {
 		// the same rule the generation controls follow. What is read back travels with the task, in
 		// the generation settings, so that the worker running the stage produces the shape rather
 		// than being asked for prose and having its answer read as an object.
-		const responseFormatName = ResponseFormatReader.read(body, taskTypeName);
+		// The tools that will really be declared are what is given here, rather than the tools the
+		// request carries: `tool_choice: "none"` declares none, and a request asking for that may ask
+		// for a shape as well.
+		const responseFormatName = ResponseFormatReader.read(body, taskTypeName, toolsToDeclare);
 
 		// A task type whose worker can hand a message list to its own chat template is sent the
 		// history as it was written, each message keeping its own role. Every other task type

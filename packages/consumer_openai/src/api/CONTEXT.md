@@ -14,19 +14,17 @@ The shapes of the two OpenAI interfaces this server serves, Chat Completions and
 - `generation_settings_builder.ts`: a chat completion request's controls become task generation settings.
 - `finish_reason_translator.ts`: turning a worker's own stop reason into an OpenAI value.
 - `tool_translator.ts`: carrying tools between the OpenAI spelling and this project's own.
-- `response_format_reader.ts`: reads `response_format`, and refuses a shape the chosen task type cannot produce.
+- `response_format_reader.ts`: reads `response_format`, and refuses what cannot be produced.
 
 ## Rules
 
 - This folder imports from no other folder of this package: it is the translation layer `../http/` and `../libs/` sit on top of, never the other way.
 - The model names in `model_catalog.ts` are task type names from [`docs/naming_scheme.md`](../../../../docs/naming_scheme.md).
-- `finish_reason_translator.ts` refuses `interrupted`, which has no OpenAI value, rather than inventing one, and answers `stop_sequence` as `stop`, never `length`: an answer that ended on a stop sequence the consumer asked for is finished.
-- `generation_settings_builder.ts` never drops a generation control it cannot honour; refusing it is `../http/openai_routes.ts`'s job.
-- `responses_translator.ts` joins `instructions` and every system message into one leading system message, because the chat template of `llm_qwen3_5_0_8b_full` refuses a second one, and leaves out an item kind this cluster does not carry rather than refusing the request.
-- `response_format_reader.ts` reads `@webai/protocol`'s `StructuredOutputSupport` rather than keeping a list of its own, so a task type gains a shape there and nothing here changes.
+- `finish_reason_translator.ts` refuses `interrupted`, which has no OpenAI value, rather than inventing one, and answers `stop_sequence` as `stop`, never `length`: an answer that ended on a stop sequence the consumer asked for is finished ([#150](https://github.com/webai-at-home/webai-at-home/issues/150)).
+- `generation_settings_builder.ts` never drops a generation control it cannot honour; refusing it is `../http/openai_routes.ts`'s job ([#151](https://github.com/webai-at-home/webai-at-home/issues/151)).
+- `responses_translator.ts` joins `instructions` and every system message into one, because the chat template of `llm_qwen3_5_0_8b_full` refuses a second, and leaves out an item kind this cluster does not carry rather than refusing the request.
+- `response_format_reader.ts` reads `@webai/protocol`'s `StructuredOutputSupport` rather than keeping a list of its own, so a task type gains a shape there and nothing here changes ([#191](https://github.com/webai-at-home/webai-at-home/issues/191)); a shape beside declared tools it refuses on a rule of its own, no table saying that ([#219](https://github.com/webai-at-home/webai-at-home/issues/219)).
 
 ## Background
 
-- `response_format_reader.ts` comes from [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
-- The finish reason and generation settings rules come from [issue #150](https://github.com/webai-at-home/webai-at-home/issues/150) and [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151).
 - The Responses shapes come from [issue #214](https://github.com/webai-at-home/webai-at-home/issues/214); carrying two system messages was found live to fail the whole request.

@@ -18,6 +18,7 @@ import {
 	StageName,
 	StagePayloadFactory,
 	StagePayloadSchema,
+	StructuredOutputSupport,
 	TaskInput,
 	ToolCallSchema,
 	TaskState,
@@ -339,6 +340,33 @@ Test('names reasoning_effort as honoured only by the task type whose model think
 		GenerationControlSupport.honouredControls('task_type_llm_qwen3_5_0_8b_full'),
 		['temperature', 'maximumOutputTokenCount', 'stopSequences', 'reasoningEffort'],
 	);
+});
+
+Test('names json_object as honoured only by the task type both of whose workers were measured producing one', () => {
+	// The row was widened by milestone 5 of
+	// [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219), after the worker
+	// browser tab was taught to mask every token that would break the object and the native worker to
+	// ask its local server for the shape and refuse an answer that came back as anything else.
+	Assert.equal(StructuredOutputSupport.honours('task_type_llm_gemma_4_e2b_full', 'json_object'), true);
+	Assert.deepEqual(StructuredOutputSupport.honouredFormats('task_type_llm_gemma_4_e2b_full'), ['json_object']);
+	// `json_schema` is a different promise: the worker browser tab enforces well-formed JSON and not
+	// a schema, and the protocol carries no schema for the native worker to pass on. Milestone 6 of
+	// that issue is where the schema itself starts to travel.
+	Assert.equal(StructuredOutputSupport.honours('task_type_llm_gemma_4_e2b_full', 'json_schema'), false);
+	// Every other task type produces no shape at all, so widening one row took nothing from any
+	// other. `task_type_llm_llama3_2_1b_full` has a native worker that could honour a schema and a
+	// worker browser tab that cannot ask for one, and a contract is the intersection of the two.
+	for (const taskType of [
+		'task_type_dev_formula',
+		'task_type_llm_qwen3_0_6b_sharded',
+		'task_type_llm_gemma_nano_chrome_full',
+		'task_type_llm_qwen3_5_0_8b_full',
+		'task_type_llm_llama3_2_1b_full',
+	] as const) {
+		Assert.deepEqual(StructuredOutputSupport.honouredFormats(taskType), []);
+		Assert.equal(StructuredOutputSupport.honours(taskType, 'json_object'), false);
+		Assert.equal(StructuredOutputSupport.honours(taskType, 'json_schema'), false);
+	}
 });
 
 Test('keeps task inputs and stage values in the log, since only credentials are redacted', () => {

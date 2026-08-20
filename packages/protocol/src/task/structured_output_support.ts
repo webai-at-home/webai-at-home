@@ -35,7 +35,9 @@ export type ResponseFormatName = z.infer<typeof ResponseFormatNameSchema>;
  * `JSON.parse` on an English sentence. See
  * [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
  *
- * Every entry is empty today, and the milestone 0 gate of issue #191 is what measured that:
+ * `task_type_llm_gemma_4_e2b_full` honours `json_object`, and every other entry is empty. Issue #191
+ * measured the empty ones, and [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219)
+ * is what filled the one that is not:
  *
  * - `task_type_llm_llama3_2_1b_full` is served by two kinds of worker. A `@webai/worker-openai`
  *   process forwarding to a local server does sit in front of an engine that honours `json_schema`,
@@ -48,13 +50,15 @@ export type ResponseFormatName = z.infer<typeof ResponseFormatNameSchema>;
  * - `task_type_llm_qwen3_5_0_8b_full`, `task_type_llm_qwen3_0_6b_sharded`, and
  *   `task_type_llm_gemma_nano_chrome_full` run only in a worker browser tab, so none of them has an
  *   engine that can be asked for a shape either.
- * - `task_type_llm_gemma_4_e2b_full` is empty for the same reason as `task_type_llm_llama3_2_1b_full`
- *   above, not because it runs only in a browser tab. It has both kinds of worker, and the native one
- *   really does sit in front of an engine that honours `json_schema` — Ollama did in
- *   [issue #210](https://github.com/webai-at-home/webai-at-home/issues/210), and milestone 4 of
- *   [issue #216](https://github.com/webai-at-home/webai-at-home/issues/216) ran this task type
- *   through that worker live. The worker browser tab can honour nothing, and a task type's contract
- *   is what both its workers can keep, so the intersection is empty.
+ * - `task_type_llm_gemma_4_e2b_full` honours `json_object`, because both of its kinds of worker were
+ *   taught to produce one and both were then measured producing one. The worker browser tab masks
+ *   the score of every token that would break the object, so a well-formed object is the only thing
+ *   the model is able to write. The native worker asks the local server for the shape, and refuses
+ *   an answer that came back as anything else. Neither was true when issue #191 measured this row.
+ * - `task_type_llm_gemma_4_e2b_full` does not honour `json_schema`. The worker browser tab enforces
+ *   well-formed JSON and not a schema, and the protocol carries no schema for the native worker to
+ *   pass on, so answering such a request would mean returning an object whose keys are the model's
+ *   own guess. Milestone 6 of issue #219 is where the schema itself starts to travel.
  * - `task_type_dev_formula` generates no text at all, so no response format applies to it.
  *
  * An entry here is also the only thing a task type needs to gain to start honouring a format: this
@@ -66,7 +70,7 @@ const formatsByTaskType: Record<TaskType, readonly ResponseFormatName[]> = {
 	task_type_llm_gemma_nano_chrome_full: [],
 	task_type_llm_qwen3_5_0_8b_full: [],
 	task_type_llm_llama3_2_1b_full: [],
-	task_type_llm_gemma_4_e2b_full: [],
+	task_type_llm_gemma_4_e2b_full: ['json_object'],
 };
 
 /** Which task type honours which response format. */
