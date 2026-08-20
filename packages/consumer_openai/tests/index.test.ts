@@ -17,6 +17,7 @@ import { ChatCompletionRequestSchema, type ChatCompletionResponse } from '../src
 import { FinishReasonTranslator } from '../src/api/finish_reason_translator.js';
 import { PromptFlattener } from '../src/api/prompt_flattener.js';
 import { ResponseFormatReader } from '../src/api/response_format_reader.js';
+import { ResponseFormatEnforcement } from '../src/api/response_format_enforcement.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -141,7 +142,7 @@ Test('refuses a generation control whose value is outside the range this interfa
  */
 const generationSettingsOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName, isStreaming = false): GenerationSettings | undefined => {
 	const parsed = ChatCompletionRequestSchema.parse(body);
-	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming, ResponseFormatReader.read(parsed, taskTypeName));
+	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming, ResponseFormatReader.read(parsed, taskTypeName, undefined));
 };
 
 // `GenerationSettingsBuilder.build`'s honouring branch is exercised against
@@ -1066,7 +1067,7 @@ Test('asks for nothing when the request asks for this interface own default shap
 		{ model: 'llm_llama3_2_1b_full', messages, response_format: null },
 		{ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } },
 	]) {
-		Assert.equal(ResponseFormatReader.read(ChatCompletionRequestSchema.parse(body), 'llm_llama3_2_1b_full'), undefined);
+		Assert.equal(ResponseFormatReader.read(ChatCompletionRequestSchema.parse(body), 'llm_llama3_2_1b_full', undefined), undefined);
 	}
 });
 
@@ -1125,6 +1126,68 @@ Test('submits no settings block at all for a request that asked for no shape and
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages }, 'llm_llama3_2_1b_full'), undefined);
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } }, 'llm_llama3_2_1b_full'), undefined);
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: null }, 'llm_llama3_2_1b_full'), undefined);
+});
+
+Test('asks the constraint package whether a schema can be enforced, and keeps no list of keywords of its own', () => {
+	// Milestone 5 of [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221). The
+	// package is the one that enforces the schema in a worker browser tab, so it is the one asked.
+	// Milestone 1 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) wrote a
+	// list of six supported keywords by hand and was reverted; a list here would disagree with the
+	// package the first time the package gained a keyword.
+	const enforceable = [
+		{ type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+		// Every one of these is something the reverted hand-written compiler refused or never had.
+		{ type: 'object', properties: { city: { type: 'string', minLength: 2, maxLength: 40 } } },
+		{ type: 'object', properties: { city: { $ref: '#/$defs/city' } }, $defs: { city: { type: 'string' } } },
+		{ type: 'object', title: 'Capital', description: 'where a country is governed from', properties: { city: { type: 'string', description: 'the city', default: 'Paris' } } },
+		{ $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'object', properties: { at: { type: 'string', format: 'date-time' } } },
+		{},
+	];
+	for (const jsonSchema of enforceable) {
+		Assert.equal(ResponseFormatEnforcement.refusalOf({ type: 'json_schema', jsonSchema }), undefined);
+	}
+
+	// And what it refuses, each answered in the package's own words, which name the keyword or the
+	// reference at fault.
+	const unenforceable: [Record<string, unknown>, RegExp][] = [
+		[{ type: 'object', properties: { city: { $ref: 'https://example.invalid/city.schema.json' } } }, /External JSON Schema reference/],
+		[{ type: 'object', properties: { city: { $ref: '#/\$defs/missing' } } }, /does not resolve/],
+		[{ type: 'object', properties: { city: { $dynamicRef: '#meta' } } }, /\$dynamicRef/],
+		[{ type: 'object', properties: { city: { type: 'string' } }, unevaluatedProperties: false }, /unevaluatedProperties/],
+		[{ type: 'array', items: { type: 'string' }, unevaluatedItems: false }, /unevaluatedItems/],
+		[{ type: 'object', wobbleFactor: 12 }, /wobbleFactor/],
+	];
+	for (const [jsonSchema, expectedMessage] of unenforceable) {
+		const refusal = ResponseFormatEnforcement.refusalOf({ type: 'json_schema', jsonSchema });
+		Assert.notEqual(refusal, undefined);
+		Assert.match(refusal ?? '', expectedMessage);
+	}
+
+	// A `json_object` carries no schema to refuse, so there is nothing to ask about.
+	Assert.equal(ResponseFormatEnforcement.refusalOf({ type: 'json_object' }), undefined);
+});
+
+Test('answers an unenforceable schema and a shape asked for beside tools with HTTP 400 and a code of their own', () => {
+	// The two refusals milestone 5 added. Their whole path is exercised through HTTP by
+	// `tests/real_llm_gemma_4_e2b_full.test.ts` once milestone 6 fills the row of
+	// `task_type_llm_gemma_4_e2b_full`: until it does, every shaped request stops at the earlier
+	// refusal above, which is the one that says this model produces no shape at all.
+	const unenforceable = OpenaiError.unenforceableSchema('unsupported JSON Schema keyword "wobbleFactor".');
+	Assert.equal(unenforceable.status, 400);
+	Assert.equal(unenforceable.code, 'unenforceable_schema');
+	Assert.equal(unenforceable.param, 'response_format.json_schema.schema');
+	// The package's own words are carried through, so the sender learns which keyword is at fault
+	// rather than only that something was.
+	Assert.match(unenforceable.message, /wobbleFactor/);
+
+	const withTools = OpenaiError.responseFormatWithTools('json_schema');
+	Assert.equal(withTools.status, 400);
+	Assert.equal(withTools.code, 'response_format_with_tools');
+	Assert.equal(withTools.param, 'response_format');
+	Assert.match(withTools.message, /json_schema/);
+	// The way out is named, because `tool_choice: "none"` declares no tool and leaves the shape
+	// askable.
+	Assert.match(withTools.message, /tool_choice "none"/);
 });
 
 Test('refuses a response_format the model cannot produce, rather than answering it in prose', async () => {

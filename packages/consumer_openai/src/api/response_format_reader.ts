@@ -1,6 +1,7 @@
 import type { TaskTypeName } from '@webai/consumer-cli';
-import { StructuredOutputSupport, type ResponseFormat, type TaskType } from '@webai/protocol';
+import { StructuredOutputSupport, type ResponseFormat, type TaskType, type ToolDeclaration } from '@webai/protocol';
 import { OpenaiError } from './openai_error.js';
+import { ResponseFormatEnforcement } from './response_format_enforcement.js';
 import type { ChatCompletionRequest } from './openai_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -28,6 +29,15 @@ import type { ChatCompletionRequest } from './openai_types.js';
  * - Anything else: the request is refused. Being told is better than receiving an answer generated
  *   some other way and being told nothing, and here the answer received is prose where an object
  *   was asked for, which a client cannot read at all.
+ *
+ * Two further refusals live here, both added by milestone 5 of
+ * [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221), and both about a shape
+ * the cluster could carry but could not keep:
+ *
+ * - A schema the constraint package cannot enforce. `ResponseFormatEnforcement` asks the package
+ *   itself, so no list of supported keywords is kept here.
+ * - A shape asked for beside declared tools. The two cannot both be honoured, and a model asked for
+ *   both writes the shape and invents what the tool was declared to fetch.
  */
 export class ResponseFormatReader {
 	/**
@@ -36,12 +46,21 @@ export class ResponseFormatReader {
 	 * @param body The chat completion request, already read by `ChatCompletionRequestSchema`.
 	 * @param taskTypeName The task type the request's model names, without the leading
 	 * `task_type_`.
+	 * @param declaredTools The tools the request will really declare to the model, `undefined` when
+	 * it declares none. It is what the caller worked out rather than the request's own `tools`
+	 * field, because a request sending `tool_choice: "none"` declares nothing whatever it listed,
+	 * and a model told about no tool can be made to write a shape.
 	 * @returns The response format to produce the answer in, carrying the schema itself when the
 	 * request asked for one, or `undefined` when the request asked for nothing unusual, so that such
 	 * a request is answered exactly as it was before this field was read at all.
-	 * @throws OpenaiError when the model cannot produce the shape the request asked for.
+	 * @throws OpenaiError when the model cannot produce the shape the request asked for, when the
+	 * schema cannot be enforced, or when a shape was asked for beside declared tools.
 	 */
-	static read(body: ChatCompletionRequest, taskTypeName: TaskTypeName): ResponseFormat | undefined {
+	static read(
+		body: ChatCompletionRequest,
+		taskTypeName: TaskTypeName,
+		declaredTools: readonly ToolDeclaration[] | undefined,
+	): ResponseFormat | undefined {
 		const responseFormat = body.response_format;
 		if (responseFormat === undefined || responseFormat === null || responseFormat.type === 'text') {
 			return undefined;
@@ -53,6 +72,9 @@ export class ResponseFormatReader {
 				body.model,
 				StructuredOutputSupport.honouredFormats(taskType),
 			);
+		}
+		if (declaredTools !== undefined && declaredTools.length > 0) {
+			throw OpenaiError.responseFormatWithTools(responseFormat.type);
 		}
 		if (responseFormat.type === 'json_object') {
 			return {
@@ -66,9 +88,14 @@ export class ResponseFormatReader {
 		// or answered in prose. The wrapper's `name`, `description`, and `strict` are not carried,
 		// for the reasons `ResponseFormatSchema` gives.
 		const schema = responseFormat.json_schema.schema;
-		return {
+		const carried: ResponseFormat = {
 			type: 'json_schema',
 			jsonSchema: schema === undefined ? {} : schema,
 		};
+		const refusal = ResponseFormatEnforcement.refusalOf(carried);
+		if (refusal !== undefined) {
+			throw OpenaiError.unenforceableSchema(refusal);
+		}
+		return carried;
 	}
 }

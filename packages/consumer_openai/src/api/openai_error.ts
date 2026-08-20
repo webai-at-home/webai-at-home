@@ -187,6 +187,73 @@ export class OpenaiError extends Error {
 	}
 
 	/**
+	 * The request asked for a JSON Schema that cannot be enforced.
+	 *
+	 * The cluster makes a model write a shape by constraining generation with
+	 * `@huggingface/transformers-response-constraint`, and that package states a JSON Schema profile
+	 * rather than the whole of JSON Schema: an external reference, a dynamic reference, an
+	 * unevaluated-property assertion, and any keyword it does not define are all outside it. Whether
+	 * one schema is inside the profile is asked of the package itself, in
+	 * `ResponseFormatEnforcement`, so that this server keeps no list of keywords of its own to
+	 * disagree with it.
+	 *
+	 * Refused rather than accepted and half enforced, for the reason this whole class keeps
+	 * repeating: an answer generated some other way, reported as though nothing went wrong, is the
+	 * worst of the three fates. Here it would be worse than usual, because a half-enforced schema
+	 * produces an answer that parses, looks like the shape asked for, and is not it.
+	 *
+	 * @param packageMessage What the package said it could not enforce, in its own words, which
+	 * names the keyword or the reference at fault.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static unenforceableSchema(packageMessage: string): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			'This server cannot enforce the JSON Schema you asked for, and refuses a request it would have to accept ' +
+				'and then enforce only in part, which would answer you with an object that parses and does not match ' +
+				`the schema. The constraint this cluster generates with says: ${packageMessage} Send the request again ` +
+				'with a schema this server can enforce, or with response_format "json_object" to ask only for an ' +
+				'object.',
+			'response_format.json_schema.schema',
+			'unenforceable_schema',
+		);
+	}
+
+	/**
+	 * The request asked for a shape beside the tools it declared.
+	 *
+	 * The two cannot both be honoured. A model made to write an object cannot write the tool call
+	 * syntax its chat template expects, and a model free to write a tool call is not writing the
+	 * shape that was asked for. Measured live while
+	 * [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) was open: asked for
+	 * both at once, LM Studio 0.4.20 wrote no tool call at all and answered
+	 * `{"city": "Paris", "weather": "Sunny"}`, inventing the very weather reading the declared tool
+	 * existed to fetch.
+	 *
+	 * That is the worst answer of the three this class distinguishes, because it is wrong in a way
+	 * nothing in the answer shows: the caller receives the shape it asked for, filled in with a
+	 * number the model made up, and is told nothing.
+	 *
+	 * @param requestedType The response format type the request asked for, such as `json_schema`.
+	 * @returns The failure to answer with, as HTTP 400.
+	 */
+	static responseFormatWithTools(requestedType: string): OpenaiError {
+		return new OpenaiError(
+			400,
+			'invalid_request_error',
+			`This server cannot produce a response_format of ${requestedType} for a request that also declares tools, ` +
+				'and refuses a request it would have to answer by dropping one of the two. A model made to write an ' +
+				'object cannot write a tool call, and a model free to call a tool is not writing the shape you asked ' +
+				'for; asked for both at once, a local server wrote the object and invented the reading the tool was ' +
+				'declared to fetch. Send the request again with the shape and no tools, with the tools and no shape, ' +
+				'or with tool_choice "none" to declare nothing to the model.',
+			'response_format',
+			'response_format_with_tools',
+		);
+	}
+
+	/**
 	 * The request declared tools to a model that cannot read them.
 	 *
 	 * Refused for the same reason an unhonourable generation control is: accepting the declarations

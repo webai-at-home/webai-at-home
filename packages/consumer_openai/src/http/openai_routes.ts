@@ -296,8 +296,9 @@ export class OpenaiRoutes {
 		// the same rule the generation controls follow. What is read back travels with the task, in
 		// the generation settings, carrying the schema itself, so that the worker running the stage
 		// produces the shape rather than being asked for prose and having its answer read as an
-		// object.
-		const responseFormat = ResponseFormatReader.read(body, taskTypeName);
+		// object. A schema no worker could enforce, and a shape asked for beside the tools this
+		// request really declares, are both refused here as well.
+		const responseFormat = ResponseFormatReader.read(body, taskTypeName, toolsToDeclare);
 
 		// A task type whose worker can hand a message list to its own chat template is sent the
 		// history as it was written, each message keeping its own role. Every other task type
