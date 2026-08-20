@@ -8,12 +8,14 @@ import { ChatTemplateTools } from '../web/src/stages/chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from '../web/src/stages/gemma_4_e2b_history_messages.js';
 import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call_reader.js';
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
+import { StageHelperLlmGemma4E2bFull } from '../web/src/stages/stage_helper_llm_gemma_4_e2b_full.js';
 import { JsonGrammar } from '../web/src/stages/structured_output/json_grammar.js';
 import { VocabularyTable } from '../web/src/stages/structured_output/vocabulary_table.js';
 import { JsonGrammarMaskCache, type GrammarMask } from '../web/src/stages/structured_output/json_grammar_mask_cache.js';
 
 // package imports
 import type { PreTrainedTokenizer } from '@huggingface/transformers';
+import type { GenerationSettings, LlmStagePayload } from '@webai/protocol';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -695,4 +697,76 @@ Test('works a mask out once per grammar state, however many steps reach that sta
 	maskCache.maskFor(JsonGrammar.copy(state));
 
 	Assert.equal(maskCache.workedOutMaskCount, 1);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	StageHelperLlmGemma4E2bFull, the response format it produces
+//
+//	Milestone 3 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) made this
+//	stage produce a `json_object`. Producing one needs the model, so what is asserted here is the
+//	half that does not: the two requests this stage refuses rather than answering by ignoring what
+//	was asked for. Both are refused before the model is reached, which is why they can be asserted
+//	at all — a run that would really generate would download about 3111 megabytes.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** The tool declaration used to ask this stage for a shape and a tool call at the same time. */
+const oneDeclaredTool = [
+	{
+		name: 'get_current_weather',
+		parametersJsonSchema: {
+			type: 'object',
+			properties: {
+				city: {
+					type: 'string',
+				},
+			},
+		},
+	},
+];
+
+/**
+ * Runs one stage computation and reports how it refused, rather than what it produced.
+ *
+ * @param payload The stage payload a task would submit.
+ * @param generationSettings What the consumer asked for.
+ * @returns The message the stage refused with, or a note saying it did not refuse.
+ */
+async function refusalOf(payload: LlmStagePayload, generationSettings: GenerationSettings): Promise<string> {
+	try {
+		await StageHelperLlmGemma4E2bFull.compute('task-1', 'assignment-1', payload, generationSettings);
+		return '(the stage did not refuse)';
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+}
+
+Test('refuses a request for json_schema rather than answering it with whatever object the model writes', async () => {
+	// This stage enforces well-formed JSON and not a schema. Answering a schema request with an
+	// object whose keys are the model's own guess, and reporting it as though the schema had been
+	// kept, is the exact failure `structured_output_support.ts` exists to prevent.
+	const refusal = await refusalOf({ text: 'Reply with a greeting object.' }, { responseFormat: 'json_schema' });
+
+	Assert.match(refusal, /json_object and not json_schema/);
+});
+
+Test('refuses to produce a shape and call a tool at once, because a masked answer can hold no tool call', async () => {
+	// Every marker a tool call is written with is a special token of this tokenizer, measured live by
+	// milestone 0 of issue #216, and the mask leaves no special token legal until the object is
+	// finished. So the two asked for together are two things that cannot both be given.
+	const refusal = await refusalOf(
+		{ history: { messages: [{ role: 'user', content: 'What is the weather in Paris?' }], tools: oneDeclaredTool } },
+		{ responseFormat: 'json_object' },
+	);
+
+	Assert.match(refusal, /cannot both produce a response format of json_object and call a tool/);
+});
+
+Test('refuses neither of those for a task that asked for no shape, so nothing about such a task changes', async () => {
+	// The refusal is reached before the model is, so a task that asked for no shape gets past it and
+	// fails for the ordinary reason instead: it has nothing to answer.
+	const refusal = await refusalOf({ text: '' }, {});
+
+	Assert.equal(refusal, 'A prompt is needed to start an answer.');
 });

@@ -19,6 +19,7 @@ Making a model write the shape a response format asks for, by masking the scores
 - A mask names the entries to remove when they are the fewer, and the entries to keep when they are. Applying a mask costs one write per entry it names, and inside a string almost the whole vocabulary is legal.
 - A mask cache belongs to a loaded model, never to a task, because a mask depends only on the grammar state and the vocabulary. A processor belongs to one generation, because the reader it holds is the state of one answer.
 - Nothing here reads a task, a stage, or a payload. A stage helper decides that a shape was asked for; this folder only enforces one.
+- `stage_helper_llm_gemma_4_e2b_full.ts` is the one stage helper using this folder. It produces `json_object`, and refuses `json_schema`, which needs a schema this folder does not enforce, and refuses a shape asked for beside tools, because every tool call marker of that tokenizer is a special token and a mask leaves no special token legal until the object is finished.
 
 ## Background
 
