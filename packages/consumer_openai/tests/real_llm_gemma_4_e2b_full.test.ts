@@ -48,6 +48,9 @@ import { RealTestHelper } from './real_test_helper.js';
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+/** How long one answer may take, in milliseconds. */
+const ANSWER_TIMEOUT_MS = 900_000;
+
 const realTestHelper = new RealTestHelper({
 	debugPath: '/debug_iframe_llm_gemma_4_e2b_full',
 	expectedWorkerCount: 1,
@@ -59,6 +62,18 @@ const realTestHelper = new RealTestHelper({
 			slowMoMs: Number(process.env.REAL_TEST_SLOW),
 		}
 		: {}),
+});
+
+/**
+ * Builds a client pointed at the consumer this test started.
+ *
+ * @returns The client the tests below submit through.
+ */
+const openaiClient = (): OpenAI => new OpenAI({
+	baseURL: `${realTestHelper.openaiUrl}/v1`,
+	apiKey: 'no-key-required',
+	maxRetries: 0,
+	timeout: ANSWER_TIMEOUT_MS,
 });
 
 NodeTest.before(async () => {
@@ -80,15 +95,9 @@ NodeTest.after(async () => {
 ///////////////////////////////////////////////////////////////////////////////
 
 NodeTest.test('answers with the capital of France in one stage assignment, through a real browser worker and the OpenAI-compatible server', {
-	timeout: 900_000,
+	timeout: ANSWER_TIMEOUT_MS,
 }, async () => {
-	const client = new OpenAI({
-		baseURL: `${realTestHelper.openaiUrl}/v1`,
-		apiKey: 'no-key-required',
-		maxRetries: 0,
-		timeout: 900_000,
-	});
-	const completion = await client.chat.completions.create({
+	const completion = await openaiClient().chat.completions.create({
 		model: 'llm_gemma_4_e2b_full',
 		messages: [{
 			role: 'user',
@@ -100,15 +109,9 @@ NodeTest.test('answers with the capital of France in one stage assignment, throu
 });
 
 NodeTest.test('streams the answer one piece at a time, through a real browser worker and the OpenAI-compatible server', {
-	timeout: 900_000,
+	timeout: ANSWER_TIMEOUT_MS,
 }, async () => {
-	const client = new OpenAI({
-		baseURL: `${realTestHelper.openaiUrl}/v1`,
-		apiKey: 'no-key-required',
-		maxRetries: 0,
-		timeout: 900_000,
-	});
-	const stream = await client.chat.completions.create({
+	const stream = await openaiClient().chat.completions.create({
 		model: 'llm_gemma_4_e2b_full',
 		messages: [{
 			role: 'user',
@@ -136,15 +139,9 @@ NodeTest.test('streams the answer one piece at a time, through a real browser wo
 // `chat_template.jinja` and a `chat_template` in `tokenizer_config.json`. That decision is only worth anything if
 // the model really reads the earlier turns, which is what this asks: the fact is answerable from nowhere else.
 NodeTest.test('reads a fact out of an earlier turn of the history, rather than answering the last message alone', {
-	timeout: 900_000,
+	timeout: ANSWER_TIMEOUT_MS,
 }, async () => {
-	const client = new OpenAI({
-		baseURL: `${realTestHelper.openaiUrl}/v1`,
-		apiKey: 'no-key-required',
-		maxRetries: 0,
-		timeout: 900_000,
-	});
-	const completion = await client.chat.completions.create({
+	const completion = await openaiClient().chat.completions.create({
 		model: 'llm_gemma_4_e2b_full',
 		messages: [
 			{ role: 'user', content: 'My favourite colour is heliotrope. Remember it.' },
@@ -154,4 +151,304 @@ NodeTest.test('reads a fact out of an earlier turn of the history, rather than a
 	});
 
 	Assert.match(completion.choices[0]?.message.content ?? '', /heliotrope/i);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Tests — The Shape Of The Answer
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+// This task type is the one entry of `StructuredOutputSupport` that is filled, and these tests are what filled
+// it. See [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221). The worker browser tab makes
+// the model write the shape by constraining generation with
+// `@huggingface/transformers-response-constraint`, through the `logits_processor` and `stopping_criteria` the
+// pipeline call already takes; nothing here parses an answer that was generated freely and hopes it is an
+// object.
+//
+// The row is the intersection of what both kinds of worker keep, so the same shapes are asked of the native
+// worker in `real_llm_gemma_4_e2b_full_native_worker.test.ts`. Neither suite alone is enough to fill the row.
+
+NodeTest.test('answers a json_schema with an object satisfying it', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'What is the capital of France?' }],
+		response_format: {
+			type: 'json_schema',
+			json_schema: {
+				name: 'capital',
+				schema: {
+					type: 'object',
+					properties: {
+						city: {
+							type: 'string',
+						},
+					},
+					required: ['city'],
+					additionalProperties: false,
+				},
+			},
+		},
+	});
+	const answer = completion.choices[0]?.message.content ?? '';
+	const parsed = JSON.parse(answer) as Record<string, unknown>;
+	// The schema said one property and no other, so an answer carrying a second one would mean the schema was
+	// read as advice rather than enforced.
+	Assert.deepEqual(Object.keys(parsed), ['city']);
+	Assert.match(String(parsed.city), /paris/i);
+});
+
+NodeTest.test('answers a json_schema of several kinds of field, including the string lengths the reverted compiler refused', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'Describe the weather in Paris today.' }],
+		response_format: {
+			type: 'json_schema',
+			json_schema: {
+				name: 'weather',
+				schema: {
+					type: 'object',
+					properties: {
+						city: {
+							type: 'string',
+							minLength: 3,
+							maxLength: 20,
+						},
+						celsius: {
+							type: 'integer',
+						},
+						isRaining: {
+							type: 'boolean',
+						},
+						sky: {
+							type: 'string',
+							enum: ['clear', 'cloudy', 'stormy'],
+						},
+					},
+					required: ['city', 'celsius', 'isRaining', 'sky'],
+					additionalProperties: false,
+				},
+			},
+		},
+	});
+	const parsed = JSON.parse(completion.choices[0]?.message.content ?? '') as Record<string, unknown>;
+	Assert.equal(typeof parsed.city, 'string');
+	Assert.equal(String(parsed.city).length >= 3 && String(parsed.city).length <= 20, true);
+	// A JSON Schema `integer` is a number with a zero fractional part, so the package allows `22.000`, which
+	// `JSON.parse` reads back as 22. See the measurement folder's README for why the form is allowed at all.
+	Assert.equal(Number.isInteger(parsed.celsius), true);
+	Assert.equal(typeof parsed.isRaining, 'boolean');
+	Assert.equal(['clear', 'cloudy', 'stormy'].includes(String(parsed.sky)), true);
+});
+
+NodeTest.test('answers a json_schema asking for an array of exactly three strings', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'Name three cities in France.' }],
+		response_format: {
+			type: 'json_schema',
+			json_schema: {
+				name: 'cities',
+				schema: {
+					type: 'object',
+					properties: {
+						cities: {
+							type: 'array',
+							items: {
+								type: 'string',
+							},
+							minItems: 3,
+							maxItems: 3,
+						},
+					},
+					required: ['cities'],
+					additionalProperties: false,
+				},
+			},
+		},
+	});
+	const parsed = JSON.parse(completion.choices[0]?.message.content ?? '') as { cities: string[] };
+	Assert.equal(parsed.cities.length, 3);
+});
+
+NodeTest.test('answers a json_schema asking for an object inside an object', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+		response_format: {
+			type: 'json_schema',
+			json_schema: {
+				name: 'nested_weather',
+				schema: {
+					type: 'object',
+					properties: {
+						city: {
+							type: 'string',
+						},
+						weather: {
+							type: 'object',
+							properties: {
+								sky: {
+									type: 'string',
+								},
+								celsius: {
+									type: 'integer',
+								},
+							},
+							required: ['sky', 'celsius'],
+							additionalProperties: false,
+						},
+					},
+					required: ['city', 'weather'],
+					additionalProperties: false,
+				},
+			},
+		},
+	});
+	const parsed = JSON.parse(completion.choices[0]?.message.content ?? '') as { city: string; weather: { sky: string; celsius: number } };
+	Assert.equal(typeof parsed.weather.sky, 'string');
+	Assert.equal(Number.isInteger(parsed.weather.celsius), true);
+});
+
+NodeTest.test('answers a json_object with an object', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'Describe the weather in Paris today, as a JSON object.' }],
+		response_format: {
+			type: 'json_object',
+		},
+	});
+	const parsed = JSON.parse(completion.choices[0]?.message.content ?? '') as unknown;
+	Assert.equal(typeof parsed, 'object');
+	Assert.notEqual(parsed, null);
+	Assert.equal(Array.isArray(parsed), false);
+});
+
+NodeTest.test('streams a json_schema answer one piece at a time', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const stream = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'What is the capital of France?' }],
+		stream: true,
+		response_format: {
+			type: 'json_schema',
+			json_schema: {
+				name: 'capital',
+				schema: {
+					type: 'object',
+					properties: {
+						city: {
+							type: 'string',
+						},
+					},
+					required: ['city'],
+					additionalProperties: false,
+				},
+			},
+		},
+	});
+	let answer = '';
+	let pieceCount = 0;
+	for await (const chunk of stream) {
+		const piece = chunk.choices[0]?.delta.content ?? '';
+		if (piece === '') {
+			continue;
+		}
+		pieceCount += 1;
+		answer += piece;
+	}
+	// A shaped answer is read back the same way an unshaped one is: one stage run per piece, each piece
+	// constrained by where the grammar had reached when it was generated.
+	Assert.equal(pieceCount > 1, true);
+	const parsed = JSON.parse(answer) as Record<string, unknown>;
+	Assert.match(String(parsed.city), /paris/i);
+});
+
+NodeTest.test('refuses a schema the constraint package cannot enforce, before any model is loaded', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	// The refusal milestone 5 added. It happens at submission, so the whole cluster is spared the work and the
+	// caller is told which reference is at fault rather than receiving an answer enforced only in part.
+	await Assert.rejects(
+		async () => await openaiClient().chat.completions.create({
+			model: 'llm_gemma_4_e2b_full',
+			messages: [{ role: 'user', content: 'What is the capital of France?' }],
+			response_format: {
+				type: 'json_schema',
+				json_schema: {
+					name: 'external',
+					schema: {
+						type: 'object',
+						properties: {
+							city: {
+								$ref: 'https://example.invalid/city.schema.json',
+							},
+						},
+						required: ['city'],
+					},
+				},
+			},
+		}),
+		(error: unknown) => {
+			const apiError = error as { status?: number; error?: { code?: string; param?: string; message?: string } };
+			Assert.equal(apiError.status, 400);
+			Assert.equal(apiError.error?.code, 'unenforceable_schema');
+			Assert.equal(apiError.error?.param, 'response_format.json_schema.schema');
+			Assert.match(apiError.error?.message ?? '', /External JSON Schema reference/);
+			return true;
+		},
+	);
+});
+
+NodeTest.test('refuses a shape asked for beside declared tools, which cannot both be honoured', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	// A model made to write an object cannot write a tool call, and a model free to call a tool is not writing
+	// the shape that was asked for. Asked for both at once, a local server wrote the object and invented the
+	// reading the tool was declared to fetch.
+	await Assert.rejects(
+		async () => await openaiClient().chat.completions.create({
+			model: 'llm_gemma_4_e2b_full',
+			messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+			tools: [
+				{
+					type: 'function',
+					function: {
+						name: 'get_weather',
+						description: 'Reads the current weather of one city.',
+						parameters: {
+							type: 'object',
+							properties: {
+								city: {
+									type: 'string',
+								},
+							},
+							required: ['city'],
+						},
+					},
+				},
+			],
+			response_format: {
+				type: 'json_object',
+			},
+		}),
+		(error: unknown) => {
+			const apiError = error as { status?: number; error?: { code?: string; param?: string } };
+			Assert.equal(apiError.status, 400);
+			Assert.equal(apiError.error?.code, 'response_format_with_tools');
+			Assert.equal(apiError.error?.param, 'response_format');
+			return true;
+		},
+	);
 });

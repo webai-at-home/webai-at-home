@@ -128,6 +128,8 @@ An ignored field also fails at random, which is what made it hard to notice by h
 
 Both `structured_output` rows in both `consumer_openai` columns are therefore ⊘ rather than ❌ or ⚠️, re-measured on 2026-08-16, and they are steady rather than changing from run to run. `@webai/protocol`'s `StructuredOutputSupport` is what a shape has to be entered into for that to change.
 
+That was true until 2026-08-20, when `task_type_llm_gemma_4_e2b_full` became the first task type to produce both shapes: `@huggingface/transformers-response-constraint` constrains generation in the worker browser tab, and the native worker sends `response_format` to the local server it forwards to. Both kinds of worker were measured live before the row was entered. See [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221).
+
 ### `llm_qwen3_5_0_8b_full` thinks until its budget is gone, and never begins an answer
 
 This model thinks before it answers, and on some questions it never stops thinking. One request against LM Studio directly, no cluster involved:

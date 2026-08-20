@@ -35,7 +35,7 @@ export type ResponseFormatName = z.infer<typeof ResponseFormatNameSchema>;
  * `JSON.parse` on an English sentence. See
  * [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
  *
- * Every entry is empty today, and the milestone 0 gate of issue #191 is what measured that:
+ * One entry is filled and every other is empty, and each entry is what a live run measured:
  *
  * - `task_type_llm_llama3_2_1b_full` is served by two kinds of worker. A `@webai/worker-openai`
  *   process forwarding to a local server does sit in front of an engine that honours `json_schema`,
@@ -48,13 +48,19 @@ export type ResponseFormatName = z.infer<typeof ResponseFormatNameSchema>;
  * - `task_type_llm_qwen3_5_0_8b_full`, `task_type_llm_qwen3_0_6b_sharded`, and
  *   `task_type_llm_gemma_nano_chrome_full` run only in a worker browser tab, so none of them has an
  *   engine that can be asked for a shape either.
- * - `task_type_llm_gemma_4_e2b_full` is empty for the same reason as `task_type_llm_llama3_2_1b_full`
- *   above, not because it runs only in a browser tab. It has both kinds of worker, and the native one
- *   really does sit in front of an engine that honours `json_schema` — Ollama did in
- *   [issue #210](https://github.com/webai-at-home/webai-at-home/issues/210), and milestone 4 of
- *   [issue #216](https://github.com/webai-at-home/webai-at-home/issues/216) ran this task type
- *   through that worker live. The worker browser tab can honour nothing, and a task type's contract
- *   is what both its workers can keep, so the intersection is empty.
+ * - `task_type_llm_gemma_4_e2b_full` honours both shapes, and is the one entry that is filled. It
+ *   was empty until [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221), for the
+ *   same reason `task_type_llm_llama3_2_1b_full` still is: its worker browser tab could honour
+ *   nothing. `@huggingface/transformers-response-constraint` is what changed that, by constraining
+ *   generation in the browser tab through the `logits_processor` and `stopping_criteria` the
+ *   pipeline call already takes. Both kinds of worker were then measured live, which is what this
+ *   row records and all it records. The worker browser tab, on WebGPU, answered `{"city": "Paris"}`
+ *   to a schema declaring `city` required, and a nine-field object to a `json_object`. The
+ *   `@webai/worker-openai` process forwarding to Ollama serving `gemma4:e2b` answered
+ *   `{"city": "Paris", "celsius": 18, "isRaining": false, "sky": "cloudy"}` to a schema of four
+ *   kinds of field. Both live suites are permanent, in
+ *   `packages/consumer_openai/tests/real_llm_gemma_4_e2b_full.test.ts` and
+ *   `packages/consumer_openai/tests/real_llm_gemma_4_e2b_full_native_worker.test.ts`.
  * - `task_type_dev_formula` generates no text at all, so no response format applies to it.
  *
  * An entry here is also the only thing a task type needs to gain to start honouring a format: this
@@ -66,7 +72,7 @@ const formatsByTaskType: Record<TaskType, readonly ResponseFormatName[]> = {
 	task_type_llm_gemma_nano_chrome_full: [],
 	task_type_llm_qwen3_5_0_8b_full: [],
 	task_type_llm_llama3_2_1b_full: [],
-	task_type_llm_gemma_4_e2b_full: [],
+	task_type_llm_gemma_4_e2b_full: ['json_object', 'json_schema'],
 };
 
 /** Which task type honours which response format. */

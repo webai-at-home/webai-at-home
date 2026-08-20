@@ -19,6 +19,7 @@ import {
 	StageName,
 	StagePayloadFactory,
 	StagePayloadSchema,
+	StructuredOutputSupport,
 	TaskInput,
 	ToolCallSchema,
 	TaskState,
@@ -326,6 +327,35 @@ Test('validates every inbound client message shape', () => {
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'deviceRegister', role: 'consumer', name: 'consumer', unexpected: true }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.history', taskId: 'task-1' }).success, true);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.history' }).success, false);
+});
+
+Test('names both response formats as honoured by the one task type whose two workers were both measured', () => {
+	// Filled by milestone 6 of [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221),
+	// and only then, because a row is the intersection of what both kinds of worker keep and this
+	// table holds what a live run observed and nothing else. The worker browser tab constrains
+	// generation with `@huggingface/transformers-response-constraint`; the `@webai/worker-openai`
+	// process sends `response_format` to the local server it forwards to.
+	Assert.equal(StructuredOutputSupport.honours('task_type_llm_gemma_4_e2b_full', 'json_object'), true);
+	Assert.equal(StructuredOutputSupport.honours('task_type_llm_gemma_4_e2b_full', 'json_schema'), true);
+	Assert.deepEqual(
+		StructuredOutputSupport.honouredFormats('task_type_llm_gemma_4_e2b_full'),
+		['json_object', 'json_schema'],
+	);
+	// Every other task type still produces no shape at all. `task_type_llm_llama3_2_1b_full` has a
+	// native worker that could, and a worker browser tab that cannot, so the intersection is empty;
+	// the three below run only in a browser tab, whose stage helpers ask for no constraint;
+	// `task_type_dev_formula` generates no text to shape.
+	for (const taskType of [
+		'task_type_llm_llama3_2_1b_full',
+		'task_type_llm_qwen3_5_0_8b_full',
+		'task_type_llm_qwen3_0_6b_sharded',
+		'task_type_llm_gemma_nano_chrome_full',
+		'task_type_dev_formula',
+	] as const) {
+		Assert.deepEqual(StructuredOutputSupport.honouredFormats(taskType), []);
+		Assert.equal(StructuredOutputSupport.honours(taskType, 'json_object'), false);
+		Assert.equal(StructuredOutputSupport.honours(taskType, 'json_schema'), false);
+	}
 });
 
 Test('names reasoning_effort as honoured only by the task type whose model thinks on both of its workers', () => {

@@ -32,7 +32,8 @@
 		"test:real:llm_llama3_2_1b_full": "npx tsx --test tests/real_llm_llama3_2_1b_full.test.ts",
 		"test:real:llm_llama3_2_1b_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_llama3_2_1b_full.test.ts",
 		"test:real:llm_gemma_4_e2b_full": "npx tsx --test tests/real_llm_gemma_4_e2b_full.test.ts",
-		"test:real:llm_gemma_4_e2b_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_gemma_4_e2b_full.test.ts"
+		"test:real:llm_gemma_4_e2b_full:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_llm_gemma_4_e2b_full.test.ts",
+		"test:real:llm_gemma_4_e2b_full_native_worker": "npx tsx --test tests/real_llm_gemma_4_e2b_full_native_worker.test.ts"
 	},
 	"dependencies": {
 		"@huggingface/transformers": "^4.2.0",

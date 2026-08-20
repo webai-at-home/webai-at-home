@@ -1078,10 +1078,9 @@ Test('carries a response format the task type honours, in the same block the con
 	// because a response format is refused against `StructuredOutputSupport` and a generation control
 	// against `GenerationControlSupport`, and the two tables are kept apart.
 	//
-	// The builder is called directly here, and not through `generationSettingsOf`, because no entry
-	// of `StructuredOutputSupport` is filled: `ResponseFormatReader.read` cannot return a shape for
-	// any model this server offers, so the carrying path has nothing to carry until milestone 6 of
-	// that issue fills the row of `task_type_llm_gemma_4_e2b_full`.
+	// The builder is called directly here, so that the carrying path is checked apart from which task
+	// type happens to honour a shape. What it does for a request that really asks for one is checked
+	// below, against `llm_gemma_4_e2b_full`, whose row milestone 6 filled.
 	const messages = [{ role: 'user', content: 'Reply with a greeting object.' }];
 	const parsed = ChatCompletionRequestSchema.parse({ model: 'llm_llama3_2_1b_full', messages, temperature: 0 });
 
@@ -1126,6 +1125,137 @@ Test('submits no settings block at all for a request that asked for no shape and
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages }, 'llm_llama3_2_1b_full'), undefined);
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } }, 'llm_llama3_2_1b_full'), undefined);
 	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: null }, 'llm_llama3_2_1b_full'), undefined);
+});
+
+Test('carries the shape a request really asked for, for the one model that produces one', () => {
+	// Milestone 6 of [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221) filled
+	// the row of `task_type_llm_gemma_4_e2b_full`, so this is the first request that travels with a
+	// shape rather than being refused for one. Everything from the request body to the settings block
+	// is exercised: reading the field, refusing what cannot be produced, and carrying the rest.
+	const messages = [{ role: 'user', content: 'What is the capital of France?' }];
+	const jsonSchema = {
+		type: 'object',
+		properties: {
+			city: {
+				type: 'string',
+			},
+		},
+		required: ['city'],
+		additionalProperties: false,
+	};
+
+	Assert.deepEqual(generationSettingsOf({
+		model: 'llm_gemma_4_e2b_full',
+		messages,
+		response_format: { type: 'json_schema', json_schema: { name: 'capital', strict: true, schema: jsonSchema } },
+	}, 'llm_gemma_4_e2b_full'), {
+		responseFormat: {
+			type: 'json_schema',
+			jsonSchema,
+		},
+	});
+
+	// The wrapper's `name` and `strict` are read and dropped, and the schema itself travels: a worker
+	// has to enforce the schema and has nothing to do with either of the other two.
+	Assert.deepEqual(generationSettingsOf({
+		model: 'llm_gemma_4_e2b_full',
+		messages,
+		response_format: { type: 'json_object' },
+	}, 'llm_gemma_4_e2b_full'), {
+		responseFormat: {
+			type: 'json_object',
+		},
+	});
+
+	// A request that asked for a schema and left it out has asked for JSON and described nothing
+	// about it, which is what the empty JSON Schema says.
+	Assert.deepEqual(generationSettingsOf({
+		model: 'llm_gemma_4_e2b_full',
+		messages,
+		response_format: { type: 'json_schema', json_schema: { name: 'anything' } },
+	}, 'llm_gemma_4_e2b_full'), {
+		responseFormat: {
+			type: 'json_schema',
+			jsonSchema: {},
+		},
+	});
+});
+
+Test('answers a schema it cannot enforce with HTTP 400, before the task is submitted at all', async () => {
+	const server = await listeningServer();
+	try {
+		const response = await fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_gemma_4_e2b_full',
+				messages: [{ role: 'user', content: 'What is the capital of France?' }],
+				response_format: {
+					type: 'json_schema',
+					json_schema: {
+						name: 'external',
+						schema: { type: 'object', properties: { city: { $ref: 'https://example.invalid/city.schema.json' } }, required: ['city'] },
+					},
+				},
+			}),
+		});
+		Assert.equal(response.status, 400);
+		const body = await response.json() as { error: { code: string; param: string; message: string } };
+		Assert.equal(body.error.code, 'unenforceable_schema');
+		Assert.equal(body.error.param, 'response_format.json_schema.schema');
+		// The package's own words, so the sender learns which reference is at fault.
+		Assert.match(body.error.message, /External JSON Schema reference/);
+	} finally {
+		server.close();
+	}
+});
+
+Test('answers a shape asked for beside declared tools with HTTP 400, and still answers one asked for beside tool_choice "none"', async () => {
+	const server = await listeningServer();
+	const tools = [
+		{
+			type: 'function',
+			function: {
+				name: 'get_weather',
+				description: 'Reads the current weather of one city.',
+				parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+			},
+		},
+	];
+	try {
+		const refused = await fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_gemma_4_e2b_full',
+				messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+				tools,
+				response_format: { type: 'json_object' },
+			}),
+		});
+		Assert.equal(refused.status, 400);
+		const body = await refused.json() as { error: { code: string; param: string } };
+		Assert.equal(body.error.code, 'response_format_with_tools');
+		Assert.equal(body.error.param, 'response_format');
+
+		// `tool_choice: "none"` declares no tool to the model, so there is nothing for the shape to
+		// fight with, and the request is not refused here. It is answered by the fake gateway this
+		// server is pointed at, so what is checked is that it was submitted at all.
+		const accepted = await fetch(`${server.url}/v1/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				model: 'llm_gemma_4_e2b_full',
+				messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
+				tools,
+				tool_choice: 'none',
+				response_format: { type: 'json_object' },
+			}),
+		});
+		Assert.notEqual(accepted.status, 400);
+	} finally {
+		server.close();
+	}
 });
 
 Test('asks the constraint package whether a schema can be enforced, and keeps no list of keywords of its own', () => {
