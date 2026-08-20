@@ -18,6 +18,7 @@ This worker's connection to the central gateway, keeping that connection open, a
 - `GatewayWorkerClient` speaks the protocol over exactly one connection, and every field it resets when a connection closes depends on that. Anything that outlives one connection belongs in `GatewayConnectionSupervisor`, which builds a new socket and a new client per attempt rather than reusing either.
 - `OpenaiApiClient` carries a generation control into the request body under its OpenAI name, and leaves a control the consumer did not ask for out of the body entirely rather than sending `null`.
 - `OpenaiApiClient` carries the tools a history declared into the request body, and mints the tool call identifier the local server requires and the protocol does not carry, because a declaration this worker drops is a declaration the model never reads.
+- `OpenaiApiClient` asks for a `json_object` answer as a `json_schema` of `{ "type": "object" }`, because LM Studio refuses OpenAI's own `json_object` spelling and both local servers read the schema ([#219](https://github.com/webai-at-home/webai-at-home/issues/219)).
 - Message shapes come from `@webai/protocol` and are never restated here.
 - Nothing here names a stage helper: which stages this worker can run is asked of `StageCatalog` in `../stages/`, and always by the computation a stage names rather than by the stage name itself, so a pipeline the gateway loaded after this worker was built can offer new stage names that reuse computations already shipped here.
 

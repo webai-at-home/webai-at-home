@@ -178,7 +178,9 @@ export class LocalServerGeneration {
 	 * {@link OpenaiApiClient.chatCompletionStream} instead, and only on the run that starts the
 	 * answer, because one request to the local server produces the whole answer however many runs
 	 * read it back — which is also what makes `maximumOutputTokenCount`, a budget for the whole
-	 * answer, expressible here as `max_tokens` on that one request.
+	 * answer, expressible here as `max_tokens` on that one request. `responseFormat` is read in both
+	 * places: that same method puts it in the request, and the run that finishes the answer reads it
+	 * again here to check the shape that came back is the shape that was asked for.
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
 	 * @param modelId The model to ask the local server for.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
@@ -243,6 +245,7 @@ export class LocalServerGeneration {
 				return StagePayloadFactory.llmToolCalls(toolCalls, this.usageOf(state.usage));
 			}
 			this.refuseAnswerThatRanOutBeforeItBegan(state);
+			this.refuseAnswerThatIsNotTheShapeAskedFor(state, generationSettings);
 			return StagePayloadFactory.llmDone(state.text, undefined, this.usageOf(state.usage));
 		} finally {
 			if (leavesAnswerOpen === false) {
@@ -491,6 +494,50 @@ export class LocalServerGeneration {
 			? 'every token it was allowed'
 			: `all ${completionTokenCount} tokens it was allowed`;
 		throw new Error(`The model generated ${generated} without writing any answer text, and stopped because it ran out of room rather than because it had finished. A model that thinks before it answers can do this by never finishing thinking; asking for reasoning_effort "none" stops it.`);
+	}
+
+	/**
+	 * Refuses an answer that is not the shape the consumer asked for.
+	 *
+	 * The worker browser tab running this same task type cannot produce the wrong shape at all: it
+	 * masks every token that would break the shape, so a well-formed object is what the model is
+	 * able to write and nothing else is. This worker has no such hold over the model. It asks the
+	 * local server for the shape and reads back whatever that server chose to send, so the promise
+	 * the task type makes is only as good as the server's word, and a server that reads
+	 * `response_format` and ignores it silently would return prose to a consumer that asked for an
+	 * object. That is the fault `structured_output_support.ts` calls worse than a refusal and worse
+	 * than an honoured request both. This method is the only place this worker can catch it.
+	 *
+	 * A top-level object is required, and a valid JSON value that is not one — a bare number, a
+	 * string, a list — is refused with it, because that is the same shape the worker browser tab's
+	 * grammar allows and the two workers of one task type keep one promise between them.
+	 *
+	 * An answer the local server cut short at its output limit is left alone, however unfinished the
+	 * JSON it holds is. Running out of room is already reported, as `stopReason: max_new_tokens`, and
+	 * a consumer told the answer was cut short is not being told nothing. This is the same line the
+	 * worker browser tab draws for the same reason.
+	 *
+	 * @param state The answer this run has finished reading.
+	 * @param generationSettings What the consumer asked for, read for its response format.
+	 * @throws If a shape was asked for, the answer ended of its own accord, and what came back is
+	 * not a JSON object.
+	 */
+	private refuseAnswerThatIsNotTheShapeAskedFor(state: TaskGenerationState, generationSettings: GenerationSettings | undefined): void {
+		if (generationSettings?.responseFormat === undefined) {
+			return;
+		}
+		if (state.usage?.finishReason !== 'stop') {
+			return;
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(state.text);
+		} catch {
+			throw new Error(`The consumer asked for a ${generationSettings.responseFormat} answer, and the local server returned text that is not JSON at all: ${state.text}`);
+		}
+		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) === true) {
+			throw new Error(`The consumer asked for a ${generationSettings.responseFormat} answer, and the local server returned JSON that is not an object: ${state.text}`);
+		}
 	}
 
 	/**
