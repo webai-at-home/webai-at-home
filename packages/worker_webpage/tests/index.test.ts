@@ -8,6 +8,12 @@ import { ChatTemplateTools } from '../web/src/stages/chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from '../web/src/stages/gemma_4_e2b_history_messages.js';
 import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call_reader.js';
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
+import { JsonGrammar } from '../web/src/stages/structured_output/json_grammar.js';
+import { VocabularyTable } from '../web/src/stages/structured_output/vocabulary_table.js';
+import { JsonGrammarMaskCache, type GrammarMask } from '../web/src/stages/structured_output/json_grammar_mask_cache.js';
+
+// package imports
+import type { PreTrainedTokenizer } from '@huggingface/transformers';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -428,4 +434,265 @@ Test('the settings panel says how large the Gemma 4 E2B download is, which no ot
 	const entry = StageCatalog.entries.find((one) => one.name === 'stage_llm_gemma_4_e2b_full');
 
 	Assert.ok(entry?.description.includes('3111 MB'));
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	JsonGrammar
+//
+//	The reader that enforces `json_object`, from milestone 1 of
+//	[issue #219](https://github.com/webai-at-home/webai-at-home/issues/219). It is the one part of
+//	structured output that can be checked without a model at all, and it is the part that must not
+//	be wrong: every entry of the vocabulary is judged by it at every step, so a reader that accepts
+//	one illegal character makes the whole mask a decoration.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** Reads a whole text from a fresh reader, and reports whether it was accepted and finished. */
+function readWholeText(text: string): { isAccepted: boolean; isComplete: boolean } {
+	const state = JsonGrammar.initialState(true);
+	const isAccepted = JsonGrammar.acceptText(state, text);
+	return {
+		isAccepted: isAccepted,
+		isComplete: isAccepted === true && JsonGrammar.isComplete(state),
+	};
+}
+
+Test('accepts the JSON an object response format is meant to produce', () => {
+	for (const text of [
+		'{}',
+		'{"a":1}',
+		'{"a": 1, "b": [1,2,3]}',
+		'{"a": {"b": {"c": null}}}',
+		'{"a": true, "b": false, "c": null}',
+		'{"a": -1.5e-10}',
+		'{"a": "line\\nbreak \\u00e9"}',
+		'{ "a" : [ ] }',
+		'{"a":[{},{"b":[]}]}',
+		'{"a":0}',
+	]) {
+		Assert.deepEqual(readWholeText(text), { isAccepted: true, isComplete: true }, text);
+	}
+});
+
+Test('refuses text that is not a complete JSON object', () => {
+	for (const text of [
+		'[]',
+		'1',
+		'"hello"',
+		'{"a":01}',
+		'{"a":1,}',
+		'{,}',
+		'{"a"1}',
+		'{"a":1',
+		'{"a":+1}',
+		'{"a":1.}',
+		'{"a":1e}',
+		'{"a":"un\tescaped"}',
+		'{"a":.5}',
+		'{"a":[1,]}',
+		'{}x',
+		'{"a":tru}',
+	]) {
+		const reading = readWholeText(text);
+		Assert.equal(reading.isAccepted === true && reading.isComplete === true, false, text);
+	}
+});
+
+Test('lets an answer start only with an object, because that is what json_object asks for', () => {
+	const state = JsonGrammar.initialState(true);
+	const legalFirstCharacters: string[] = [];
+	for (let code = 32; code < 127; code = code + 1) {
+		if (JsonGrammar.acceptsText(state, String.fromCharCode(code)) === true) {
+			legalFirstCharacters.push(String.fromCharCode(code));
+		}
+	}
+
+	Assert.equal(legalFirstCharacters.join(''), ' {');
+});
+
+Test('judges a token that closes two containers at once against the whole stack, not only its top', () => {
+	// A vocabulary entry may carry several characters, so `}}` reaches two levels down. A reader that
+	// looked only at the innermost container would accept `}}}` here and write one bracket too many.
+	const state = JsonGrammar.initialState(true);
+	JsonGrammar.acceptText(state, '{"a":{"b":1');
+
+	Assert.equal(JsonGrammar.acceptsText(state, '}}'), true);
+	Assert.equal(JsonGrammar.acceptsText(state, '}}}'), false);
+});
+
+Test('reports a value as unfinished until its last bracket is written', () => {
+	const state = JsonGrammar.initialState(true);
+	JsonGrammar.acceptText(state, '{"a":{"b":1}');
+
+	Assert.equal(JsonGrammar.isComplete(state), false);
+	Assert.equal(JsonGrammar.acceptText(state, '}'), true);
+	Assert.equal(JsonGrammar.isComplete(state), true);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	VocabularyTable and JsonGrammarMaskCache
+//
+//	Checked against a vocabulary written out by hand rather than a loaded model, so that every
+//	entry's expected verdict can be read off the page. The shapes it is fed are the shapes
+//	`@huggingface/transformers` 4.2.0 really produces, including the `Map` its `get_vocab()` returns
+//	where its own type declaration says a plain record — the trap that made the first live run of
+//	the milestone 0 gate mask nothing at all.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/** The text each entry of the hand-written vocabulary writes, indexed by token identifier. */
+const vocabularyTexts = ['<eos>', '<turn|>', '', '{', '}', '"', 'a', '":', '{"', '1'];
+
+/** The identifiers of the hand-written vocabulary that end a sequence. */
+const endOfSequenceTokenIds = [0, 1];
+
+/**
+ * A stand-in for a loaded tokenizer, answering the three questions `VocabularyTable` asks it.
+ *
+ * @param texts The text each entry writes.
+ * @param specialIdentifiers The identifiers the tokenizer marks as special.
+ * @returns Something shaped like the part of a tokenizer that is read.
+ */
+function tokenizerOver(texts: readonly string[], specialIdentifiers: readonly number[]): PreTrainedTokenizer {
+	const vocabulary = new Map<string, number>();
+	for (let identifier = 0; identifier < texts.length; identifier = identifier + 1) {
+		vocabulary.set(`entry_${identifier}`, identifier);
+	}
+	const addedTokensDecoder = new Map<number, { content: string; special: boolean }>();
+	for (const identifier of specialIdentifiers) {
+		addedTokensDecoder.set(identifier, { content: texts[identifier], special: true });
+	}
+	return {
+		get_vocab: () => vocabulary,
+		decode: (tokenIds: number[]) => tokenIds.map((tokenId) => texts[tokenId]).join(''),
+		_tokenizer: {
+			get_added_tokens_decoder: () => addedTokensDecoder,
+		},
+	} as unknown as PreTrainedTokenizer;
+}
+
+/**
+ * The identifiers one mask leaves legal, whichever of the two forms the mask took.
+ *
+ * @param mask The mask to read.
+ * @param size How many entries the vocabulary has.
+ * @returns The legal identifiers, in ascending order.
+ */
+function legalIdentifiersOf(mask: GrammarMask, size: number): number[] {
+	if (mask.namesTheEntriesToKeep === true) {
+		return [...mask.tokenIds];
+	}
+	const removed = new Set(mask.tokenIds);
+	const legalIdentifiers: number[] = [];
+	for (let identifier = 0; identifier < size; identifier = identifier + 1) {
+		if (removed.has(identifier) === false) {
+			legalIdentifiers.push(identifier);
+		}
+	}
+	return legalIdentifiers;
+}
+
+/** A mask cache over the hand-written vocabulary. */
+function maskCacheOverTheHandWrittenVocabulary(): JsonGrammarMaskCache {
+	const vocabularyTable = VocabularyTable.build(tokenizerOver(vocabularyTexts, endOfSequenceTokenIds));
+	return new JsonGrammarMaskCache(vocabularyTable, endOfSequenceTokenIds);
+}
+
+Test('reads a vocabulary handed back as a Map, which is what the tokenizer really returns', () => {
+	const vocabularyTable = VocabularyTable.build(tokenizerOver(vocabularyTexts, endOfSequenceTokenIds));
+
+	Assert.equal(vocabularyTable.size, vocabularyTexts.length);
+	Assert.equal(vocabularyTable.textOf(3), '{');
+});
+
+Test('sorts every entry into the text a grammar can judge, a marker, or something unusable', () => {
+	const vocabularyTable = VocabularyTable.build(tokenizerOver(vocabularyTexts, endOfSequenceTokenIds));
+
+	Assert.equal(vocabularyTable.kindOf(0), 'special');
+	Assert.equal(vocabularyTable.kindOf(1), 'special');
+	Assert.equal(vocabularyTable.kindOf(2), 'unusable');
+	Assert.equal(vocabularyTable.kindOf(3), 'text');
+	Assert.deepEqual(vocabularyTable.countByKind, { text: 7, special: 2, unusable: 1 });
+});
+
+Test('leaves legal, at the start, only the entries that can open an object', () => {
+	const maskCache = maskCacheOverTheHandWrittenVocabulary();
+	const state = JsonGrammar.initialState(true);
+
+	// `{` and `{"`, and neither the two markers nor the entry that writes nothing.
+	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(state), vocabularyTexts.length), [3, 8]);
+});
+
+Test('leaves legal, after an opening brace, only a key or the closing brace', () => {
+	const maskCache = maskCacheOverTheHandWrittenVocabulary();
+	const state = JsonGrammar.initialState(true);
+	JsonGrammar.acceptText(state, '{');
+
+	// `}`, `"`, and `":`, whose colon is an ordinary character inside the key it opens.
+	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(state), vocabularyTexts.length), [4, 5, 7]);
+});
+
+Test('leaves legal, once the value is finished, nothing but the end of the turn', () => {
+	const maskCache = maskCacheOverTheHandWrittenVocabulary();
+	const state = JsonGrammar.initialState(true);
+	JsonGrammar.acceptText(state, '{}');
+
+	// Not even whitespace, which JSON would allow: a model free to write spaces until its budget runs
+	// out would stop on the budget rather than on the answer.
+	Assert.deepEqual(legalIdentifiersOf(maskCache.maskFor(state), vocabularyTexts.length), endOfSequenceTokenIds);
+});
+
+Test('names the entries to remove when most of the vocabulary is legal, and the entries to keep when few are', () => {
+	// This is the whole of what milestone 0 measured: applying a mask costs one write per entry it
+	// names, so a mask that named its 261040 legal entries cost 47 milliseconds where one naming its
+	// few illegal entries costs nothing. Inside a string almost everything is legal.
+	const maskCache = maskCacheOverTheHandWrittenVocabulary();
+	const atTheStart = JsonGrammar.initialState(true);
+	const insideAKey = JsonGrammar.initialState(true);
+	JsonGrammar.acceptText(insideAKey, '{"');
+
+	Assert.equal(maskCache.maskFor(atTheStart).namesTheEntriesToKeep, true);
+	Assert.equal(maskCache.maskFor(insideAKey).namesTheEntriesToKeep, false);
+	Assert.deepEqual(maskCache.maskFor(insideAKey).tokenIds, [0, 1, 2]);
+});
+
+Test('leaves the model its own scores among the entries it keeps, whichever form the mask took', () => {
+	const maskCache = maskCacheOverTheHandWrittenVocabulary();
+	const atTheStart = JsonGrammar.initialState(true);
+	const insideAKey = JsonGrammar.initialState(true);
+	JsonGrammar.acceptText(insideAKey, '{"');
+	const originalScores = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((identifier) => identifier / 10);
+	// Rounded before it is compared, because a `Float32Array` cannot hold 0.3 and keeps
+	// 0.30000001192092896 instead. What is being checked is which entries survived, not the precision
+	// of a score the mask never touched.
+	const survivorsOf = (scores: Float32Array) => [...scores].map(
+		(score) => (score === Number.NEGATIVE_INFINITY ? 'masked' : Number(score.toFixed(3))),
+	);
+
+	const namingWhatToKeep = Float32Array.from(originalScores);
+	maskCache.apply(maskCache.maskFor(atTheStart), namingWhatToKeep);
+	Assert.deepEqual(survivorsOf(namingWhatToKeep), [
+		'masked', 'masked', 'masked', 0.3, 'masked', 'masked', 'masked', 'masked', 0.8, 'masked',
+	]);
+
+	const namingWhatToRemove = Float32Array.from(originalScores);
+	maskCache.apply(maskCache.maskFor(insideAKey), namingWhatToRemove);
+	Assert.deepEqual(survivorsOf(namingWhatToRemove), [
+		'masked', 'masked', 'masked', 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+	]);
+});
+
+Test('works a mask out once per grammar state, however many steps reach that state', () => {
+	// 8 distinct states carried the 36 steps of the answer milestone 0 measured, so this is what keeps
+	// the vocabulary scan off all but a few steps — and, shared across tasks, off all but the first
+	// answer a loaded model produces.
+	const maskCache = maskCacheOverTheHandWrittenVocabulary();
+	const state = JsonGrammar.initialState(true);
+	maskCache.maskFor(state);
+	maskCache.maskFor(JsonGrammar.copy(state));
+	maskCache.maskFor(JsonGrammar.copy(state));
+
+	Assert.equal(maskCache.workedOutMaskCount, 1);
 });
