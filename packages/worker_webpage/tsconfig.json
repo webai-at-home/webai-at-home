@@ -15,5 +15,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["web/src/**/*.ts"]
+  "include": ["web/src/**/*.ts", "tests/**/*.ts"]
 }

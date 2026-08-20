@@ -18,7 +18,7 @@
 		"dev:deployed_gateway": "npx tsx src/cli.ts server --gateway-url ws://135.125.8.186:8787",
 		"prestart": "npm run build:dependencies",
 		"start": "node dist/cli.js server",
-		"test": "npx tsx --test tests/index.test.ts",
+		"test": "npm run typecheck && npx tsx --test tests/index.test.ts",
 		"test:real:dev_formula": "npx tsx --test tests/real_dev_formula.test.ts",
 		"test:real:dev_formula:headed": "REAL_TEST_HEADED=true npx tsx --test tests/real_dev_formula.test.ts",
 		"test:real:llm_qwen3_0_6b_sharded": "npx tsx --test tests/real_llm_qwen3_0_6b_sharded.test.ts",

@@ -45,7 +45,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "predev": "npm run build:dependencies",
     "dev": "tsx src/cli.ts --gateway-url ws://localhost:8787",
-    "test": "npx tsx --test tests/index.test.ts tests/log_statistics.test.ts"
+    "test": "npm run typecheck && npx tsx --test tests/index.test.ts tests/log_statistics.test.ts"
   },
   "dependencies": {
     "@webai/protocol": "0.1.0",

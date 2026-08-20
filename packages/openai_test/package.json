@@ -9,7 +9,7 @@
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
 		"typecheck": "tsc -p tsconfig.json",
-		"test": "npx tsx --test tests/*.test.ts",
+		"test": "npm run typecheck && npx tsx --test tests/*.test.ts",
 		"conformance": "tsx src/cli.ts conformance",
 		"benchmark": "tsx src/cli.ts benchmark",
 		"chat": "tsx src/cli.ts chat",

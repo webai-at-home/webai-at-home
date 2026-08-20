@@ -65,6 +65,19 @@ const runawayHistory = [
 	},
 ];
 
+/**
+ * The field that asks a model not to think, spread into a request rather than written into it as a literal.
+ *
+ * The `openai` package at 4.104.0 types `reasoning_effort` as `low`, `medium`, `high`, or `null`. Protocol
+ * version 9 added `none` among its six levels on the strength of
+ * [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192), and `none` is the level that tells a
+ * model not to think, so it is spread in from a loose record and reaches the local server unchanged. The same
+ * shape is used for the same reason in `packages/openai_test/src/clients/completion_sender.ts`.
+ */
+const NO_THINKING_FIELDS: Record<string, unknown> = {
+	reasoning_effort: 'none',
+};
+
 const realTestHelper = new RealTestHelper({
 	expectedWorkerCount: 1,
 	waitTimeoutMs: 120_000,
@@ -133,7 +146,7 @@ NodeTest.test('answers a history that otherwise runs away, once the consumer ask
 	const completion = await client.chat.completions.create({
 		model: 'llm_qwen3_5_0_8b_full',
 		messages: runawayHistory,
-		reasoning_effort: 'none',
+		...NO_THINKING_FIELDS,
 	});
 
 	// The defect this fixes is an empty answer, not a wrong one. A 0.8-billion-parameter model that is not
@@ -187,7 +200,7 @@ NodeTest.test('refuses a thinking budget for a model that never thinks, rather t
 		async () => await client.chat.completions.create({
 			model: 'llm_llama3_2_1b_full',
 			messages: runawayHistory,
-			reasoning_effort: 'none',
+			...NO_THINKING_FIELDS,
 		}),
 		(error: unknown) => {
 			const apiError = error as { status?: number; error?: { code?: string; param?: string } };

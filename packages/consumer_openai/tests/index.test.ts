@@ -587,7 +587,7 @@ Test('passes on the gateway refusing a submission it has no room for', async () 
 
 Test('names the model and the stages nobody runs when the gateway refuses the task for want of a worker', async () => {
 	const cluster = await registeredStandInCluster();
-	const answer = cluster.runner.run({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: { prompt: 'What is the capital of France?' } }, 'llm_qwen3_5_0_8b_full');
+	const answer = cluster.runner.run({ taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'What is the capital of France?' }, 'llm_qwen3_5_0_8b_full');
 	await settlePromises();
 	const taskRequestId = cluster.lastSentBody()['taskRequestId'];
 	cluster.receive({

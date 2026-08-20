@@ -28,7 +28,7 @@
     "lmstudio:server:start": "lms server start",
     "lmstudio:server:stop": "lms server stop",
     "lmstudio:server:status": "lms server status",
-    "test": "npx tsx --test tests/index.test.ts"
+    "test": "npm run typecheck && npx tsx --test tests/index.test.ts"
   },
   "dependencies": {
     "@webai/protocol": "0.1.0",

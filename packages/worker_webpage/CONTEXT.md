@@ -21,7 +21,7 @@ The browser page a volunteer opens to contribute computing time. It connects to 
 - A close the page itself asks for, because trying again would find exactly the same thing, sets that field to `false` before closing.
 - A stage reports only the token counts and stop reason its own engine really gives, never a guessed or zero count.
 - `WorkerStageOffer.offeredStages` keeps each whole-model stage's names in its own list, so `WorkerPage.prepareOfferedStages` checks the readiness of, and downloads, only the model a tab actually offers.
-- The end-to-end tests driving this page live in [`packages/consumer_openai/tests`](../consumer_openai/tests); here `npm test` runs the type check.
+- The end-to-end tests driving this page live in [`packages/consumer_openai/tests`](../consumer_openai/tests); here `npm test` type checks `web/src` and `tests` before running this package's own unit tests.
 
 ## Background
 

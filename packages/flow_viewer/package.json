@@ -14,7 +14,7 @@
     "build:dependencies": "npm run build --workspace @webai/protocol",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npx tsx --test tests/index.test.ts"
+    "test": "npm run typecheck && npx tsx --test tests/index.test.ts"
   },
   "dependencies": {
     "@webai/protocol": "0.1.0",

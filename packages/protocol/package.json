@@ -52,7 +52,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npx tsx --test tests/index.test.ts"
+    "test": "npm run typecheck && npx tsx --test tests/index.test.ts"
   },
   "dependencies": {
     "zod": "^3.24.1"

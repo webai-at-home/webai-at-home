@@ -13,7 +13,7 @@
 		"precore": "npm run build:dependencies",
 		"core": "tsx src/cli.ts",
 		"pretest": "npm run build:dependencies",
-		"test": "npx tsx --test tests/index.test.ts",
+		"test": "npm run typecheck && npx tsx --test tests/index.test.ts",
 		"report:lmstudio:qwen3.5-2b": "npm run core -- --model qwen3.5-2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/conformance_reports/lmstudio_qwen3_5_2b.md",
 		"report:lmstudio:gemma4:e2b": "npm run core -- --model google/gemma-4-e2b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/conformance_reports/lmstudio_gemma_4_e2b.md",
 		"report:lmstudio:gemma4:e4b": "npm run core -- --model google/gemma-4-e4b --base_url http://localhost:1234/v1 --profile full --format markdown --output data/conformance_reports/lmstudio_gemma_4_e4b.md",

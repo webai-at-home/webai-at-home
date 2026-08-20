@@ -27,7 +27,7 @@
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
 		"typecheck": "tsc -p tsconfig.json",
-		"test": "npx tsx --test tests/index.test.ts",
+		"test": "npm run typecheck && npx tsx --test tests/index.test.ts",
 		"build:dependencies": "npm run build --workspace @webai/protocol && npm run build --workspace @webai/consumer-cli",
 		"precompletion": "npm run build:dependencies",
 		"completion": "tsx src/cli.ts completion",
