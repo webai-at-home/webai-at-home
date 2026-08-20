@@ -178,7 +178,9 @@ export class LocalServerGeneration {
 	 * {@link OpenaiApiClient.chatCompletionStream} instead, and only on the run that starts the
 	 * answer, because one request to the local server produces the whole answer however many runs
 	 * read it back — which is also what makes `maximumOutputTokenCount`, a budget for the whole
-	 * answer, expressible here as `max_tokens` on that one request.
+	 * answer, expressible here as `max_tokens` on that one request. `responseFormat` is read there
+	 * too, and on that same one run, for that same reason: the shape belongs to the answer and not
+	 * to the run that happens to read one piece of it.
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
 	 * @param modelId The model to ask the local server for.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
@@ -402,8 +404,8 @@ export class LocalServerGeneration {
 	 * @param promptOrHistory The prompt or history submitted with the task.
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
 	 * @param modelId The model to ask the local server for.
-	 * @param generationSettings What the consumer asked for, whose five generation controls become
-	 * fields of this one request to the local server.
+	 * @param generationSettings What the consumer asked for, whose five generation controls and
+	 * response format become fields of this one request to the local server.
 	 * @returns The reader that delivers the answer.
 	 * @throws If the prompt or history is empty, if the request fails, or if the assignment
 	 * was taken away while the request was starting.

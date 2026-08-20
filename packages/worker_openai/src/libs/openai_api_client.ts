@@ -1,4 +1,4 @@
-import type { HistoryInput, GenerationSettings, ToolDeclaration } from '@webai/protocol';
+import type { HistoryInput, GenerationSettings, ResponseFormat, ToolDeclaration } from '@webai/protocol';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -8,6 +8,26 @@ import type { HistoryInput, GenerationSettings, ToolDeclaration } from '@webai/p
 
 /** How long the model list request may take before it is given up on, in milliseconds. */
 const modelListTimeoutMs = 10_000;
+
+/**
+ * The name this worker gives the JSON Schema it sends, which the OpenAI Chat Completions interface
+ * requires beside every schema.
+ *
+ * Nothing carries a name from the consumer: `ResponseFormatSchema` in `@webai/protocol` states why
+ * a request's own `json_schema.name` is read and dropped rather than carried across the cluster. The
+ * interface still requires one here, so one is minted, and it is the same on every request because
+ * it names nothing a caller can see.
+ */
+const RESPONSE_FORMAT_NAME = 'webai_at_home_response_format';
+
+/**
+ * The JSON Schema of any object at all, which is what a `json_object` response format becomes on
+ * the connection to the local server. See {@link OpenaiApiClient.responseFormatFieldOf} for why a
+ * `json_object` is not sent as a `json_object`.
+ */
+const ANY_OBJECT_JSON_SCHEMA: Record<string, unknown> = {
+	type: 'object',
+};
 
 /**
  * One entry of the model list a server returns from `GET /v1/models`.
@@ -174,6 +194,24 @@ type OutgoingGenerationControls = {
 };
 
 /**
+ * The response format of one request to the local server, spelled the way the OpenAI Chat
+ * Completions interface spells it on the connection.
+ *
+ * There is one shape here and not two, although the consumer may ask for either of two: every
+ * response format this worker sends is a `json_schema`, for the reason
+ * {@link OpenaiApiClient.responseFormatFieldOf} gives. These spellings are part of a format the
+ * local server reads, so they are not renamed to match this repository's own naming rules, for the
+ * same reason {@link OutgoingGenerationControls} is not.
+ */
+type OutgoingResponseFormat = {
+	type: 'json_schema';
+	json_schema: {
+		name: string;
+		schema: Record<string, unknown>;
+	};
+};
+
+/**
  * Talks to one locally running server that speaks the OpenAI-compatible API, such as LM Studio.
  *
  * The server is named by a base URL rather than chosen here, because which server a worker
@@ -258,8 +296,9 @@ export class OpenaiApiClient {
 	 * own `cancel` calls this, so cancelling the reader stops the request to the local server
 	 * rather than only stopping this side from reading it.
 	 * @param generationSettings What the consumer asked for about how the answer is generated. Its
-	 * five generation controls become the fields of the same meaning in the request body; a
-	 * setting the consumer did not state is left out of the body entirely.
+	 * five generation controls become the fields of the same meaning in the request body, and the
+	 * shape it asked the answer to be in becomes `response_format`; a setting the consumer did not
+	 * state is left out of the body entirely.
 	 * @returns The stream of text pieces the model produces, in order, the usage object, and the
 	 * tool calls the model asked for. The usage object and the tool calls are both filled in as the
 	 * stream is read and are only complete once the stream has closed.
@@ -284,6 +323,7 @@ export class OpenaiApiClient {
 				messages: OpenaiApiClient.messagesOf(promptOrHistory),
 				...OpenaiApiClient.toolFieldsOf(promptOrHistory),
 				...OpenaiApiClient.generationControlsOf(generationSettings),
+				...OpenaiApiClient.responseFormatFieldOf(generationSettings),
 			}),
 			signal: abortController.signal,
 		}).catch((error: unknown) => {
@@ -311,6 +351,55 @@ export class OpenaiApiClient {
 		return [...toolCalls.byIndex.entries()]
 			.sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
 			.map(([, toolCall]) => toolCall);
+	}
+
+	/**
+	 * Builds the response format of the request body, from the shape the consumer asked the answer
+	 * to be in.
+	 *
+	 * A consumer may ask for either of two shapes, and both are sent as a `json_schema`, because
+	 * that is the one spelling both local servers this project is run against accept. LM Studio
+	 * 0.4.20 answers `response_format: {"type":"json_object"}` with HTTP 400 and
+	 * `'response_format.type' must be 'json_schema' or 'text'`, measured live while
+	 * [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) was open. Ollama
+	 * accepts both spellings, measured live for milestone 4 of
+	 * [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221) against `gemma4:e2b`:
+	 * asked as a `json_object` it wrote `{"capital of France": "Paris"}`, and asked for the schema
+	 * `{"type":"object"}` it wrote `{"capital_of_france": "Paris"}`. So a `json_object` is sent as
+	 * the JSON Schema that says the same thing — every object satisfies it and nothing else does —
+	 * rather than as the spelling one of the two servers refuses.
+	 *
+	 * There is deliberately no `strict` beside the schema. The OpenAI API reads that field as a
+	 * promise that the schema is written in the profile its strict mode accepts, which demands
+	 * `additionalProperties: false` and every property required, and a consumer's own schema is
+	 * neither of those things by default; sending it would refuse requests both local servers
+	 * enforce happily without it. `ResponseFormatSchema` in `@webai/protocol` states why no `strict`
+	 * is carried from the consumer either.
+	 *
+	 * A task submitted with no response format produces no field at all, so every request this
+	 * worker sent before it carried a shape is byte for byte the request it still sends.
+	 *
+	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
+	 * nothing.
+	 * @returns The field to spread into the request body, empty when no shape was asked for.
+	 */
+	private static responseFormatFieldOf(
+		generationSettings: GenerationSettings | undefined,
+	): { response_format?: OutgoingResponseFormat } {
+		const responseFormat: ResponseFormat | undefined = generationSettings?.responseFormat;
+		if (responseFormat === undefined) {
+			return {};
+		}
+		const schema = responseFormat.type === 'json_object' ? ANY_OBJECT_JSON_SCHEMA : responseFormat.jsonSchema;
+		return {
+			response_format: {
+				type: 'json_schema',
+				json_schema: {
+					name: RESPONSE_FORMAT_NAME,
+					schema: { ...schema },
+				},
+			},
+		};
 	}
 
 	/**

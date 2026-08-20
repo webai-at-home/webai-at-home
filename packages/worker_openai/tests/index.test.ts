@@ -524,6 +524,77 @@ Test('reads an answer for the Qwen3.5-0.8B stage as well, and holds it apart fro
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+//	The Shape Of The Answer
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+Test('sends a json_object as the JSON Schema of any object, which is the one spelling both local servers accept', async () => {
+	const body = await requestBodyOf({
+		responseFormat: {
+			type: 'json_object',
+		},
+	});
+	// LM Studio 0.4.20 answers OpenAI's own `{"type":"json_object"}` with HTTP 400 and
+	// `'response_format.type' must be 'json_schema' or 'text'`, while Ollama accepts it. The JSON
+	// Schema below says what a `json_object` says — every object satisfies it and nothing else does —
+	// and both servers accept it, so it is what this worker sends for both shapes.
+	Assert.deepEqual(body.response_format, {
+		type: 'json_schema',
+		json_schema: {
+			name: 'webai_at_home_response_format',
+			schema: {
+				type: 'object',
+			},
+		},
+	});
+});
+
+Test('sends the schema the consumer asked for exactly as it arrived, keyword for keyword', async () => {
+	const jsonSchema = {
+		type: 'object',
+		properties: {
+			city: {
+				type: 'string',
+				minLength: 1,
+				maxLength: 40,
+			},
+			celsius: {
+				type: 'integer',
+			},
+		},
+		required: ['city'],
+		additionalProperties: false,
+	};
+	const body = await requestBodyOf({
+		responseFormat: {
+			type: 'json_schema',
+			jsonSchema: jsonSchema,
+		},
+	});
+	const responseFormat = body.response_format as { type: string; json_schema: { name: string; schema: unknown } };
+	Assert.equal(responseFormat.type, 'json_schema');
+	Assert.equal(responseFormat.json_schema.name, 'webai_at_home_response_format');
+	// Nothing about the schema is rewritten on the way through: what the consumer read out of the
+	// request is what the local server is asked to enforce.
+	Assert.deepEqual(responseFormat.json_schema.schema, jsonSchema);
+	// No `strict` beside it. The OpenAI API reads that field as a promise about how the schema is
+	// written, which a consumer's own schema does not keep, and both local servers enforce the
+	// schema without it.
+	Assert.equal('strict' in responseFormat.json_schema, false);
+});
+
+Test('sends no response_format field at all when the consumer asked for no shape', async () => {
+	const askedForNoShape = await requestBodyOf({
+		temperature: 0,
+	});
+	Assert.equal('response_format' in askedForNoShape, false);
+	// Which is the same request this worker sent before it carried a shape at all.
+	const askedForNothing = await requestBodyOf(undefined);
+	Assert.deepEqual(Object.keys(askedForNothing).sort(), ['messages', 'model', 'stream', 'stream_options']);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 //	Tools
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////

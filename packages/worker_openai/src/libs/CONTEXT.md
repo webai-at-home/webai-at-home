@@ -17,10 +17,11 @@ This worker's connection to the central gateway, keeping that connection open, a
 
 - `GatewayWorkerClient` speaks the protocol over exactly one connection, and every field it resets when a connection closes depends on that. Anything that outlives one connection belongs in `GatewayConnectionSupervisor`, which builds a new socket and a new client per attempt rather than reusing either.
 - `OpenaiApiClient` carries a generation control into the request body under its OpenAI name, and leaves a control the consumer did not ask for out of the body entirely rather than sending `null`.
+- `OpenaiApiClient` sends both shapes a consumer may ask an answer to be in as a `json_schema`, the one spelling LM Studio and Ollama both accept, and sends no `strict` beside the schema.
 - `OpenaiApiClient` carries the tools a history declared into the request body, and mints the tool call identifier the local server requires and the protocol does not carry, because a declaration this worker drops is a declaration the model never reads.
 - Message shapes come from `@webai/protocol` and are never restated here.
 - Nothing here names a stage helper: which stages this worker can run is asked of `StageCatalog` in `../stages/`, and always by the computation a stage names rather than by the stage name itself, so a pipeline the gateway loaded after this worker was built can offer new stage names that reuse computations already shipped here.
 
 ## Background
 
-- The connection lifetime rule comes from [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158); the generation control forwarding was proven live in milestone 0 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151); the tool forwarding, and the minting of the identifier, were proven live in milestone 0 of [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190).
+- The connection lifetime rule comes from [issue #158](https://github.com/webai-at-home/webai-at-home/issues/158); the generation control forwarding was proven live in milestone 0 of [issue #151](https://github.com/webai-at-home/webai-at-home/issues/151); the tool forwarding, and the minting of the identifier, were proven live in milestone 0 of [issue #190](https://github.com/webai-at-home/webai-at-home/issues/190); the response format spelling was proven live in milestone 4 of [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221).
