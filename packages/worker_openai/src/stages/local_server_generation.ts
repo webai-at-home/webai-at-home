@@ -1,4 +1,4 @@
-import { JsonSchemaCompiler, JsonSchemaGrammar, StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolCall, type ToolDeclaration } from '@webai/protocol';
+import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolCall, type ToolDeclaration } from '@webai/protocol';
 import { OpenaiApiClient, type ChatCompletionStreamToolCalls, type ChatCompletionStreamUsage, type StreamedToolCall } from '../libs/openai_api_client.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -178,9 +178,7 @@ export class LocalServerGeneration {
 	 * {@link OpenaiApiClient.chatCompletionStream} instead, and only on the run that starts the
 	 * answer, because one request to the local server produces the whole answer however many runs
 	 * read it back — which is also what makes `maximumOutputTokenCount`, a budget for the whole
-	 * answer, expressible here as `max_tokens` on that one request. `responseFormat` is read in both
-	 * places: that same method puts it in the request, and the run that finishes the answer reads it
-	 * again here to check the shape that came back is the shape that was asked for.
+	 * answer, expressible here as `max_tokens` on that one request.
 	 * @param openaiApiClient The client for the local server this worker was pointed at.
 	 * @param modelId The model to ask the local server for.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
@@ -245,7 +243,6 @@ export class LocalServerGeneration {
 				return StagePayloadFactory.llmToolCalls(toolCalls, this.usageOf(state.usage));
 			}
 			this.refuseAnswerThatRanOutBeforeItBegan(state);
-			this.refuseAnswerThatIsNotTheShapeAskedFor(state, generationSettings);
 			return StagePayloadFactory.llmDone(state.text, undefined, this.usageOf(state.usage));
 		} finally {
 			if (leavesAnswerOpen === false) {
@@ -494,55 +491,6 @@ export class LocalServerGeneration {
 			? 'every token it was allowed'
 			: `all ${completionTokenCount} tokens it was allowed`;
 		throw new Error(`The model generated ${generated} without writing any answer text, and stopped because it ran out of room rather than because it had finished. A model that thinks before it answers can do this by never finishing thinking; asking for reasoning_effort "none" stops it.`);
-	}
-
-	/**
-	 * Refuses an answer that is not the shape the consumer asked for.
-	 *
-	 * The worker browser tab running this same task type cannot produce the wrong shape at all: it
-	 * masks every token that would break the shape, so a well-formed object is what the model is
-	 * able to write and nothing else is. This worker has no such hold over the model. It asks the
-	 * local server for the shape and reads back whatever that server chose to send, so the promise
-	 * the task type makes is only as good as the server's word, and a server that reads
-	 * `response_format` and ignores it silently would return prose to a consumer that asked for an
-	 * object. That is the fault `structured_output_support.ts` calls worse than a refusal and worse
-	 * than an honoured request both. This method is the only place this worker can catch it.
-	 *
-	 * The answer is read through `JsonSchemaGrammar` from `@webai/protocol`, which is the same reader
-	 * the worker browser tab masks with. So the two workers of one task type judge an answer by one
-	 * rule rather than by two that could come to disagree, and a `json_object` answer is judged as the
-	 * schema `{ "type": "object" }` rather than by a rule written again here.
-	 *
-	 * An answer the local server cut short at its output limit is left alone, however unfinished the
-	 * JSON it holds is. Running out of room is already reported, as `stopReason: max_new_tokens`, and
-	 * a consumer told the answer was cut short is not being told nothing. This is the same line the
-	 * worker browser tab draws for the same reason.
-	 *
-	 * @param state The answer this run has finished reading.
-	 * @param generationSettings What the consumer asked for, read for its response format.
-	 * @throws If a shape was asked for, the answer ended of its own accord, and what came back is
-	 * not a JSON object.
-	 */
-	private refuseAnswerThatIsNotTheShapeAskedFor(state: TaskGenerationState, generationSettings: GenerationSettings | undefined): void {
-		if (generationSettings?.responseFormat === undefined) {
-			return;
-		}
-		if (state.usage?.finishReason !== 'stop') {
-			return;
-		}
-		const responseFormat = generationSettings.responseFormat;
-		// `json_object` means any object, and `{ "type": "object" }` is the schema that says so, so
-		// both shapes are checked by reading the answer through one grammar rather than by two rules
-		// that could come to disagree.
-		const schema = responseFormat.type === 'json_object' ? { type: 'object' } : responseFormat.schema;
-		const nodes = JsonSchemaCompiler.compile(schema);
-		const grammarState = JsonSchemaGrammar.initialState(0);
-		if (JsonSchemaGrammar.acceptText(nodes, grammarState, state.text) === false) {
-			throw new Error(`The consumer asked for a ${responseFormat.type} answer, and the local server returned text the schema refuses: ${state.text}`);
-		}
-		if (JsonSchemaGrammar.isComplete(nodes, grammarState) === false) {
-			throw new Error(`The consumer asked for a ${responseFormat.type} answer, and the local server returned a value that is not finished: ${state.text}`);
-		}
 	}
 
 	/**

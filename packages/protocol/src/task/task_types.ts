@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { ResponseFormatSchema } from './structured_output_support.js';
 import type { StagePayload } from '../stage/stage_payload_types.js';
 import { HistoryInputSchema } from './history_types.js';
 import type { StageName } from './pipeline_types.js';
@@ -132,24 +131,6 @@ export const GenerationSettingsSchema = z.object({
 	 * telling `low` from `high`. See [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
 	 */
 	reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
-	/**
-	 * The shape the consumer wants its answer in, when it wants one other than prose.
-	 *
-	 * It travels here rather than beside the prompt because it is part of how an answer is
-	 * generated, which is what this block is for. Which task type honours it is recorded in
-	 * `structured_output_support.ts` and **not** in `generation_control_support.ts`, so this is not a
-	 * `GenerationControlName` and is never read by the six that are: a response format is refused
-	 * against its own table, by `ResponseFormatReader` rather than by `GenerationSettingsBuilder`.
-	 *
-	 * A `json_schema` carries its schema here, beside the name of the shape, because a schema is
-	 * what that shape means and the two arrive together or not at all. See
-	 * `structured_output_support.ts` for why there is no `strict` flag beside them.
-	 *
-	 * A task that asks for nothing here is generated exactly as it always was, and no worker has to
-	 * know the field exists to keep answering such a task. See
-	 * [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219).
-	 */
-	responseFormat: ResponseFormatSchema.optional(),
 }).strict();
 /** What a consumer asks for about how its answer is generated. */
 export type GenerationSettings = z.infer<typeof GenerationSettingsSchema>;

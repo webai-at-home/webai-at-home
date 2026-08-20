@@ -1,5 +1,5 @@
 import type { TaskTypeName } from '@webai/consumer-cli';
-import { GenerationControlSupport, type GenerationControlName, type GenerationSettings, type ResponseFormat, type TaskType } from '@webai/protocol';
+import { GenerationControlSupport, type GenerationControlName, type GenerationSettings, type TaskType } from '@webai/protocol';
 import { OpenaiError } from './openai_error.js';
 import type { ChatCompletionRequest } from './openai_types.js';
 
@@ -62,22 +62,12 @@ export class GenerationSettingsBuilder {
 	 * @param taskTypeName The task type the request's model names, without the leading
 	 * `task_type_`.
 	 * @param isStreaming Whether the caller asked for the answer in pieces.
-	 * @param responseFormat The shape the answer is to be produced in, as `ResponseFormatReader`
-	 * read it, carrying the schema when the request named one, or `undefined` when the request asked
-	 * for nothing unusual. It is carried rather than read here, because a response format is refused
-	 * against `StructuredOutputSupport` and a generation control against `GenerationControlSupport`,
-	 * and the two tables are separate.
 	 * @returns The settings to submit the task with, or `undefined` when the request asked for
 	 * nothing at all, so that such a request submits no settings block rather than an empty one.
 	 * @throws OpenaiError when the model cannot honour a control the request asked for at a value
 	 * that is not this interface's own default.
 	 */
-	static build(
-		body: ChatCompletionRequest,
-		taskTypeName: TaskTypeName,
-		isStreaming: boolean,
-		responseFormat?: ResponseFormat,
-	): GenerationSettings | undefined {
+	static build(body: ChatCompletionRequest, taskTypeName: TaskTypeName, isStreaming: boolean): GenerationSettings | undefined {
 		const taskType = `task_type_${taskTypeName}` as TaskType;
 		const askedFor = GenerationSettingsBuilder.askedForControlsOf(body);
 		for (const controlName of controlNames) {
@@ -94,9 +84,6 @@ export class GenerationSettingsBuilder {
 			);
 		}
 		const settings: GenerationSettings = isStreaming === true ? { isStreaming: true, ...askedFor } : { ...askedFor };
-		if (responseFormat !== undefined) {
-			settings.responseFormat = responseFormat;
-		}
 		if (Object.keys(settings).length === 0) {
 			return undefined;
 		}

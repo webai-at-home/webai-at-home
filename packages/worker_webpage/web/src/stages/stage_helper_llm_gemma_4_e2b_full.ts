@@ -1,13 +1,10 @@
-import { pipeline, TextStreamer, InterruptableStoppingCriteria, LogitsProcessorList, type TextGenerationPipeline } from '@huggingface/transformers';
-import { JsonSchemaCompiler, StagePayloadFactory, type CompiledSchemaNode, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ResponseFormat, type ToolDeclaration } from '@webai/protocol';
+import { pipeline, TextStreamer, InterruptableStoppingCriteria, type TextGenerationPipeline } from '@huggingface/transformers';
+import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
 import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from './gemma_4_e2b_history_messages.js';
 import type { FullModelReadiness } from './stage_helper_llm_qwen3_5_0_8b_full.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
-import { VocabularyTable } from './structured_output/vocabulary_table.js';
-import { JsonSchemaMaskCache } from './structured_output/json_schema_mask_cache.js';
-import { JsonSchemaLogitsProcessor } from './structured_output/json_schema_logits_processor.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -165,34 +162,6 @@ type TaskGenerationState = {
 	 * `generation_control_support.ts`.
 	 */
 	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
-	/**
-	 * The shape the consumer asked its answer to be in, or `undefined` when it asked for prose.
-	 *
-	 * Read once, from the run that starts the answer, and kept for the runs that carry it on, for the
-	 * same reason {@link TaskGenerationState.declaredTools} is: only the first run of a task carries
-	 * the generation settings.
-	 */
-	responseFormat: ResponseFormat | undefined;
-	/**
-	 * The processor masking this answer into shape, or `undefined` for an answer asked for as prose.
-	 *
-	 * Kept so that the run which finishes the answer can ask whether the value was ever finished. One
-	 * of these belongs to one generation, because the reader inside it is the state of one answer.
-	 */
-	jsonSchemaProcessor: JsonSchemaLogitsProcessor | undefined;
-};
-
-/**
- * One schema compiled, and the masks worked out over this model's vocabulary under it.
- *
- * The two travel together because they have to be the same one: a mask the cache worked out is a
- * mask of a state naming node indices, and a node index means a node of exactly this list.
- */
-type CompiledSchemaMasking = {
-	/** The compiled schema, whose node at index 0 is the whole answer's own. */
-	nodes: CompiledSchemaNode[];
-	/** The masks of this model's vocabulary under {@link CompiledSchemaMasking.nodes}. */
-	maskCache: JsonSchemaMaskCache;
 };
 
 /**
@@ -219,31 +188,14 @@ type CompiledSchemaMasking = {
  * audio part beside the text part, and its pipeline tag is `any-to-any`. Only the merged decoder and
  * the token embedding graphs are downloaded, and only text is ever sent to it.
  *
- * What this stage does not do, and why, because the task type's contract in
- * `generation_control_support.ts` says it does not:
+ * What this stage does not do, and why, in each case because the task type's contract in
+ * `generation_control_support.ts` and `structured_output_support.ts` says it does not:
  *
  * - It honours no generation control, so every answer is decoded greedily with `do_sample: false`
- *   and thinking turned off, whatever the consumer asked for. That table is empty because nothing
- *   about this model has been measured yet, and milestone 5 of issue #211 is where it is widened
+ *   and thinking turned off, whatever the consumer asked for. Those tables are empty because nothing
+ *   about this model has been measured yet, and milestone 5 of issue #211 is where they are widened
  *   from a live run. Do not wire a control through here before that row names it: a control acted on
  *   without being declared is exactly as wrong as one declared without being acted on.
- *
- * It does produce a `json_object` response format, since milestone 3 of
- * https://github.com/webai-at-home/webai-at-home/issues/219, by masking the scores of the next token
- * so that nothing which would break the object can be chosen — see `structured_output/`. Three
- * things about that are worth knowing before this file is changed:
- *
- * - `structured_output_support.ts` names `json_object` for this task type, since milestone 5 of that
- *   issue, and it was widened only once the native worker produced the same shape, because a task
- *   type's contract is what all of its workers can keep. That ordering was the point rather than an
- *   oversight — a worker able to keep a promise the task type has not made is safe, and a promise
- *   made before a worker can keep it is not.
- * - A run that asked for a shape and declared tools is refused rather than answered. Every marker a
- *   tool call is written with is a special token of this tokenizer, and the mask leaves no special
- *   token legal until the object is finished, so a masked answer cannot contain a tool call at all.
- * - A run that asked for `json_schema` is refused too. This stage enforces well-formed JSON and not
- *   a schema, and answering a request for a schema with whatever object the model happened to write
- *   would be the exact failure `structured_output_support.ts` exists to prevent.
  *
  * It does read tool calls, since milestone 2 of
  * https://github.com/webai-at-home/webai-at-home/issues/216, and the format it reads them in was
@@ -299,31 +251,6 @@ export class StageHelperLlmGemma4E2bFull {
 
 	/** The loaded pipeline, shared by every task, once `preload` or the first run has created it. */
 	private static generatorPromise: Promise<TextGenerationPipeline> | undefined;
-
-	/**
-	 * The text every entry of the loaded model's vocabulary writes, shared by every mask cache.
-	 *
-	 * Built on the first answer that asks for a shape rather than when the model loads, so a tab that
-	 * only ever answers in prose never pays for it. What it costs is one decode of the whole
-	 * vocabulary, measured at 331 milliseconds for this model by milestone 0 of
-	 * https://github.com/webai-at-home/webai-at-home/issues/219, and it is paid once for the life of
-	 * the loaded model rather than once per answer or once per schema.
-	 */
-	private static vocabularyTable: VocabularyTable | undefined;
-
-	/**
-	 * One mask cache per schema, keyed by that schema written back out as text.
-	 *
-	 * A mask says which entries of the vocabulary a grammar state allows, and a grammar state names
-	 * schema node indices, so the same state under a different schema allows different entries. One
-	 * cache per schema is therefore the smallest thing a cache can belong to. They share one
-	 * {@link StageHelperLlmGemma4E2bFull.vocabularyTable}, which is the expensive part and depends on
-	 * the model alone.
-	 *
-	 * The compiled schema is kept beside its cache because the two have to be the same one: a node
-	 * index in a mask the cache worked out means a node of exactly that list.
-	 */
-	private static maskCachesBySchemaText = new Map<string, CompiledSchemaMasking>();
 
 	/**
 	 * Reports whether this browser can run the stage, without downloading anything.
@@ -412,9 +339,7 @@ export class StageHelperLlmGemma4E2bFull {
 			: StageHelperLlmGemma4E2bFull.newGeneration(taskId, stageAssignmentId);
 		if (payload.isContinuation !== true) {
 			state.declaredTools = payload.history?.tools ?? [];
-			state.responseFormat = generationSettings?.responseFormat;
 		}
-		StageHelperLlmGemma4E2bFull.refuseAnUnproducibleShape(state);
 		// A history that declared tools is never read in pieces, even when the consumer asked for
 		// pieces. Until the model has finished writing, a piece of a tool call is indistinguishable
 		// from a piece of an answer — the two begin the same way — so reporting pieces would send a
@@ -448,7 +373,6 @@ export class StageHelperLlmGemma4E2bFull {
 				}
 			}
 			StageHelperLlmGemma4E2bFull.refuseIfReplaced(state, stageAssignmentId);
-			StageHelperLlmGemma4E2bFull.refuseAnUnfinishedShape(state);
 			// A tool call that cannot be read throws out of here, which fails the stage and names what
 			// could not be read. That is deliberate: a calling program runs whatever tool call it
 			// receives, so a call read wrongly is a call run wrongly on the caller's own machine.
@@ -538,123 +462,6 @@ export class StageHelperLlmGemma4E2bFull {
 	}
 
 	/**
-	 * Refuses an answer this stage would have to produce by ignoring the shape that was asked for.
-	 *
-	 * The one case cannot reach here from a consumer today: a shape asked for beside declared tools
-	 * is refused by `ResponseFormatReader`, on a rule of its own rather than out of
-	 * `structured_output_support.ts`, because no worker can hold a model to a shape and let it open a
-	 * tool call at once. It is refused here anyway, because the alternative to a refusal is an answer
-	 * generated some other way with nothing said about it — which is the one failure
-	 * `structured_output_support.ts` exists to prevent, and a consumer is not the only thing that can
-	 * reach this method.
-	 *
-	 * A schema naming a keyword the compiler cannot enforce is refused here as well, and for the same
-	 * reason: enforcing the part of a schema that is understood, and reporting the answer as though
-	 * the whole of it had been kept, is the failure rather than the way round it. It is refused
-	 * before the model is reached, so such a request costs no download.
-	 *
-	 * @param state The answer being produced.
-	 * @returns Nothing.
-	 * @throws When the shape asked for is one this stage cannot produce together with the tools the
-	 * history declared, or a schema this stage could not hold the model to.
-	 */
-	private static refuseAnUnproducibleShape(state: TaskGenerationState): void {
-		if (state.responseFormat === undefined) {
-			return;
-		}
-		JsonSchemaCompiler.compile(StageHelperLlmGemma4E2bFull.schemaOf(state.responseFormat));
-		if (state.declaredTools.length > 0) {
-			// Every marker a tool call is written with is a special token of this tokenizer, and the mask
-			// leaves no special token legal until the value is finished. So a masked answer cannot
-			// contain a tool call at all, and the two asked for together are two things that cannot both
-			// be given.
-			throw new Error(
-				`This stage cannot both produce a response format of ${state.responseFormat.type} and call a `
-				+ 'tool: the markers a tool call is written with are masked out for as long as the value is '
-				+ 'unfinished.',
-			);
-		}
-	}
-
-	/**
-	 * Refuses an answer whose shape the model stopped in the middle of, having stopped of its own accord.
-	 *
-	 * The mask leaves only the end-of-sequence entries legal once the value is finished, and leaves
-	 * none of them legal before, so a model that stopped by itself stopped on a finished value. If it
-	 * did not, the mask and the model's own end-of-sequence list disagree, and the answer is a
-	 * truncated object about to be reported as a finished one.
-	 *
-	 * An answer cut short by {@link MAX_NEW_TOKENS} or by an interruption is not refused here. It is
-	 * unfinished for a reason the stage already reports, in `stopReason`, and a caller told its answer
-	 * ran out of budget is a caller that knows what it received.
-	 *
-	 * @param state The answer being produced.
-	 * @returns Nothing.
-	 * @throws When the model ended its turn part way through the shape it was masked into.
-	 */
-	private static refuseAnUnfinishedShape(state: TaskGenerationState): void {
-		const processor = state.jsonSchemaProcessor;
-		if (processor === undefined || processor.isComplete === true) {
-			return;
-		}
-		if (state.stopReason !== 'end_of_sequence') {
-			return;
-		}
-		throw new Error(
-			'This stage was asked for a response format of json_object and the model ended its turn part '
-			+ 'way through the object, so the answer is not the shape it was asked for.',
-		);
-	}
-
-	/**
-	 * The schema an answer has to satisfy, whichever of the two shapes was asked for.
-	 *
-	 * A `json_object` request is a request for any object at all, and `{ "type": "object" }` is the
-	 * schema that says so, so both shapes compile to a schema here and the masking below has one path
-	 * rather than two.
-	 *
-	 * @param responseFormat The shape the consumer asked its answer to be in.
-	 * @returns The schema as a JSON Schema document.
-	 */
-	private static schemaOf(responseFormat: ResponseFormat): Record<string, unknown> {
-		if (responseFormat.type === 'json_object') {
-			return {
-				type: 'object',
-			};
-		}
-		return responseFormat.schema;
-	}
-
-	/**
-	 * The masks of this model's vocabulary under one schema, built once for the life of that schema.
-	 *
-	 * @param generator The loaded text-generation pipeline whose vocabulary to mask over.
-	 * @param schema The schema the answer has to satisfy.
-	 * @returns The compiled schema, and the mask cache every answer under that schema shares.
-	 */
-	private static maskCacheFor(generator: TextGenerationPipeline, schema: Record<string, unknown>): CompiledSchemaMasking {
-		const schemaText = JSON.stringify(schema);
-		const alreadyBuilt = StageHelperLlmGemma4E2bFull.maskCachesBySchemaText.get(schemaText);
-		if (alreadyBuilt !== undefined) {
-			return alreadyBuilt;
-		}
-		if (StageHelperLlmGemma4E2bFull.vocabularyTable === undefined) {
-			StageHelperLlmGemma4E2bFull.vocabularyTable = VocabularyTable.build(generator.tokenizer);
-		}
-		const nodes = JsonSchemaCompiler.compile(schema);
-		const masking: CompiledSchemaMasking = {
-			nodes: nodes,
-			maskCache: new JsonSchemaMaskCache(
-				StageHelperLlmGemma4E2bFull.vocabularyTable,
-				StageHelperLlmGemma4E2bFull.eosTokenIdsOf(generator),
-				nodes,
-			),
-		};
-		StageHelperLlmGemma4E2bFull.maskCachesBySchemaText.set(schemaText, masking);
-		return masking;
-	}
-
-	/**
 	 * Creates and stores fresh generation state for a task's first round.
 	 *
 	 * @param taskId The task the answer belongs to.
@@ -682,8 +489,6 @@ export class StageHelperLlmGemma4E2bFull {
 			promptTokenCount: undefined,
 			completionTokenCount: undefined,
 			stopReason: undefined,
-			responseFormat: undefined,
-			jsonSchemaProcessor: undefined,
 		};
 		StageHelperLlmGemma4E2bFull.stateByTaskId.set(taskId, state);
 		return state;
@@ -807,17 +612,6 @@ export class StageHelperLlmGemma4E2bFull {
 		state.promptTokenCount = promptTensor.data?.length;
 		const criteria = new InterruptableStoppingCriteria();
 		state.criteria = criteria;
-		// The whole of what makes this stage produce a shape. `@huggingface/transformers` offers no way
-		// to ask for one — its `constraints` field is declared and never read — so the shape is
-		// enforced between the logits and the choice of token instead, which is the one place it can
-		// be. See `structured_output/`.
-		if (state.responseFormat !== undefined) {
-			const masking = StageHelperLlmGemma4E2bFull.maskCacheFor(
-				generator,
-				StageHelperLlmGemma4E2bFull.schemaOf(state.responseFormat),
-			);
-			state.jsonSchemaProcessor = new JsonSchemaLogitsProcessor(masking.maskCache, masking.nodes);
-		}
 		state.reader = StageHelperLlmGemma4E2bFull.createGenerationStream(generator, promptOrHistory, criteria, state).getReader();
 		return state.reader;
 	}
@@ -900,27 +694,12 @@ export class StageHelperLlmGemma4E2bFull {
 				const input = state.declaredTools.length === 0
 					? Gemma4E2bHistoryMessages.of(promptOrHistory)
 					: StageHelperLlmGemma4E2bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools);
-				// The field is absent altogether for an answer asked for as prose, rather than present and
-				// empty, so such an answer is generated by exactly the call this stage has always made.
-				//
-				// When it is present: `_get_logits_processor` calls `processors.extend(logits_processor)`,
-				// and `extend` spreads what it is given, so the field takes an iterable of processors and
-				// a bare processor throws. `LogitsProcessorList` is the shape
-				// `GenerationFunctionParameters` declares for it, and neither that nor the iterable is in
-				// the documentation.
-				const maskingOption: { logits_processor?: LogitsProcessorList } = {};
-				if (state.jsonSchemaProcessor !== undefined) {
-					const logitsProcessors = new LogitsProcessorList();
-					logitsProcessors.push(state.jsonSchemaProcessor);
-					maskingOption.logits_processor = logitsProcessors;
-				}
 				generator(input, {
 					max_new_tokens: MAX_NEW_TOKENS,
 					do_sample: false,
 					return_full_text: false,
 					tokenizer_encode_kwargs: { enable_thinking: false },
 					stopping_criteria: criteria,
-					...maskingOption,
 					streamer,
 				}).then(() => {
 					state.completionTokenCount = tokenIds.length;

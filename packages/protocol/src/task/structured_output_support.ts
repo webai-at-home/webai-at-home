@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { TaskType } from './task_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -16,41 +15,9 @@ import type { TaskType } from './task_types.js';
  * to be told about it, while each of the two below is a shape a task type either can produce or
  * cannot.
  */
-export const ResponseFormatNameSchema = z.enum(['json_object', 'json_schema']);
-/** One of the response formats a consumer may ask for. See {@link ResponseFormatNameSchema}. */
-export type ResponseFormatName = z.infer<typeof ResponseFormatNameSchema>;
-
-/**
- * One response format as a consumer asks for it, carrying the schema when it names one.
- *
- * This is what travels with a task, while {@link ResponseFormatNameSchema} above is what the table
- * below is keyed by. The two are separate because a task type honours a **kind** of shape, and it
- * honours that kind whatever schema a particular request carries.
- *
- * A discriminated union rather than a name beside an optional schema, so that a `json_schema`
- * without a schema and a `json_object` with one are both unwritable. There is no `strict` here,
- * although the OpenAI Chat Completions interface has one: a worker of this project enforces a schema
- * exactly or refuses it, so a flag asking for less would be carried and never acted on, which is the
- * fault `generation_control_support.ts` exists to prevent. Enforcing exactly satisfies a request
- * that asked for less as well as one that asked for exactly.
- */
-export const ResponseFormatSchema = z.discriminatedUnion('type', [
-	z.object({
-		type: z.literal('json_object'),
-	}).strict(),
-	z.object({
-		type: z.literal('json_schema'),
-		/**
-		 * The label the request gave its schema, which the OpenAI Chat Completions interface requires
-		 * and a local server refuses a request without.
-		 */
-		name: z.string().min(1),
-		/** The schema the answer must satisfy, as a JSON Schema document. */
-		schema: z.record(z.string(), z.unknown()),
-	}).strict(),
-]);
-/** One response format as a consumer asks for it. See {@link ResponseFormatSchema}. */
-export type ResponseFormat = z.infer<typeof ResponseFormatSchema>;
+export type ResponseFormatName =
+	| 'json_object'
+	| 'json_schema';
 
 /**
  * The response formats each task type honours, and by omission the ones it cannot.
@@ -67,9 +34,7 @@ export type ResponseFormat = z.infer<typeof ResponseFormatSchema>;
  * `JSON.parse` on an English sentence. See
  * [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191).
  *
- * `task_type_llm_gemma_4_e2b_full` honours both shapes, and every other entry is empty. Issue #191
- * measured the empty ones, and [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219)
- * is what filled the one that is not:
+ * Every entry is empty today, and the milestone 0 gate of issue #191 is what measured that:
  *
  * - `task_type_llm_llama3_2_1b_full` is served by two kinds of worker. A `@webai/worker-openai`
  *   process forwarding to a local server does sit in front of an engine that honours `json_schema`,
@@ -82,24 +47,13 @@ export type ResponseFormat = z.infer<typeof ResponseFormatSchema>;
  * - `task_type_llm_qwen3_5_0_8b_full`, `task_type_llm_qwen3_0_6b_sharded`, and
  *   `task_type_llm_gemma_nano_chrome_full` run only in a worker browser tab, so none of them has an
  *   engine that can be asked for a shape either.
- * - `task_type_llm_gemma_4_e2b_full` honours `json_object`, because both of its kinds of worker were
- *   taught to produce one and both were then measured producing one. The worker browser tab masks
- *   the score of every token that would break the object, so a well-formed object is the only thing
- *   the model is able to write. The native worker asks the local server for the shape, and refuses
- *   an answer that came back as anything else. Neither was true when issue #191 measured this row.
- * - `task_type_llm_gemma_4_e2b_full` honours `json_schema` as well, from milestone 6 of issue #219,
- *   which made the schema itself travel and gave both kinds of worker the same reader to enforce it
- *   with: `JsonSchemaCompiler` and `JsonSchemaGrammar`, which live in this package for that reason.
- *   The worker browser tab masks against the schema rather than against JSON alone, so a required
- *   property left out, a value of the wrong type, and a text outside an enumeration are each a token
- *   the model is not able to write. The native worker asks the local server for the schema and reads
- *   the answer back through the same compiler, so an answer the schema refuses fails the stage. Both
- *   were measured live, against four schemas covering required properties, integers, booleans,
- *   enumerations, arrays, and nesting.
- * - A schema this project cannot hold a model to is refused where it is read, rather than enforced
- *   as far as it is understood: `JsonSchemaCompiler` names the keywords it enforces and refuses any
- *   other. An answer that broke `minLength` would otherwise come back reported as matching the
- *   schema, which is this table's own failure written one level down.
+ * - `task_type_llm_gemma_4_e2b_full` is empty for the same reason as `task_type_llm_llama3_2_1b_full`
+ *   above, not because it runs only in a browser tab. It has both kinds of worker, and the native one
+ *   really does sit in front of an engine that honours `json_schema` — Ollama did in
+ *   [issue #210](https://github.com/webai-at-home/webai-at-home/issues/210), and milestone 4 of
+ *   [issue #216](https://github.com/webai-at-home/webai-at-home/issues/216) ran this task type
+ *   through that worker live. The worker browser tab can honour nothing, and a task type's contract
+ *   is what both its workers can keep, so the intersection is empty.
  * - `task_type_dev_formula` generates no text at all, so no response format applies to it.
  *
  * An entry here is also the only thing a task type needs to gain to start honouring a format: this
@@ -111,7 +65,7 @@ const formatsByTaskType: Record<TaskType, readonly ResponseFormatName[]> = {
 	task_type_llm_gemma_nano_chrome_full: [],
 	task_type_llm_qwen3_5_0_8b_full: [],
 	task_type_llm_llama3_2_1b_full: [],
-	task_type_llm_gemma_4_e2b_full: ['json_object', 'json_schema'],
+	task_type_llm_gemma_4_e2b_full: [],
 };
 
 /** Which task type honours which response format. */

@@ -174,33 +174,6 @@ type OutgoingGenerationControls = {
 };
 
 /**
- * The response format of one request to the local server, in the shape the OpenAI Chat Completions
- * interface reads it in.
- *
- * `json_schema` is the only type here, and a consumer asking for `json_object` is carried in it as
- * the schema that means the same thing. Milestone 4 of
- * https://github.com/webai-at-home/webai-at-home/issues/219 measured why: LM Studio 0.4.20 answers
- * a `json_object` request with HTTP 400 and `'response_format.type' must be 'json_schema' or
- * 'text'`, while Ollama 0.32.14 answers it correctly. Both answer a `json_schema` request carrying
- * the schema `{ "type": "object" }` with a JSON object, so that one form is the one this client
- * sends and neither server has to be told apart from the other.
- *
- * A consumer asking for `json_schema` carries its own schema, since milestone 6 of that issue, and
- * that schema is put here as it stands.
- */
-type OutgoingResponseFormat = {
-	type: 'json_schema';
-	json_schema: {
-		/** A label for the schema, which the OpenAI Chat Completions interface requires. */
-		name: string;
-		/** Whether the server must hold the model to the schema rather than merely suggest it. */
-		strict: true;
-		/** The schema the answer must satisfy, as a JSON Schema document. */
-		schema: Record<string, unknown>;
-	};
-};
-
-/**
  * Talks to one locally running server that speaks the OpenAI-compatible API, such as LM Studio.
  *
  * The server is named by a base URL rather than chosen here, because which server a worker
@@ -311,7 +284,6 @@ export class OpenaiApiClient {
 				messages: OpenaiApiClient.messagesOf(promptOrHistory),
 				...OpenaiApiClient.toolFieldsOf(promptOrHistory),
 				...OpenaiApiClient.generationControlsOf(generationSettings),
-				...OpenaiApiClient.responseFormatFieldOf(generationSettings),
 			}),
 			signal: abortController.signal,
 		}).catch((error: unknown) => {
@@ -401,55 +373,6 @@ export class OpenaiApiClient {
 			controls.reasoning_effort = generationSettings.reasoningEffort;
 		}
 		return controls;
-	}
-
-	/**
-	 * Builds the response format field of the request body, from the shape the consumer asked for.
-	 *
-	 * The local server enforces the shape, and this client only asks for it. Milestone 4 of
-	 * https://github.com/webai-at-home/webai-at-home/issues/219 measured that live through this
-	 * worker rather than against either server directly, against LM Studio 0.4.20 serving
-	 * `google/gemma-4-e2b` and Ollama 0.32.14 serving `gemma4:e2b`. One question, asked with no field
-	 * sent and then with it: both servers answered in prose without it, which `JSON.parse` refuses,
-	 * and both answered with a JSON object with it, whole and in pieces alike, every piece joining
-	 * back to exactly the object the finished answer carried.
-	 *
-	 * The two servers disagree about what a shape costs, and both answers are correct. LM Studio
-	 * stopped the model thinking altogether — 219 completion tokens in 5.7 seconds became 19 in 0.5,
-	 * with the prompt counted at the same 33 tokens. Ollama let it go on thinking and counted that
-	 * thinking as prompt tokens rather than completion tokens: 33 and 221 became 281 and 39. Both
-	 * counts reach the consumer as its `usage`, so this is worth knowing before reading anything into
-	 * either.
-	 *
-	 * Beside declared tools the two disagree in a way that matters more. Ollama still asked for the
-	 * tool. LM Studio asked for no tool at all and answered `{"city": "Paris", "weather": "Sunny"}`,
-	 * inventing the very reading the tool exists to fetch. Neither is reachable: the worker browser
-	 * tab running this same task type refuses a shape beside tools outright, and a task type promises
-	 * only what all of its workers can keep.
-	 *
-	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
-	 * nothing.
-	 * @returns The field to spread into the request body, empty when no shape was asked for.
-	 */
-	private static responseFormatFieldOf(generationSettings: GenerationSettings | undefined): { response_format?: OutgoingResponseFormat } {
-		const responseFormat = generationSettings?.responseFormat;
-		if (responseFormat === undefined) {
-			return {};
-		}
-		// `json_object` means any object, and `{ "type": "object" }` is the schema that says so, so the
-		// two shapes leave here as one kind of request and the server is never told them apart.
-		const schema = responseFormat.type === 'json_object' ? { type: 'object' } : responseFormat.schema;
-		const name = responseFormat.type === 'json_object' ? 'json_object' : responseFormat.name;
-		return {
-			response_format: {
-				type: 'json_schema',
-				json_schema: {
-					name: name,
-					strict: true,
-					schema: schema,
-				},
-			},
-		};
 	}
 
 	/**

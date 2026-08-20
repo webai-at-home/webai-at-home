@@ -141,7 +141,7 @@ Test('refuses a generation control whose value is outside the range this interfa
  */
 const generationSettingsOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName, isStreaming = false): GenerationSettings | undefined => {
 	const parsed = ChatCompletionRequestSchema.parse(body);
-	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming, ResponseFormatReader.read(parsed, taskTypeName));
+	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming);
 };
 
 // `GenerationSettingsBuilder.build`'s honouring branch is exercised against
@@ -1031,14 +1031,12 @@ Test('refuses a tool_choice it cannot enforce, which is the failure that closed 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-// `llm_gemma_4_e2b_full` produces a `json_object`, since milestone 5 of
-// [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) widened its row once both
-// of its kinds of worker had been measured producing one. Every other task type produces no shape at
-// all, measured for [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191): the one
-// engine in reach that honours `json_schema` is a local server behind `@webai/worker-openai`, and the
-// worker browser tab that can serve the same task type generates through `@huggingface/transformers`,
-// which offers no way to ask for a schema at all. A task type's contract is the intersection of what
-// all of its workers honour, so those entries stay empty and those shapes are refused.
+// No task type produces a shape today, measured by the milestone 0 gate of
+// [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191): the one engine in reach
+// that honours `json_schema` is a local server behind `@webai/worker-openai`, and the worker browser
+// tab that can serve the same task type generates through `@huggingface/transformers`, which offers
+// no way to ask for a schema at all. A task type's contract is the intersection of what all of its
+// workers honour, so every entry of `StructuredOutputSupport` is empty and every shape is refused.
 
 Test('reads the three response_format values this interface defines, and refuses a shape it does not', () => {
 	const messages = [{ role: 'user', content: 'hello' }];
@@ -1069,173 +1067,6 @@ Test('asks for nothing when the request asks for this interface own default shap
 		{ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } },
 	]) {
 		Assert.equal(ResponseFormatReader.read(ChatCompletionRequestSchema.parse(body), 'llm_llama3_2_1b_full'), undefined);
-	}
-});
-
-Test('carries a response format the task type honours, in the same block the controls travel in', () => {
-	// Milestone 2 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) wrote
-	// this path, and until then `ResponseFormatReader.read` refused what could not be produced and
-	// its caller threw away what it returned. The builder is given the shape rather than reading it,
-	// because a response format is refused against `StructuredOutputSupport` and a generation
-	// control against `GenerationControlSupport`, and the two tables are separate.
-	const messages = [{ role: 'user', content: 'Reply with a greeting object.' }];
-	const parsed = ChatCompletionRequestSchema.parse({ model: 'llm_llama3_2_1b_full', messages, temperature: 0 });
-
-	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', false, { type: 'json_object' }), {
-		temperature: 0,
-		responseFormat: {
-			type: 'json_object',
-		},
-	});
-	// A schema travels whole, since milestone 6 of that issue: the shape a `json_schema` names is the
-	// schema itself, and a name with no schema beside it says nothing a worker could enforce.
-	const greetingSchema = {
-		type: 'object',
-		properties: {
-			greeting: {
-				type: 'string',
-			},
-		},
-		required: ['greeting'],
-		additionalProperties: false,
-	};
-	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', true, { type: 'json_schema', name: 'greeting_object', schema: greetingSchema }), {
-		isStreaming: true,
-		temperature: 0,
-		responseFormat: {
-			type: 'json_schema',
-			name: 'greeting_object',
-			schema: greetingSchema,
-		},
-	});
-});
-
-Test('submits no settings block at all for a request that asked for no shape and no control', () => {
-	// The whole block stays absent rather than becoming an empty object, so a request written before
-	// response formats existed submits byte for byte what it always did.
-	const messages = [{ role: 'user', content: 'What is the capital of France?' }];
-
-	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages }, 'llm_llama3_2_1b_full'), undefined);
-	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } }, 'llm_llama3_2_1b_full'), undefined);
-	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: null }, 'llm_llama3_2_1b_full'), undefined);
-});
-
-Test('carries both shapes to the task type that produces them, the schema along with the name', () => {
-	const messages = [{ role: 'user', content: 'Give the capital of France, with the key capital.' }];
-	const shaped = ChatCompletionRequestSchema.parse({ model: 'llm_gemma_4_e2b_full', messages, response_format: { type: 'json_object' } });
-
-	Assert.deepEqual(ResponseFormatReader.read(shaped, 'llm_gemma_4_e2b_full'), { type: 'json_object' });
-	Assert.deepEqual(GenerationSettingsBuilder.build(shaped, 'llm_gemma_4_e2b_full', false, { type: 'json_object' }), {
-		responseFormat: {
-			type: 'json_object',
-		},
-	});
-
-	// A schema travels whole. The worker is the thing that enforces it, so what reaches the task has
-	// to be the document the request carried and not a summary of it.
-	const capitalSchema = {
-		type: 'object',
-		properties: {
-			capital: {
-				type: 'string',
-			},
-		},
-		required: ['capital'],
-		additionalProperties: false,
-	};
-	const schemaRequest = ChatCompletionRequestSchema.parse({
-		model: 'llm_gemma_4_e2b_full',
-		messages,
-		response_format: { type: 'json_schema', json_schema: { name: 'capital', strict: true, schema: capitalSchema } },
-	});
-
-	Assert.deepEqual(ResponseFormatReader.read(schemaRequest, 'llm_gemma_4_e2b_full'), {
-		type: 'json_schema',
-		name: 'capital',
-		schema: capitalSchema,
-	});
-});
-
-Test('refuses a schema no worker could hold a model to, naming the keyword it could not enforce', () => {
-	// The boundary of the promise the row makes. `JsonSchemaCompiler` names the keywords it enforces
-	// and refuses every other, so the request is refused here rather than answered with a schema
-	// enforced as far as it happened to be understood.
-	const messages = [{ role: 'user', content: 'Give the capital of France, with the key capital.' }];
-	const unenforceable = ChatCompletionRequestSchema.parse({
-		model: 'llm_gemma_4_e2b_full',
-		messages,
-		response_format: {
-			type: 'json_schema',
-			json_schema: { name: 'capital', strict: true, schema: { type: 'object', properties: { capital: { type: 'string', minLength: 3 } } } },
-		},
-	});
-	Assert.throws(
-		() => ResponseFormatReader.read(unenforceable, 'llm_gemma_4_e2b_full'),
-		(error: unknown) => {
-			Assert.match((error as Error).message, /minLength/);
-			return true;
-		},
-	);
-
-	// A `json_schema` request carrying no schema at all is a request to follow nothing.
-	const schemaless = ChatCompletionRequestSchema.parse({
-		model: 'llm_gemma_4_e2b_full',
-		messages,
-		response_format: { type: 'json_schema', json_schema: { name: 'capital', strict: true } },
-	});
-	Assert.throws(
-		() => ResponseFormatReader.read(schemaless, 'llm_gemma_4_e2b_full'),
-		(error: unknown) => {
-			Assert.match((error as Error).message, /carries no schema at all/);
-			return true;
-		},
-	);
-});
-
-Test('refuses a shape asked for beside declared tools, since no worker can hold a shape and open a tool call at once', async () => {
-	const server = await listeningServer();
-	try {
-		const response = await fetch(`${server.url}/v1/chat/completions`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				model: 'llm_gemma_4_e2b_full',
-				messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
-				tools: [{ type: 'function', function: { name: 'get_weather', parameters: {} } }],
-				response_format: { type: 'json_object' },
-			}),
-		});
-		Assert.equal(response.status, 400);
-		const body = await response.json() as { error: { code: string; param: string; message: string } };
-		Assert.equal(body.error.code, 'shape_beside_tool_declarations');
-		Assert.equal(body.error.param, 'response_format');
-		// The refusal says which of the two to drop is the sender's own choice, since either one on
-		// its own is a request this model answers.
-		Assert.match(body.error.message, /either the tools or the response_format, not both/);
-	} finally {
-		server.close();
-	}
-});
-
-Test('lets a request carrying tools it declares to nobody ask for a shape, since tool_choice none declares none', async () => {
-	// `tool_choice: "none"` is honoured by declaring nothing at all, which is the one way this server
-	// can enforce it. A model told about no tool cannot ask for one, so there is no conflict left.
-	const server = await listeningServer();
-	try {
-		const response = await fetch(`${server.url}/v1/chat/completions`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				model: 'llm_gemma_4_e2b_full',
-				messages: [{ role: 'user', content: 'Give the capital of France, with the key capital.' }],
-				tools: [{ type: 'function', function: { name: 'get_weather', parameters: {} } }],
-				tool_choice: 'none',
-				response_format: { type: 'json_object' },
-			}),
-		});
-		Assert.notEqual(response.status, 400);
-	} finally {
-		server.close();
 	}
 });
 

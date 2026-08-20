@@ -107,34 +107,11 @@ import type { GatewayMessage } from './gateway_message.js';
  * refused because `GenerationSettingsSchema` is `.strict()`: a gateway or a worker built before this
  * version refuses the whole settings block outright once it carries the new field, so a consumer
  * that asked for a thinking budget would lose every other control it asked for in the same block.
- *
- * Version 10 let a consumer say what shape it wants its answer in. `GenerationSettingsSchema` now
- * carries `responseFormat`, holding `json_object` or `json_schema` exactly as the OpenAI Chat
- * Completions interface spells them, and this is the first version in which such a request travels
- * further than the consumer that read it: before it, `@webai/consumer-openai` read the field only
- * to refuse a shape no task type could produce, and dropped what it read. Which task type honours
- * which shape stays in `structured_output_support.ts`, so `responseFormat` is not a
- * `GenerationControlName` and is not refused against the generation control table. See milestone 2
- * of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219). Every earlier version
- * is refused for the same reason version 9 refuses version 8, and over the same schema:
- * `GenerationSettingsSchema` is `.strict()`, so a gateway or a worker built before this version
- * refuses the whole settings block once it carries the new field, and a consumer that asked for an
- * object would lose every other control it asked for in the same block.
- *
- * Version 11 let a `json_schema` carry its schema. `GenerationSettings.responseFormat` was the name
- * of a shape and is now the shape itself: `{ "type": "json_object" }`, or `{ "type": "json_schema" }`
- * with the schema and its name beside it. A name alone was enough while `json_schema` was refused by
- * every task type, and stopped being enough the moment one honoured it, because a schema is what
- * that shape means. See milestone 6 of
- * [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219). Version 10 is refused
- * rather than read leniently, for the reason every version before it is: the field changed shape, so
- * a peer built for version 10 refuses the whole settings block over `.strict()` and a consumer that
- * asked for a shape would lose every other control it asked for in the same block.
  */
-export const protocolVersion = 11;
+export const protocolVersion = 9;
 
 /** The protocol versions the gateway accepts. No earlier version is accepted. */
-export const supportedProtocolVersions: number[] = [11];
+export const supportedProtocolVersions: number[] = [9];
 
 /**
  * The wrapper around every frame sent in either direction.

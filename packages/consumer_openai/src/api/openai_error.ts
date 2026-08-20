@@ -187,63 +187,6 @@ export class OpenaiError extends Error {
 	}
 
 	/**
-	 * The request asked for a shape and declared tools in the same call.
-	 *
-	 * Refused rather than answered by dropping one of the two, which is the only other thing this
-	 * server could do with it. A worker holds a model to a shape by allowing only the tokens that
-	 * shape permits, and every marker that opens a tool call is a token no shape permits, so a
-	 * shaped answer can hold no tool call. Measured on both kinds of worker in milestone 3 and
-	 * milestone 4 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219): the
-	 * worker browser tab refuses the pair outright, and of the two local servers the native worker
-	 * can sit in front of, one kept the tool call and the other asked for no tool at all and
-	 * invented the reading the tool existed to fetch.
-	 *
-	 * @param requestedType The response format type the request asked for.
-	 * @param modelId The model the request asked for.
-	 * @returns The failure to answer with, as HTTP 400.
-	 */
-	static shapeBesideToolDeclarations(requestedType: string, modelId: string): OpenaiError {
-		return new OpenaiError(
-			400,
-			'invalid_request_error',
-			`The model ${modelId} cannot both answer in a response_format of ${requestedType} and call a tool in one ` +
-				'request, and this server refuses the pair rather than dropping one of them and saying nothing. A ' +
-				'shape is held to by allowing only the tokens it permits, and every marker that opens a tool call is ' +
-				'a token no shape permits. Send the request again with either the tools or the response_format, not ' +
-				'both.',
-			'response_format',
-			'shape_beside_tool_declarations',
-		);
-	}
-
-	/**
-	 * The request carried a schema no worker of this cluster could enforce.
-	 *
-	 * A worker holds a model to a schema by allowing only the tokens that schema permits, which it can
-	 * do for the keys a schema requires, the types it declares, and the values it enumerates, and
-	 * cannot do for a keyword it has no rule for. Such a schema is refused rather than enforced in
-	 * part, because a schema enforced in part comes back looking exactly as it should and satisfies
-	 * less than it says. `JsonSchemaCompiler` in `@webai/protocol` is the one place that decides which
-	 * is which, and both this server and the worker that would enforce the schema read it.
-	 *
-	 * @param modelId The model the request asked for.
-	 * @param reason What the compiler said was wrong with the schema, which names the keyword at fault.
-	 * @returns The failure to answer with, as HTTP 400.
-	 */
-	static unenforceableSchema(modelId: string, reason: string): OpenaiError {
-		return new OpenaiError(
-			400,
-			'invalid_request_error',
-			`The model ${modelId} cannot be held to the schema this request carries, and this server refuses a schema ` +
-				'it would have to enforce in part rather than answering as though the whole of it had been kept: ' +
-				`${reason}. Send the request again with a schema built from type, properties, required, ` +
-				'additionalProperties, items, and enum, or with response_format "json_object" for any object at all.',
-			'response_format',
-			'unenforceable_schema',
-		);
-	}
-
-	/**
 	 * The request declared tools to a model that cannot read them.
 	 *
 	 * Refused for the same reason an unhonourable generation control is: accepting the declarations

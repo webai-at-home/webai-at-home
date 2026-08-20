@@ -65,12 +65,7 @@ export type {
 export { GenerationControlSupport } from './task/generation_control_support.js';
 export type { GenerationControlName } from './task/generation_control_support.js';
 export { StructuredOutputSupport } from './task/structured_output_support.js';
-export type { ResponseFormatName, ResponseFormat } from './task/structured_output_support.js';
-export { ResponseFormatSchema } from './task/structured_output_support.js';
-export { JsonSchemaCompiler } from './task/json_schema_compiler.js';
-export type { CompiledSchemaKind, CompiledSchemaNode } from './task/json_schema_compiler.js';
-export { JsonSchemaGrammar } from './task/json_schema_grammar.js';
-export type { JsonSchemaGrammarMode, JsonSchemaGrammarState, JsonContainer } from './task/json_schema_grammar.js';
+export type { ResponseFormatName } from './task/structured_output_support.js';
 export { PipelineSpecificationSchema, PipelineStageSchema, StageName } from './task/pipeline_types.js';
 export type { PipelineSpecification, PipelineStage } from './task/pipeline_types.js';
 export { TaskProjection } from './task/task_projection.js';
