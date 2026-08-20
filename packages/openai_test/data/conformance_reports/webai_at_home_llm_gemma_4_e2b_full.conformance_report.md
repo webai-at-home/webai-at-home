@@ -13,7 +13,7 @@ A skipped test is a capability the endpoint declared it does not support, and is
 
 ## Test Run
 
-- Generated: 2026-08-20T14:17:58.626Z
+- Generated: 2026-08-20T15:05:20.248Z
 - Endpoint: `http://localhost:8788/v1`
 - Model: `llm_gemma_4_e2b_full`
 
