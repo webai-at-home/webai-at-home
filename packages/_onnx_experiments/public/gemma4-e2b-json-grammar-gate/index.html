@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemma 4 E2B · JSON grammar de-risk gate (issue #219)</title>
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      .phase { color: #6cf; }
+      .pass { color: #6f6; }
+      .fail { color: #f66; }
+    </style>
+  </head>
+  <body>
+    <h1>Gemma 4 E2B JSON grammar de-risk gate — issue #219 milestone 0</h1>
+    <p>Loads the exact pinned export the real stage helper runs (<code>onnx-community/gemma-4-E2B-it-ONNX</code>,
+      revision <code>9f4bef82ea6e296bc69f8a2f5939f73af81b07a6</code>, <code>q4f16</code>, WebGPU only) and answers the
+      question <a href="https://github.com/webai-at-home/webai-at-home/issues/219">issue #219</a> rests on:
+      <strong>does a logits processor handed to the pipeline call decide which token this model writes, and at a cost a
+      browser tab can pay?</strong></p>
+    <p><a href="https://github.com/webai-at-home/webai-at-home/issues/218">Issue #218</a> already settled, by reading
+      the installed <code>@huggingface/transformers</code> 4.2.0 rather than its documentation, that the extension
+      point exists and needs no fork and no patch: <code>generate()</code> takes a <code>logits_processor</code>, the
+      text generation pipeline spreads its options into that call, and <code>LogitsProcessor</code> is exported from
+      the package entry point. Reading source proves a processor is <em>reached</em>. It cannot prove that setting a
+      score to negative infinity keeps the sampler away from that entry, for this model, at this quantization, on
+      WebGPU — nor that it still does so with the call shape the real stage helper uses, which carries a
+      <code>stopping_criteria</code> that cancellation depends on.</p>
+    <p>The third question is cost. Enforcing a shape means deciding, at every step, which entries of the vocabulary may
+      legally come next. This tokenizer merges characters, so <code>{"</code> and <code>":</code> are single entries and
+      the question is not a per-character one. Every phase below prints its raw input and its raw output, and the last
+      two print what a token costs with the mask and without it.</p>
+    <button id="run-button" type="button" disabled>Loading…</button>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/gemma4-e2b-json-grammar-gate/src/main.ts"></script>
+  </body>
+</html>
