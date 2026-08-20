@@ -141,7 +141,7 @@ Test('refuses a generation control whose value is outside the range this interfa
  */
 const generationSettingsOf = (body: Record<string, unknown>, taskTypeName: TaskTypeName, isStreaming = false): GenerationSettings | undefined => {
 	const parsed = ChatCompletionRequestSchema.parse(body);
-	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming);
+	return GenerationSettingsBuilder.build(parsed, taskTypeName, isStreaming, ResponseFormatReader.read(parsed, taskTypeName));
 };
 
 // `GenerationSettingsBuilder.build`'s honouring branch is exercised against
@@ -1068,6 +1068,63 @@ Test('asks for nothing when the request asks for this interface own default shap
 	]) {
 		Assert.equal(ResponseFormatReader.read(ChatCompletionRequestSchema.parse(body), 'llm_llama3_2_1b_full'), undefined);
 	}
+});
+
+Test('carries a response format the task type honours, in the same block the controls travel in', () => {
+	// Milestone 2 of [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221) wrote
+	// this path. Until it did, `ResponseFormatReader.read` refused what could not be produced and its
+	// caller threw away what it returned. The builder is handed the shape rather than reading it,
+	// because a response format is refused against `StructuredOutputSupport` and a generation control
+	// against `GenerationControlSupport`, and the two tables are kept apart.
+	//
+	// The builder is called directly here, and not through `generationSettingsOf`, because no entry
+	// of `StructuredOutputSupport` is filled: `ResponseFormatReader.read` cannot return a shape for
+	// any model this server offers, so the carrying path has nothing to carry until milestone 6 of
+	// that issue fills the row of `task_type_llm_gemma_4_e2b_full`.
+	const messages = [{ role: 'user', content: 'Reply with a greeting object.' }];
+	const parsed = ChatCompletionRequestSchema.parse({ model: 'llm_llama3_2_1b_full', messages, temperature: 0 });
+
+	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', false, {
+		type: 'json_object',
+	}), {
+		temperature: 0,
+		responseFormat: {
+			type: 'json_object',
+		},
+	});
+
+	// The schema itself travels, not the name of the shape it is written against.
+	const jsonSchema = {
+		type: 'object',
+		properties: {
+			greeting: {
+				type: 'string',
+			},
+		},
+		required: ['greeting'],
+		additionalProperties: false,
+	};
+	Assert.deepEqual(GenerationSettingsBuilder.build(parsed, 'llm_llama3_2_1b_full', true, {
+		type: 'json_schema',
+		jsonSchema,
+	}), {
+		isStreaming: true,
+		temperature: 0,
+		responseFormat: {
+			type: 'json_schema',
+			jsonSchema,
+		},
+	});
+});
+
+Test('submits no settings block at all for a request that asked for no shape and no control', () => {
+	// The whole block stays absent rather than becoming an empty object, so a request written before
+	// response formats existed submits exactly what it always did.
+	const messages = [{ role: 'user', content: 'What is the capital of France?' }];
+
+	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages }, 'llm_llama3_2_1b_full'), undefined);
+	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: { type: 'text' } }, 'llm_llama3_2_1b_full'), undefined);
+	Assert.equal(generationSettingsOf({ model: 'llm_llama3_2_1b_full', messages, response_format: null }, 'llm_llama3_2_1b_full'), undefined);
 });
 
 Test('refuses a response_format the model cannot produce, rather than answering it in prose', async () => {

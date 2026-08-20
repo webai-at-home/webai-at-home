@@ -13,6 +13,7 @@ import {
 	DiagnosticsBatchSchema,
 	GeneratedText,
 	GenerationControlSupport,
+	GenerationSettingsSchema,
 	PipelineSpecificationSchema,
 	PipelineStageSchema,
 	StageName,
@@ -297,6 +298,29 @@ Test('validates every inbound client message shape', () => {
 		Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello', generationSettings: { reasoningEffort: level } } }).success, true);
 	}
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello', generationSettings: { reasoningEffort: 'exhaustive' } } }).success, false);
+	// Protocol version 10 added `responseFormat`, holding the two shapes the OpenAI Chat
+	// Completions interface names. `text` is not one of them: it is that interface's own default,
+	// asks for nothing unusual, and a consumer drops it rather than carrying it. See milestone 2 of
+	// issue #221.
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: { type: 'json_object' } } } }).success, true);
+	// A `json_schema` carries the schema itself and not only the name of the shape, because the
+	// bare name would leave the worker to invent a schema, and an answer matching an invented
+	// schema is not the answer that was asked for.
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: { type: 'json_schema', jsonSchema: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false } } } } }).success, true);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: { type: 'json_schema' } } } }).success, false);
+	// The schema arrives exactly as it was written, nested keywords and all. A value schema that
+	// stripped what it did not recognise would leave a worker enforcing a shape nobody asked for,
+	// and the submission would succeed all the same, which is the one failure this field exists to
+	// prevent.
+	const askedSchema = { type: 'object', properties: { city: { type: 'string', minLength: 1 } }, required: ['city'], additionalProperties: false };
+	Assert.deepEqual(GenerationSettingsSchema.parse({ responseFormat: { type: 'json_schema', jsonSchema: askedSchema } }), { responseFormat: { type: 'json_schema', jsonSchema: askedSchema } });
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: { type: 'json_object', jsonSchema: { type: 'object' } } } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: 'json_object' } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: { type: 'text' } } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: { type: 'yaml' } } } }).success, false);
+	// A shape travels beside the controls without disturbing them, because it is carried in the
+	// same block and refused against a different table.
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { isStreaming: true, temperature: 0, responseFormat: { type: 'json_object' } } } }).success, true);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', input: { taskType: 'task_type_dev_formula', input: 5 } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'stage.result', taskId: 'task-1', stage: 'stage_dev_formula_multiply', value: 10 }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'deviceRegister', role: 'consumer', name: 'consumer', unexpected: true }).success, false);

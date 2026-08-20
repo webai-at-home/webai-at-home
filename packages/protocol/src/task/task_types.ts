@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ResponseFormatNameSchema } from './structured_output_support.js';
 import type { StagePayload } from '../stage/stage_payload_types.js';
 import { HistoryInputSchema } from './history_types.js';
 import type { StageName } from './pipeline_types.js';
@@ -25,6 +26,38 @@ export const TaskType = z.enum([
 ]);
 /** The kinds of work a consumer may submit. */
 export type TaskType = z.infer<typeof TaskType>;
+
+/**
+ * The shape a consumer asks its answer to be written in, carrying whatever that shape needs in
+ * order to be produced.
+ *
+ * A response format carries the schema itself and not only the name of a shape, because
+ * `json_schema` means nothing without the schema it names: a worker handed the bare word
+ * `json_schema` would have to invent a schema, and an answer matching an invented schema is not the
+ * answer that was asked for. See milestone 2 of
+ * [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221).
+ *
+ * `jsonSchema` holds a JSON Schema exactly as the consumer wrote it, neither read nor checked here.
+ * Which keywords can really be enforced is the business of the engine that will enforce them, and a
+ * consumer asks that engine rather than keeping a list here that would drift away from what the
+ * engine really keeps.
+ *
+ * The `name`, `description`, and `strict` fields the OpenAI Chat Completions interface wraps its
+ * schema in are not carried. `name` and `description` label the schema for a reader and change no
+ * answer, and `strict` asks for exactly what carrying a schema here already means, which is that
+ * the answer matches it.
+ */
+export const ResponseFormatSchema = z.discriminatedUnion('type', [
+	z.object({
+		type: z.literal(ResponseFormatNameSchema.enum.json_object),
+	}).strict(),
+	z.object({
+		type: z.literal(ResponseFormatNameSchema.enum.json_schema),
+		jsonSchema: z.record(z.string(), z.unknown()),
+	}).strict(),
+]);
+/** The shape a consumer asks its answer to be written in. See {@link ResponseFormatSchema}. */
+export type ResponseFormat = z.infer<typeof ResponseFormatSchema>;
 
 /**
  * What a consumer asks for about how its answer is generated, rather than what the answer is
@@ -131,6 +164,19 @@ export const GenerationSettingsSchema = z.object({
 	 * telling `low` from `high`. See [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192).
 	 */
 	reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+	/**
+	 * The shape the consumer wants its answer written in, when it wants one other than prose.
+	 *
+	 * It travels in this block because it is part of how an answer is generated, which is what this
+	 * block is for. It is not a generation control: which task type honours which shape is recorded
+	 * in `structured_output_support.ts` and not in `generation_control_support.ts`, so this field is
+	 * none of the six names in `GenerationControlName` and is refused against a table of its own.
+	 *
+	 * A task that asks for nothing here is generated exactly as it always was, and no worker has to
+	 * know the field exists to keep answering such a task. See milestone 2 of
+	 * [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221).
+	 */
+	responseFormat: ResponseFormatSchema.optional(),
 }).strict();
 /** What a consumer asks for about how its answer is generated. */
 export type GenerationSettings = z.infer<typeof GenerationSettingsSchema>;

@@ -293,10 +293,11 @@ export class OpenaiRoutes {
 		const toolsToDeclare = body.tool_choice === 'none' ? undefined : declaredTools;
 
 		// A response format the chosen task type cannot produce is refused rather than dropped, on
-		// the same rule the generation controls follow. The value read back is not carried anywhere
-		// yet, because no task type honours any shape today and so nothing can be carried; what the
-		// call does here is refuse.
-		ResponseFormatReader.read(body, taskTypeName);
+		// the same rule the generation controls follow. What is read back travels with the task, in
+		// the generation settings, carrying the schema itself, so that the worker running the stage
+		// produces the shape rather than being asked for prose and having its answer read as an
+		// object.
+		const responseFormat = ResponseFormatReader.read(body, taskTypeName);
 
 		// A task type whose worker can hand a message list to its own chat template is sent the
 		// history as it was written, each message keeping its own role. Every other task type
@@ -310,7 +311,7 @@ export class OpenaiRoutes {
 		// round for every piece. The five generation controls join it here, and this is also where
 		// a request asking a model for a control it cannot honour is refused rather than answered
 		// as though nothing had been asked for.
-		const generationSettings = GenerationSettingsBuilder.build(body, taskTypeName, isStreaming);
+		const generationSettings = GenerationSettingsBuilder.build(body, taskTypeName, isStreaming, responseFormat);
 		let taskInput: TaskInput;
 		try {
 			// A request that asked for nothing submits exactly what it did before generation
@@ -489,6 +490,11 @@ export class OpenaiRoutes {
 		// [issue #213](https://github.com/webai-at-home/webai-at-home/issues/213). The builder is
 		// still what decides the settings, so that a control arriving here one day is refused by
 		// the same rule rather than by a second one written here.
+		//
+		// The Responses interface states the shape of an answer in `text.format` rather than in a
+		// `response_format` field, and nothing here reads that yet, so no shape is carried from this
+		// route. It is stated as `undefined` rather than left out, so that reading `text.format` one
+		// day is a change to this call and not the discovery that a shape was being dropped.
 		const generationSettings = GenerationSettingsBuilder.build(
 			{
 				model: body.model,
@@ -496,6 +502,7 @@ export class OpenaiRoutes {
 			},
 			taskTypeName,
 			isStreaming,
+			undefined,
 		);
 		let taskInput: TaskInput;
 		try {

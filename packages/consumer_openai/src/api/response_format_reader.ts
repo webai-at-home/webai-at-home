@@ -1,5 +1,5 @@
 import type { TaskTypeName } from '@webai/consumer-cli';
-import { StructuredOutputSupport, type ResponseFormatName, type TaskType } from '@webai/protocol';
+import { StructuredOutputSupport, type ResponseFormat, type TaskType } from '@webai/protocol';
 import { OpenaiError } from './openai_error.js';
 import type { ChatCompletionRequest } from './openai_types.js';
 
@@ -17,10 +17,11 @@ import type { ChatCompletionRequest } from './openai_types.js';
  * generation control, decided the same way and for the same reason:
  *
  * - The task type honours the shape asked for: it is carried to the cluster as the client asked
- *   for it. No task type honours any shape today, measured by the milestone 0 gate of
- *   [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191), so nothing is carried
- *   yet and the carrying path is written by whichever issue first fills an entry of
- *   `StructuredOutputSupport`, which is when it can be tested against something real.
+ *   for it, in `GenerationSettings.responseFormat`, which the caller of this class puts there.
+ *   Milestone 2 of [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221) wrote
+ *   that carrying path, having found that this class refused shapes and dropped what it read.
+ *   Whether any task type honours any shape is `StructuredOutputSupport`'s to say, and it is what
+ *   decides between this fate and the third one.
  * - The shape asked for is `text`, an absent field, or a `null` field: it is dropped without a
  *   word. All three mean the same thing, which is that nothing unusual was asked for, and a client
  *   that always sends `response_format: { "type": "text" }` must not be refused.
@@ -35,24 +36,39 @@ export class ResponseFormatReader {
 	 * @param body The chat completion request, already read by `ChatCompletionRequestSchema`.
 	 * @param taskTypeName The task type the request's model names, without the leading
 	 * `task_type_`.
-	 * @returns The response format to produce the answer in, or `undefined` when the request asked
-	 * for nothing unusual, so that such a request is answered exactly as it was before this field
-	 * was read at all.
+	 * @returns The response format to produce the answer in, carrying the schema itself when the
+	 * request asked for one, or `undefined` when the request asked for nothing unusual, so that such
+	 * a request is answered exactly as it was before this field was read at all.
 	 * @throws OpenaiError when the model cannot produce the shape the request asked for.
 	 */
-	static read(body: ChatCompletionRequest, taskTypeName: TaskTypeName): ResponseFormatName | undefined {
+	static read(body: ChatCompletionRequest, taskTypeName: TaskTypeName): ResponseFormat | undefined {
 		const responseFormat = body.response_format;
 		if (responseFormat === undefined || responseFormat === null || responseFormat.type === 'text') {
 			return undefined;
 		}
 		const taskType = `task_type_${taskTypeName}` as TaskType;
-		if (StructuredOutputSupport.honours(taskType, responseFormat.type) === true) {
-			return responseFormat.type;
+		if (StructuredOutputSupport.honours(taskType, responseFormat.type) === false) {
+			throw OpenaiError.unhonourableResponseFormat(
+				responseFormat.type,
+				body.model,
+				StructuredOutputSupport.honouredFormats(taskType),
+			);
 		}
-		throw OpenaiError.unhonourableResponseFormat(
-			responseFormat.type,
-			body.model,
-			StructuredOutputSupport.honouredFormats(taskType),
-		);
+		if (responseFormat.type === 'json_object') {
+			return {
+				type: 'json_object',
+			};
+		}
+		// The OpenAI Chat Completions interface makes `schema` optional inside its `json_schema`
+		// wrapper, and a request that leaves it out has asked for JSON and described nothing about
+		// it. The empty JSON Schema says exactly that — every JSON value satisfies it — so it is
+		// what is carried, rather than the request being refused for a shape the task type honours
+		// or answered in prose. The wrapper's `name`, `description`, and `strict` are not carried,
+		// for the reasons `ResponseFormatSchema` gives.
+		const schema = responseFormat.json_schema.schema;
+		return {
+			type: 'json_schema',
+			jsonSchema: schema === undefined ? {} : schema,
+		};
 	}
 }

@@ -51,9 +51,10 @@ export type { AccountLedgerSummary, AccountSummaryRow, LedgerEntry } from './acc
 
 export { HistoryInputSchema, HistoryMessageSchema, ToolCallSchema, ToolDeclarationSchema } from './task/history_types.js';
 export type { HistoryInput, HistoryMessage, ToolCall, ToolDeclaration } from './task/history_types.js';
-export { GenerationSettingsSchema, StageAssignmentRetryReason, TaskInput, TaskState, TaskType, maximumSnapshotEventCount } from './task/task_types.js';
+export { GenerationSettingsSchema, ResponseFormatSchema, StageAssignmentRetryReason, TaskInput, TaskState, TaskType, maximumSnapshotEventCount } from './task/task_types.js';
 export type {
 	GenerationSettings,
+	ResponseFormat,
 	StageAssignment,
 	StageResult,
 	Task,
@@ -64,7 +65,7 @@ export type {
 } from './task/task_types.js';
 export { GenerationControlSupport } from './task/generation_control_support.js';
 export type { GenerationControlName } from './task/generation_control_support.js';
-export { StructuredOutputSupport } from './task/structured_output_support.js';
+export { ResponseFormatNameSchema, StructuredOutputSupport } from './task/structured_output_support.js';
 export type { ResponseFormatName } from './task/structured_output_support.js';
 export { PipelineSpecificationSchema, PipelineStageSchema, StageName } from './task/pipeline_types.js';
 export type { PipelineSpecification, PipelineStage } from './task/pipeline_types.js';
