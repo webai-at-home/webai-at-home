@@ -49,7 +49,7 @@ A task is retried at most `--max-attempts` times per stage, three by default. Wh
 
 Neither stage states its own lease duration, so both use the gateway default. Neither stage sets `prefersSameWorkerOnRetry`, so a retried attempt is deliberately given to a different device when one is available. The pipeline does not set `repeatsUntilDone`, so the two stages run once each and the task then completes with the second stage's value as its result.
 
-**What the cluster needs in order to run it:** at least one connected worker browser tab that implements the computations `dev_formula_multiply` and `dev_formula_add`. Both computations are implemented by `StageHelperDevFormula` in [`packages/worker_webpage/web/src/stages/stage_helper_dev_formula.ts`](../packages/worker_webpage/web/src/stages/stage_helper_dev_formula.ts), which every worker browser tab contains. Two tabs, each restricted to one of the two stages, show the two devices cooperating; the page `packages/gateway/web/debug_iframe_dev_formula/index.html` opens exactly that arrangement, one inline frame named `dev-formula-multiply` restricted to `stage_dev_formula_multiply` and one named `dev-formula-add` restricted to `stage_dev_formula_add`.
+**What the cluster needs in order to run it:** at least one connected worker browser tab that implements the computations `dev_formula_multiply` and `dev_formula_add`. Both computations are implemented by `StageHelperDevFormula` in [`packages/worker_webpage/web/src/stages/stage_helper_dev_formula.ts`](../packages/worker_webpage/web/src/stages/stage_helper_dev_formula.ts), which every worker browser tab contains. Two tabs, each restricted to one of the two stages, show the two devices cooperating; the page `packages/gateway/web/debug_iframe_dev_formula/index.html` opens exactly that arrangement, one inline frame named `dev-formula-multiply` restricted to `stage_dev_formula_multiply` and one named `dev-formula-add` restricted to `stage_dev_formula_add`. Each of the two registers under that name behind `worker_webpage `, which is what a gateway lists it as.
 
 **How to submit one:**
 
@@ -248,7 +248,7 @@ The stage sets `prefersSameWorkerOnRetry`. An answer read in pieces lives in the
 
 **What the cluster needs in order to run it:** either kind of worker willing to offer the stage. A worker browser tab needs a WebGPU adapter with 16-bit floating point shader support, which the `q4f16` quantization needs, and enough free storage for the download — about 1050 megabytes in total (a 1039.1 megabyte decoder graph plus an 11.0 megabyte tokenizer, measured against the pinned revision), checked by `StageHelperLlmLlama3_2_1bFull.readiness` before the tab advertises the stage. A native worker needs a local server speaking the OpenAI-compatible API already holding the model, checked the same way `task_type_llm_llama3_2_3b_full` used to check it, by asking that server for `GET /v1/models`. Either kind of worker that fails its own check registers with no stage at all rather than accepting work it would fail.
 
-The debug page `packages/gateway/web/debug_iframe_llm_llama3_2_1b_full/index.html` opens the worker browser tab arrangement: the gateway monitor page beside one inline frame named `llm-llama3-2-1b-full`, restricted to `stage_llm_llama3_2_1b_full`. The native worker arrangement has no debug page of its own, because the debug pages exist to open worker browser tabs inside inline frames; that worker is started from a command line instead:
+The debug page `packages/gateway/web/debug_iframe_llm_llama3_2_1b_full/index.html` opens the worker browser tab arrangement: the gateway monitor page beside one inline frame named `llm-llama3-2-1b-full`, restricted to `stage_llm_llama3_2_1b_full`, which registers as `worker_webpage llm-llama3-2-1b-full`. The native worker arrangement has no debug page of its own, because the debug pages exist to open worker browser tabs inside inline frames; that worker is started from a command line instead:
 
 ```bash
 npm run sample:lmstudio:llama-3.2-1b-instruct --workspace @webai/worker-openai
@@ -307,7 +307,7 @@ The stage sets `prefersSameWorkerOnRetry`, for the same reason the other two ful
 
 That storage requirement is larger than some browsers will grant. An embedded browser view was measured capping one origin at about 2900 megabytes and refusing `navigator.storage.persist()`, which is below this model's size, so the stage is correctly never offered there; a real Google Chrome on the same machine reported 10240 megabytes and ran the task.
 
-The debug page `packages/gateway/web/debug_iframe_llm_gemma_4_e2b_full/index.html` opens the gateway monitor page beside one inline frame named `llm-gemma-4-e2b-full`, restricted to `stage_llm_gemma_4_e2b_full`.
+The debug page `packages/gateway/web/debug_iframe_llm_gemma_4_e2b_full/index.html` opens the gateway monitor page beside one inline frame named `llm-gemma-4-e2b-full`, restricted to `stage_llm_gemma_4_e2b_full`, which registers as `worker_webpage llm-gemma-4-e2b-full`.
 
 **How to submit one:**
 
