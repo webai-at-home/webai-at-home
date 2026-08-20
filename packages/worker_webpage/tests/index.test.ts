@@ -2,7 +2,12 @@
 import Assert from 'node:assert/strict';
 import Test from 'node:test';
 
+// third-party imports
+import { LogitsProcessor, LogitsProcessorList, StoppingCriteria, type Tensor } from '@huggingface/transformers';
+
 // local imports
+import { ResponseConstraintBuilder } from '../web/src/stages/structured_output/response_constraint_builder.js';
+import { SampledTokenForwarder } from '../web/src/stages/structured_output/sampled_token_forwarder.js';
 import { ToolCallReader } from '../web/src/stages/tool_call_reader.js';
 import { ChatTemplateTools } from '../web/src/stages/chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from '../web/src/stages/gemma_4_e2b_history_messages.js';
@@ -428,4 +433,183 @@ Test('the settings panel says how large the Gemma 4 E2B download is, which no ot
 	const entry = StageCatalog.entries.find((one) => one.name === 'stage_llm_gemma_4_e2b_full');
 
 	Assert.ok(entry?.description.includes('3111 MB'));
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	ResponseConstraintBuilder and SampledTokenForwarder
+//
+//	Milestone 3 of [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221). What a
+//	constrained run really writes was measured live against Gemma 4 E2B in milestone 0 of the same
+//	issue, and is recorded in
+//	`packages/_onnx_experiments/public/gemma4-e2b-response-constraint-measurement/README.md`. No
+//	model is loaded here: what is asserted below is the two decisions this page makes around the
+//	package, both of which would otherwise only show up in a volunteer's browser tab after a model
+//	download of about 3111 megabytes.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * The smallest tokenizer the response constraint accepts, in the direct form it takes when `tokens`
+ * is already an array of byte arrays.
+ *
+ * Four one-byte tokens are enough to build a constraint, and building one is all these tests do.
+ */
+const smallestTokenizer = {
+	tokens: [
+		Uint8Array.of(0x7b),
+		Uint8Array.of(0x7d),
+		Uint8Array.of(0x22),
+		Uint8Array.of(0x61),
+	],
+	eosTokenId: 0,
+};
+
+/** A logits processor that changes nothing, to stand in for one of the package's own. */
+class NoOpLogitsProcessor extends LogitsProcessor {
+	/**
+	 * @param _inputIds Every token of every sequence, unread.
+	 * @param logits The logits of this step, passed straight back.
+	 * @returns The same logits, untouched.
+	 */
+	_call(_inputIds: bigint[][], logits: Tensor): Tensor {
+		return logits;
+	}
+}
+
+/** A stopping criterion that stops nothing, to stand in for the package's own. */
+class NoOpStoppingCriteria extends StoppingCriteria {
+	/**
+	 * @param inputIds Every token of every sequence, read only for how many sequences there are.
+	 * @returns `false` for every sequence.
+	 */
+	_call(inputIds: number[][]): boolean[] {
+		return inputIds.map(() => false);
+	}
+}
+
+Test('a json_schema is constrained with fixed whitespace, and the schema a consumer sent is not changed', () => {
+	// All three of the package's `x-guidance` options, and the three belong together. Milestone 0
+	// measured five of seven ordinary schemas running to the token limit writing whitespace with the
+	// grammar's flexible whitespace left on, because greedy decoding has a fixed point there. The
+	// first live run of milestone 3 measured what closing it costs on its own — `{"city": ", "}`,
+	// which satisfies its schema and says nothing — and what the two separators give back:
+	// `{"city": "Paris"}` in 8 tokens.
+	const jsonSchema = {
+		type: 'object',
+		properties: {
+			city: {
+				type: 'string',
+			},
+		},
+		required: ['city'],
+		additionalProperties: false,
+	};
+	Assert.deepEqual(ResponseConstraintBuilder.packageFormatOf({ type: 'json_schema', jsonSchema }), {
+		type: 'json_schema',
+		json_schema: {
+			...jsonSchema,
+			'x-guidance': {
+				whitespace_flexible: false,
+				key_separator: ': ',
+				item_separator: ', ',
+			},
+		},
+	});
+	// The schema the consumer sent is left as it was, because it is carried on the task and read
+	// again by every run that carries the answer on.
+	Assert.equal('x-guidance' in jsonSchema, false);
+});
+
+Test('a json_object is passed on as it stands, and never as the json_schema of an object', () => {
+	// The other half of the same decision, and it goes the other way. `json_object` cannot carry
+	// `x-guidance` at all, and rewriting it as the `json_schema` of `{"type":"object"}` to reach the
+	// control was measured to cost the answer itself: asked for any object, the model wrote a whole
+	// weather object in 131 tokens, and the same question under `{"type":"object"}` with the control
+	// on wrote `{"weather":{}}` in 6.
+	Assert.deepEqual(ResponseConstraintBuilder.packageFormatOf({ type: 'json_object' }), {
+		type: 'json_object',
+	});
+});
+
+Test('an x-guidance a consumer somehow sent is overwritten, never respected', () => {
+	// The keyword belongs to no JSON Schema draft and to no OpenAI interface, so nothing sent through
+	// this project's interfaces carries it on purpose. Whether a run of this stage finishes at all is
+	// this stage's to decide.
+	Assert.deepEqual(ResponseConstraintBuilder.packageFormatOf({
+		type: 'json_schema',
+		jsonSchema: {
+			'x-guidance': {
+				whitespace_flexible: true,
+			},
+			type: 'object',
+		},
+	}), {
+		type: 'json_schema',
+		json_schema: {
+			type: 'object',
+			'x-guidance': {
+				whitespace_flexible: false,
+				key_separator: ': ',
+				item_separator: ', ',
+			},
+		},
+	});
+});
+
+Test('a built constraint carries the forwarder before the package own processor, in both halves', () => {
+	const constraint = ResponseConstraintBuilder.build(smallestTokenizer, { type: 'json_object' });
+	Assert.equal(constraint.logitsProcessor.processors.length, 2, 'the forwarder and the package own processor');
+	Assert.equal(constraint.stoppingCriteria.criteria.length, 2, 'the forwarder criterion and the package own');
+	// The second of each pair is the package's, so the first of each is this page's. Announcing the
+	// sampled token before the package is asked anything is the whole point of the order.
+	Assert.equal(typeof (constraint.logitsProcessor.processors[1] as unknown as { onTokensSampled?: unknown }).onTokensSampled, 'function');
+});
+
+Test('the installed @huggingface/transformers still does not call onTokensSampled itself', () => {
+	// The reason `SampledTokenForwarder` exists at all. Pull request #1733 of `transformers.js` adds
+	// `LogitsProcessorList.onTokensSampled` and calls it from the generation loop; the released 4.2.0
+	// this project installs has neither. If this ever fails, the runtime has started making the calls
+	// and `ResponseConstraintBuilder.build` stands the forwarder aside on its own — a grammar told
+	// about the same token twice would consume it twice.
+	Assert.equal(SampledTokenForwarder.isHookCalledByTheRuntime(), false);
+});
+
+Test('the forwarder announces every sampled token exactly once, and never announces the prompt', () => {
+	const announced: number[][] = [];
+	const forwarder = new SampledTokenForwarder({
+		onTokensSampled: (tokenIds: number[]) => {
+			announced.push(tokenIds);
+		},
+	});
+	// The first look is the prompt, whatever length it has, and nothing in it was sampled.
+	forwarder.announceNewTokens([[10n, 11n, 12n]]);
+	Assert.deepEqual(announced, []);
+	// One token appeared since the last look, so exactly that one is announced.
+	forwarder.announceNewTokens([[10n, 11n, 12n, 20n]]);
+	Assert.deepEqual(announced, [[20]]);
+	// The same array again, from the second place the generation loop offers it: nothing is new, so
+	// nothing is announced twice. This is what lets the forwarder read both the logits processor call
+	// and the stopping criterion call of one step.
+	forwarder.announceNewTokens([[10n, 11n, 12n, 20n]]);
+	Assert.deepEqual(announced, [[20]]);
+	// Two steps at once are announced in the order they were sampled.
+	forwarder.announceNewTokens([[10n, 11n, 12n, 20n, 21n, 22n]]);
+	Assert.deepEqual(announced, [[20], [21], [22]]);
+});
+
+Test('the forwarder refuses a constraint whose shape it was not written for', () => {
+	// It reaches into the package's list by position, so a package that returned two processors would
+	// leave it announcing to the wrong one. That is a silently unconstrained run, which is the one
+	// failure this whole file exists to prevent, so it is refused loudly instead.
+	const logitsProcessor = new LogitsProcessorList();
+	logitsProcessor.push(new NoOpLogitsProcessor());
+	logitsProcessor.push(new NoOpLogitsProcessor());
+	Assert.throws(
+		() => SampledTokenForwarder.around({
+			logits_processor: logitsProcessor,
+			stopping_criteria: new NoOpStoppingCriteria(),
+		}),
+		/returned 2 logits processors/,
+	);
 });

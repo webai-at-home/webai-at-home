@@ -1,5 +1,20 @@
-import { pipeline, TextStreamer, InterruptableStoppingCriteria, type TextGenerationPipeline } from '@huggingface/transformers';
-import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
+import {
+	pipeline,
+	StoppingCriteriaList,
+	TextStreamer,
+	InterruptableStoppingCriteria,
+	type TextGenerationPipeline,
+} from '@huggingface/transformers';
+import {
+	StagePayloadFactory,
+	type GenerationSettings,
+	type HistoryInput,
+	type LlmStagePayload,
+	type ResponseFormat,
+	type ToolDeclaration,
+} from '@webai/protocol';
+import { ResponseConstraintBuilder } from './structured_output/response_constraint_builder.js';
+import type { ForwardedResponseConstraint } from './structured_output/sampled_token_forwarder.js';
 import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from './gemma_4_e2b_history_messages.js';
@@ -117,6 +132,16 @@ type TaskGenerationState = {
 	 * tokens a tool call is written with, and whether the answer may be reported one piece at a time.
 	 */
 	declaredTools: readonly ToolDeclaration[];
+	/**
+	 * The shape the consumer asked its answer to be written in, or `undefined` when it asked for
+	 * prose.
+	 *
+	 * Read once, from the run that starts the answer, and kept for the runs that carry it on, for the
+	 * same reason {@link TaskGenerationState.declaredTools} is: only the first run of a task carries
+	 * the settings. It decides whether a response constraint is built for the generation call at all,
+	 * and a task that asks for nothing here generates byte for byte the answer it always did.
+	 */
+	responseFormat: ResponseFormat | undefined;
 	/**
 	 * Every token identifier the model has generated for this answer, in order.
 	 *
@@ -318,11 +343,12 @@ export class StageHelperLlmGemma4E2bFull {
 	 * is the one allowed to release the answer it is reading.
 	 * @param payload The prompt or history submitted with the task, or, on a run that carries an
 	 * answer on, a value saying so and nothing else.
-	 * @param generationSettings What the consumer asked for. Only `isStreaming` is read: it decides
-	 * whether one run returns one piece and leaves the answer open, or reads the whole answer. Every
-	 * other control is ignored, because this task type's contract in `generation_control_support.ts`
-	 * names none, and a control acted on without being declared is as wrong as one declared without
-	 * being acted on.
+	 * @param generationSettings What the consumer asked for. Two fields are read. `isStreaming`
+	 * decides whether one run returns one piece and leaves the answer open, or reads the whole
+	 * answer. `responseFormat` decides the shape the answer is written in, and is not a generation
+	 * control: it is honoured against `structured_output_support.ts`. Every generation control is
+	 * ignored, because this task type's contract in `generation_control_support.ts` names none, and a
+	 * control acted on without being declared is as wrong as one declared without being acted on.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
 	 * @throws If the model cannot be loaded, if the run is asked to carry on an answer this browser is
 	 * not holding, if the answer is abandoned before or while it is being read, or if generation
@@ -339,6 +365,7 @@ export class StageHelperLlmGemma4E2bFull {
 			: StageHelperLlmGemma4E2bFull.newGeneration(taskId, stageAssignmentId);
 		if (payload.isContinuation !== true) {
 			state.declaredTools = payload.history?.tools ?? [];
+			state.responseFormat = generationSettings?.responseFormat;
 		}
 		// A history that declared tools is never read in pieces, even when the consumer asked for
 		// pieces. Until the model has finished writing, a piece of a tool call is indistinguishable
@@ -451,6 +478,13 @@ export class StageHelperLlmGemma4E2bFull {
 				}
 			},
 		}).then((generator) => {
+			// The response constraint builds the byte form of every token in this model's vocabulary
+			// before it can mask anything, which was measured at 1128 to 1534 milliseconds for this
+			// tokenizer's 262144 tokens. It is paid here, inside a load that already takes minutes,
+			// rather than inside the first request that asks for a shape, where a consumer waits for
+			// it. A tab that is never asked for a shape pays it and never uses it, which is the price
+			// of no consumer ever waiting for it.
+			ResponseConstraintBuilder.warmup(generator.tokenizer);
 			onProgress?.({ kind: 'message', message: 'Gemma 4 E2B ready.' });
 			return generator;
 		}).catch((error: unknown) => {
@@ -483,6 +517,7 @@ export class StageHelperLlmGemma4E2bFull {
 			idleTimer: undefined,
 			text: '',
 			declaredTools: [],
+			responseFormat: undefined,
 			generatedTokenIds: [],
 			pieceCount: 0,
 			isReleased: false,
@@ -649,6 +684,12 @@ export class StageHelperLlmGemma4E2bFull {
 	 * characters to a request budgeted at 8 tokens, so thinking is what makes this model's output
 	 * unbounded rather than any property of the budget.
 	 *
+	 * A response format is not a generation control and is honoured: an answer asked for in a shape is
+	 * generated through a response constraint, which masks every token the shape does not allow and
+	 * stops the run when the shape is complete. An answer asked for in no shape is generated with the
+	 * call this stage has always made — no logits processor, and this stage's own stopping criterion
+	 * alone — so it is byte for byte the answer it always was.
+	 *
 	 * @param generator The loaded text-generation pipeline.
 	 * @param promptOrHistory The prompt or history to generate an answer for.
 	 * @param criteria Stops generation early when the stream's reader is cancelled.
@@ -670,6 +711,13 @@ export class StageHelperLlmGemma4E2bFull {
 		// so an answer reported one piece at a time never carries a marker, which is the one case
 		// nothing could strip after the fact, a forwarded piece being impossible to recall.
 		const keepsSpecialTokens = state.declaredTools.length > 0;
+		// Built before the stream rather than inside the generation call, so that a schema the
+		// package cannot enforce throws out of here and fails the stage, naming what it could not
+		// keep, rather than starting a run that would answer half-enforced.
+		const constraint = state.responseFormat === undefined
+			? undefined
+			: ResponseConstraintBuilder.build(generator.tokenizer, state.responseFormat);
+		const stoppingCriteria = StageHelperLlmGemma4E2bFull.stoppingCriteriaOf(constraint, criteria);
 		return new ReadableStream<string>({
 			start(controller) {
 				const streamer = new TextStreamer(generator.tokenizer, {
@@ -699,8 +747,9 @@ export class StageHelperLlmGemma4E2bFull {
 					do_sample: false,
 					return_full_text: false,
 					tokenizer_encode_kwargs: { enable_thinking: false },
-					stopping_criteria: criteria,
+					stopping_criteria: stoppingCriteria,
 					streamer,
+					...(constraint === undefined ? {} : { logits_processor: constraint.logitsProcessor }),
 				}).then(() => {
 					state.completionTokenCount = tokenIds.length;
 					state.stopReason = StageHelperLlmGemma4E2bFull.stopReasonOf(criteria, generator, tokenIds);
@@ -718,6 +767,38 @@ export class StageHelperLlmGemma4E2bFull {
 				criteria.interrupt();
 			},
 		});
+	}
+
+	/**
+	 * The stopping criteria one generation call runs with.
+	 *
+	 * `stopping_criteria` is a single option of the generation call, and a constrained run wants that
+	 * option for the constraint while this stage wants it for the criterion that stops a run whose
+	 * reader was cancelled. Both go into one list, which is what `StoppingCriteriaList` is for.
+	 *
+	 * The constraint's criteria come first. The first of them is what tells the constraint's grammar
+	 * which token the sampler chose, and the second is the constraint's own criterion reading that
+	 * grammar, so asking them in that order is what lets a run stop on the step its shape completes
+	 * rather than one token later.
+	 *
+	 * @param constraint The response constraint this run generates through, or `undefined` when the
+	 * consumer asked for no shape.
+	 * @param criteria This stage's own criterion, which stops generation when the stream's reader is
+	 * cancelled.
+	 * @returns This stage's own criterion alone for an unconstrained run, which is what this stage
+	 * has always passed, and the two kinds in one list otherwise.
+	 */
+	private static stoppingCriteriaOf(
+		constraint: ForwardedResponseConstraint | undefined,
+		criteria: InterruptableStoppingCriteria,
+	): InterruptableStoppingCriteria | StoppingCriteriaList {
+		if (constraint === undefined) {
+			return criteria;
+		}
+		const stoppingCriteria = new StoppingCriteriaList();
+		stoppingCriteria.extend(constraint.stoppingCriteria);
+		stoppingCriteria.extend(criteria);
+		return stoppingCriteria;
 	}
 
 	/**

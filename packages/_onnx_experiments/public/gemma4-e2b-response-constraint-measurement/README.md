@@ -123,7 +123,7 @@ The nested case answered `"celsius":22.000`. JSON Schema's `integer` means a num
 ## What this page does not answer
 
 - Whether vendoring is the route milestone 1 should keep. This page vendors the built bundle because it needed a copy to measure; milestone 1 decides between vendoring, a git submodule, a checked-in build, and waiting for a publish.
-- Whether `whitespace_flexible: false` is the right trade for every task type, or whether a stage should instead keep flexible whitespace and stop a whitespace run some other way. That is milestone 3's decision.
+- Whether `whitespace_flexible: false` is the right trade for every task type, or whether a stage should instead keep flexible whitespace and stop a whitespace run some other way. That was milestone 3's decision, and it found a third answer this page did not try: the package's other two `x-guidance` options, `key_separator: ": "` and `item_separator: ", "`, give back exactly the whitespace the model was denied, as fixed bytes with nothing to loop on. With all three options the same one-string schema wrote `{"city": "Paris"}` rather than the `{"city":"]Paris"}` recorded above. See [`packages/worker_webpage/web/src/stages/structured_output`](../../../worker_webpage/web/src/stages/structured_output/).
 - Anything about the regular expression response format, which issue #221 puts out of scope.
 - Anything about any other task type. Each row of `structured_output_support.ts` is its own measurement.
 
