@@ -2,9 +2,9 @@
 
 ## Summary
 
-- Passed: 30
+- Passed: 32
 - Failed: 0
-- Skipped: 14
+- Skipped: 12
 - Warned: 0
 
 Compatibility: 100.0%
@@ -13,7 +13,7 @@ A skipped test is a capability the endpoint declared it does not support, and is
 
 ## Test Run
 
-- Generated: 2026-08-19T23:24:30.926Z
+- Generated: 2026-08-20T14:17:58.626Z
 - Endpoint: `http://localhost:8788/v1`
 - Model: `llm_gemma_4_e2b_full`
 
@@ -88,8 +88,8 @@ openai_test conformance --model llm_gemma_4_e2b_full --profile full --format mar
 
 | Test | Result | Detail |
 | --- | --- | --- |
-| `structured_output.json_object` | ⊘ | json_object is not supported: HTTP 400, The model llm_gemma_4_e2b_full cannot produce a response_format of json_object, and this server refuses a request it would have to ignore rather than answering it in prose as though no shape had been asked for. The response_format types llm_gemma_4_e2b_full produces are text only. Send the request again with response_format "text" or without the field, or send it to a model that produces the shape you asked for. |
-| `structured_output.json_schema` | ⊘ | json_schema is not supported: HTTP 400, The model llm_gemma_4_e2b_full cannot produce a response_format of json_schema, and this server refuses a request it would have to ignore rather than answering it in prose as though no shape had been asked for. The response_format types llm_gemma_4_e2b_full produces are text only. Send the request again with response_format "text" or without the field, or send it to a model that produces the shape you asked for. |
+| `structured_output.json_object` | ✅ |  |
+| `structured_output.json_schema` | ✅ |  |
 
 ## OpenAI Node.js Package
 

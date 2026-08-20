@@ -130,6 +130,8 @@ Both `structured_output` rows in both `consumer_openai` columns are therefore �
 
 That was true until 2026-08-20, when `task_type_llm_gemma_4_e2b_full` became the first task type to produce both shapes: `@huggingface/transformers-response-constraint` constrains generation in the worker browser tab, and the native worker sends `response_format` to the local server it forwards to. Both kinds of worker were measured live before the row was entered. See [issue #221](https://github.com/webai-at-home/webai-at-home/issues/221).
 
+The full profile was rerun the same day through a real worker browser tab on WebGPU, and [`webai_at_home_llm_gemma_4_e2b_full.conformance_report.md`](../packages/openai_test/data/conformance_reports/webai_at_home_llm_gemma_4_e2b_full.conformance_report.md) now records `structured_output.json_object` and `structured_output.json_schema` as ✅ where both were ⊘. Nothing else in that report moved: 32 passed where it was 30, 12 skipped where it was 14, 0 failed, 100.0% compatibility both times. The `consumer_openai` columns of the table above are the two llama and qwen models and are unaffected; each of them needs its own live measurement before its own row can change.
+
 ### `llm_qwen3_5_0_8b_full` thinks until its budget is gone, and never begins an answer
 
 This model thinks before it answers, and on some questions it never stops thinking. One request against LM Studio directly, no cluster involved:
