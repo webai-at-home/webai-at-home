@@ -61,6 +61,7 @@ The central research questions are still open, especially result verification, b
 - [`packages/_tiny_iris_classifier`](packages/_tiny_iris_classifier/README.md) — small end-to-end browser inference example.
 - [`packages/docker_server`](packages/docker_server/README.md) — Linux Docker image that runs the gateway and serves the built worker browser page.
 - [`packages/worker_webpage`](packages/worker_webpage/README.md) — browser page that connects workers to the gateway.
+- [`packages/transformers_response_constraint`](packages/transformers_response_constraint/README.md) — a checked-in build of `@huggingface/transformers-response-constraint`, which is not published, so that a volunteer's `npm install` needs no manual step.
 
 ## Documentation
 

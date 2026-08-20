@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/huggingface/transformers.js.git",
+  "branch": "feat/transformers-llguidance-js",
+  "commit": "7c4593c6b43ad5975865184b3f79e17535b99eeb",
+  "commitDate": "2026-08-19",
+  "packageDirectory": "packages/transformers-response-constraint",
+  "esbuildVersion": "0.27.2",
+  "typescriptVersion": "7.0.2",
+  "pullRequest": "https://github.com/huggingface/transformers.js/pull/1733"
+}

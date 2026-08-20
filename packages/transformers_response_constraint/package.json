@@ -1,0 +1,28 @@
+{
+  "name": "@huggingface/transformers-response-constraint",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && npx tsx --test tests/index.test.ts",
+    "vendor:refresh": "node tools/vendor_refresh.mjs"
+  },
+  "peerDependencies": {
+    "@huggingface/transformers": "^4.2.0"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

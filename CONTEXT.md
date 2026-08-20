@@ -19,7 +19,7 @@ The root of an npm workspaces monorepo exploring whether idle web browsers can w
 - Every task, task type, pipeline, stage, and computation name follows [`docs/naming_scheme.md`](docs/naming_scheme.md), the one authoritative place for those names.
 - Never abbreviate a name, anywhere.
 - A message shape crossing a process boundary belongs in [`packages/protocol`](packages/protocol/), validated with Zod there, and is never restated in the gateway, a consumer, or a worker.
-- A package folder name is `snake_case`, with a leading underscore for an experiment; its npm package name is `@webai/` plus the same words in `kebab-case`.
+- A package folder name is `snake_case`, with a leading underscore for an experiment; its npm package name is `@webai/` plus the same words in `kebab-case`. [`packages/transformers_response_constraint`](packages/transformers_response_constraint/) is the one exception and says why.
 - A file added under [`docs/`](docs/) is linked from [`README.md`](README.md) or another documentation file, which is how a reader and the documentation link test find it.
 - A package that runs tests type checks before it runs them, with a `test` script reading `npm run typecheck && …`, and its `tsconfig.json` includes its own `tests/` folder.
 

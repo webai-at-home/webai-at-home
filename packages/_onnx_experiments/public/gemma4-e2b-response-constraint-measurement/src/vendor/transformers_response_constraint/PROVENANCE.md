@@ -7,7 +7,7 @@ This folder is a copy of a package that belongs to Hugging Face, not to this pro
 - Repository: <https://github.com/huggingface/transformers.js>
 - Branch: `feat/transformers-llguidance-js`, proposed in [pull request #1733](https://github.com/huggingface/transformers.js/pull/1733)
 - Commit: [`7c4593c6b43ad5975865184b3f79e17535b99eeb`](https://github.com/huggingface/transformers.js/commit/7c4593c6b43ad5975865184b3f79e17535b99eeb), 19 August 2026, "clean up"
-- Folder in that repository: `packages/transformers-response-constraint`
+- Folder in that repository: [the transformers-response-constraint package](https://github.com/huggingface/transformers.js/tree/feat/transformers-llguidance-js/packages/transformers-response-constraint)
 - Package version: `0.0.0`
 - Licence: Apache-2.0, copied here as [`LICENSE`](LICENSE)
 
