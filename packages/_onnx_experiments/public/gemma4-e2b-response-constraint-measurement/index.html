@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemma 4 E2B · response constraint measurement (issue #221)</title>
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      .phase { color: #6cf; }
+      .pass { color: #6f6; }
+      .fail { color: #f66; }
+    </style>
+  </head>
+  <body>
+    <h1>Gemma 4 E2B response constraint measurement — issue #221 milestone 0</h1>
+    <p>Loads the exact pinned export the real stage helper runs (<code>onnx-community/gemma-4-E2B-it-ONNX</code>,
+      revision <code>9f4bef82ea6e296bc69f8a2f5939f73af81b07a6</code>, <code>q4f16</code>, WebGPU only) and answers the
+      one assumption <a href="https://github.com/webai-at-home/webai-at-home/issues/221">issue #221</a> rests on:
+      <strong>can <code>@huggingface/transformers-response-constraint</code> be depended on by someone who is not its
+      author, and does it constrain this model in this browser tab at a cost a browser tab can pay?</strong></p>
+    <p>The first half decides the issue. The package is version <code>0.0.0</code>, answers HTTP 404 on npm, and lives
+      on the <code>feat/transformers-llguidance-js</code> branch behind
+      <a href="https://github.com/huggingface/transformers.js/pull/1733">pull request #1733</a>, open since 31 July
+      2026. Its author depends on it through a filesystem link to a checkout on one machine, which nobody else can
+      repeat. The copy this page uses was built from that branch at a recorded commit and is vendored under
+      <code>src/vendor/</code>, with its provenance written out beside it.</p>
+    <p>The second half is measured against the released <code>@huggingface/transformers</code> 4.2.0 this project
+      already pins, not against the branch build of the whole model runtime. The package advances its grammar in
+      <code>ConstraintLogitsProcessor.onTokensSampled</code>, and that method is added to
+      <code>LogitsProcessorList</code> by the same pull request. Phase 2 reads whether the loaded runtime calls it, and
+      then generates twice — once with the package used exactly as its own README says, and once with those calls
+      restored from <code>input_ids</code> — so the difference is visible in the text the model wrote rather than
+      argued from a version number.</p>
+    <p>Nothing here is taken from that pull request's own benchmarks, and nothing is taken from what
+      <a href="https://github.com/webai-at-home/webai-at-home/issues/219">issue #219</a> measured before its work was
+      reverted.</p>
+    <button id="run-button" type="button" disabled>Loading…</button>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/gemma4-e2b-response-constraint-measurement/src/main.ts"></script>
+  </body>
+</html>

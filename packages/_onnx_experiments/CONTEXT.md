@@ -18,7 +18,7 @@ Browser experiments for running language models with ONNX Runtime Web and Transf
 - Each experiment is standalone: one folder under `public/` with its own `index.html` and `src/`. Do not add a shared library folder; copying a helper into a second experiment is preferred over coupling them.
 - `tools/weight_conversion/` and `tools/model_graphs/` never import from each other. They meet only through the files on disk and the `manifest.json` and `graphs.json` describing them, which is the seam the whole design rests on.
 - `npm test --workspace @webai/onnx-experiments` runs the type check only. These experiments are read and run by a person, not asserted by a test.
-- Model files and generated artifacts are never committed.
+- Model files and generated artifacts are never committed. A third-party dependency that has no published release is not a generated artifact: it is vendored under the experiment's own `src/vendor/`, with its licence and a `PROVENANCE.md` naming the commit it came from and the commands that built it.
 
 ## Background
 
