@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { TaskType } from './task_types.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -15,9 +16,9 @@ import type { TaskType } from './task_types.js';
  * to be told about it, while each of the two below is a shape a task type either can produce or
  * cannot.
  */
-export type ResponseFormatName =
-	| 'json_object'
-	| 'json_schema';
+export const ResponseFormatNameSchema = z.enum(['json_object', 'json_schema']);
+/** One of the response formats a consumer may ask for. See {@link ResponseFormatNameSchema}. */
+export type ResponseFormatName = z.infer<typeof ResponseFormatNameSchema>;
 
 /**
  * The response formats each task type honours, and by omission the ones it cannot.

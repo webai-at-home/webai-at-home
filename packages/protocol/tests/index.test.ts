@@ -297,6 +297,17 @@ Test('validates every inbound client message shape', () => {
 		Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello', generationSettings: { reasoningEffort: level } } }).success, true);
 	}
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_qwen3_5_0_8b_full', input: 'hello', generationSettings: { reasoningEffort: 'exhaustive' } } }).success, false);
+	// Protocol version 10 added `responseFormat`, holding the two shapes the OpenAI Chat Completions
+	// interface names. `text` is not one of them: it is that interface's own default, asks for
+	// nothing unusual, and a consumer drops it rather than carrying it. See issue #219.
+	for (const responseFormat of ['json_object', 'json_schema']) {
+		Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat } } }).success, true);
+	}
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: 'text' } } }).success, false);
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { responseFormat: 'yaml' } } }).success, false);
+	// A shape travels beside the controls without disturbing them, because it is carried in the same
+	// block and refused against a different table.
+	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', taskRequestId: 'request-1', input: { taskType: 'task_type_llm_gemma_4_e2b_full', input: 'hello', generationSettings: { isStreaming: true, temperature: 0, responseFormat: 'json_object' } } }).success, true);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'task.submit', input: { taskType: 'task_type_dev_formula', input: 5 } }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'stage.result', taskId: 'task-1', stage: 'stage_dev_formula_multiply', value: 10 }).success, false);
 	Assert.equal(ClientMessageSchema.safeParse({ type: 'deviceRegister', role: 'consumer', name: 'consumer', unexpected: true }).success, false);

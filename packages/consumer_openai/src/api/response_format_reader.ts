@@ -17,10 +17,11 @@ import type { ChatCompletionRequest } from './openai_types.js';
  * generation control, decided the same way and for the same reason:
  *
  * - The task type honours the shape asked for: it is carried to the cluster as the client asked
- *   for it. No task type honours any shape today, measured by the milestone 0 gate of
- *   [issue #191](https://github.com/webai-at-home/webai-at-home/issues/191), so nothing is carried
- *   yet and the carrying path is written by whichever issue first fills an entry of
- *   `StructuredOutputSupport`, which is when it can be tested against something real.
+ *   for it, in `GenerationSettings.responseFormat`, which the caller of this class puts there.
+ *   Milestone 2 of [issue #219](https://github.com/webai-at-home/webai-at-home/issues/219) wrote
+ *   that carrying path, having found that this class refused shapes and dropped what it read.
+ *   Whether any task type honours any shape is `StructuredOutputSupport`'s to say, and it is what
+ *   decides between this fate and the third one.
  * - The shape asked for is `text`, an absent field, or a `null` field: it is dropped without a
  *   word. All three mean the same thing, which is that nothing unusual was asked for, and a client
  *   that always sends `response_format: { "type": "text" }` must not be refused.
