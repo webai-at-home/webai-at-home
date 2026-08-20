@@ -149,6 +149,7 @@ export default defineConfig({
         qwen3_5ToolCallsGate: resolve(import.meta.dirname, 'public/qwen3_5-tool-calls-gate/index.html'),
         gemma4E2bToolCallsGate: resolve(import.meta.dirname, 'public/gemma4-e2b-tool-calls-gate/index.html'),
         gemma4E2bJsonGrammarGate: resolve(import.meta.dirname, 'public/gemma4-e2b-json-grammar-gate/index.html'),
+        gemma4E2bJsonSchemaMeasurement: resolve(import.meta.dirname, 'public/gemma4-e2b-json-schema-measurement/index.html'),
         matmulNBitsOwnedWebgpuBufferGate: resolve(
           import.meta.dirname,
           'public/matmulnbits-owned-webgpu-buffer-gate/index.html',

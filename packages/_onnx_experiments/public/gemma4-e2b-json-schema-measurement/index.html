@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemma 4 E2B · JSON Schema measurement (issue #219)</title>
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      .phase { color: #6cf; }
+      .pass { color: #6f6; }
+      .fail { color: #f66; }
+    </style>
+  </head>
+  <body>
+    <h1>Gemma 4 E2B JSON Schema measurement — issue #219 milestone 6</h1>
+    <p>Loads the exact pinned export the real stage helper runs (<code>onnx-community/gemma-4-E2B-it-ONNX</code>,
+      revision <code>9f4bef82ea6e296bc69f8a2f5939f73af81b07a6</code>, <code>q4f16</code>, WebGPU only) and answers the
+      question milestone 6 of <a href="https://github.com/webai-at-home/webai-at-home/issues/219">issue #219</a> rests
+      on: <strong>can a logits mask hold this model to a JSON Schema — the keys it requires, the types it declares,
+      the values it enumerates — and at what price?</strong></p>
+    <p>Milestone 0 already measured the thing underneath: a mask handed to the pipeline call decides which token this
+      model writes, and cost 44.7 milliseconds per token. That says nothing about a schema. A key is written a token at
+      a time and this tokenizer merges characters, so holding the model to the key <code>capital</code> means masking
+      down to the entries whose text carries that key on from wherever it has got to. And a schema state carries which
+      keys have been written and how far into one the model is, so a run reaches many more distinct states than the
+      eight milestone 0 measured, each one scanning the whole vocabulary once.</p>
+    <p>Every schema below asks for something the question alone would not produce — a key the question never mentions,
+      an integer where the question asked for words, a value from an enumeration the question never names — so an
+      answer that satisfies the schema is an answer the mask decided rather than one the model happened to write.</p>
+    <button id="run-button" type="button" disabled>Loading…</button>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/gemma4-e2b-json-schema-measurement/src/main.ts"></script>
+  </body>
+</html>
