@@ -19,6 +19,7 @@ import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from './gemma_4_e2b_history_messages.js';
 import { StopSequenceWatcher } from './stop_sequence_watcher.js';
+import { ThoughtChannelCut } from './thought_channel_cut.js';
 import type { FullModelReadiness } from './stage_helper_llm_qwen3_5_0_8b_full.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 
@@ -155,6 +156,18 @@ type TaskGenerationState = {
 	 * {@link StageHelperLlmGemma4E2bFull.answerTextOf} cuts a tool run's re-decoded answer with.
 	 */
 	stopSequences: readonly string[];
+	/**
+	 * Whether this answer was generated with the model allowed to think before it answers.
+	 *
+	 * Kept on the state, rather than read from the generation settings where it is needed, for the same reason
+	 * {@link TaskGenerationState.declaredTools} is: only the first run of a task carries the settings, and the run
+	 * that reports the finished answer is often a later one.
+	 *
+	 * Two things read it. {@link StageHelperLlmGemma4E2bFull.compute} refuses to report such an answer one piece at
+	 * a time, because where the thinking ends is only known once it has ended. And
+	 * {@link StageHelperLlmGemma4E2bFull.answerTextOf} takes the thinking out before the answer is reported.
+	 */
+	isThinkingEnabled: boolean;
 	/**
 	 * Every token identifier the model has generated for this answer, in order.
 	 *
@@ -389,13 +402,22 @@ export class StageHelperLlmGemma4E2bFull {
 			state.declaredTools = payload.history?.tools ?? [];
 			state.responseFormat = generationSettings?.responseFormat;
 			state.stopSequences = generationSettings?.stopSequences ?? [];
+			state.isThinkingEnabled = StageHelperLlmGemma4E2bFull.isThinkingEnabled(generationSettings);
 		}
 		// A history that declared tools is never read in pieces, even when the consumer asked for
 		// pieces. Until the model has finished writing, a piece of a tool call is indistinguishable
 		// from a piece of an answer — the two begin the same way — so reporting pieces would send a
 		// consumer the raw `<|tool_call>` markup of a request it was supposed to receive as structured
 		// data. One run reads the whole thing and returns either an answer or the tool calls.
-		const wantsPieces = generationSettings?.isStreaming === true && state.declaredTools.length === 0;
+		// An answer generated with thinking on is never reported one piece at a time. Where the thinking
+		// ends is only known once it has ended, and `TextStreamer` gives no way to learn it in time: a
+		// channel marker is a special token, and a streamer skipping special tokens emits no text for it
+		// at all and does not flush what it has buffered, so the piece that follows the marker carries the
+		// tail of the thinking merged with the start of the answer. Reporting the answer whole is what lets
+		// {@link StageHelperLlmGemma4E2bFull.answerTextOf} cut it exactly, on the token identifiers.
+		const wantsPieces = generationSettings?.isStreaming === true
+			&& state.declaredTools.length === 0
+			&& state.isThinkingEnabled === false;
 		// A run that returns a piece leaves the answer open behind it, so it is the one kind of run
 		// that must not release what it was reading. Every other way out of this method — the finished
 		// answer, and every failure — releases it.
@@ -546,6 +568,7 @@ export class StageHelperLlmGemma4E2bFull {
 			declaredTools: [],
 			responseFormat: undefined,
 			stopSequences: [],
+			isThinkingEnabled: false,
 			generatedTokenIds: [],
 			pieceCount: 0,
 			isReleased: false,
@@ -671,7 +694,7 @@ export class StageHelperLlmGemma4E2bFull {
 		).apply_chat_template(Gemma4E2bHistoryMessages.of(promptOrHistory), {
 			tokenize: true,
 			add_generation_prompt: true,
-			enable_thinking: false,
+			enable_thinking: StageHelperLlmGemma4E2bFull.isThinkingEnabled(generationSettings),
 			return_dict: false,
 			...ChatTemplateTools.templateOption(state.declaredTools),
 		});
@@ -795,11 +818,11 @@ export class StageHelperLlmGemma4E2bFull {
 				// declared no tool still goes through the message list, exactly as it always has.
 				const input = state.declaredTools.length === 0
 					? Gemma4E2bHistoryMessages.of(promptOrHistory)
-					: StageHelperLlmGemma4E2bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools);
+					: StageHelperLlmGemma4E2bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools, generationSettings);
 				generator(input, {
 					...generationControls,
 					return_full_text: false,
-					tokenizer_encode_kwargs: { enable_thinking: false },
+					tokenizer_encode_kwargs: { enable_thinking: StageHelperLlmGemma4E2bFull.isThinkingEnabled(generationSettings) },
 					stopping_criteria: stoppingCriteria,
 					streamer,
 					...(constraint === undefined ? {} : { logits_processor: constraint.logitsProcessor }),
@@ -869,6 +892,39 @@ export class StageHelperLlmGemma4E2bFull {
 	}
 
 	/**
+	 * Decides whether this model is allowed to think before it answers, from what the consumer asked
+	 * for.
+	 *
+	 * This model thinks, and this engine really does act on `enable_thinking`: milestone 0 of
+	 * [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223) rendered the same history
+	 * both ways in a real browser tab on WebGPU and got two different prompts, 22 tokens against 29,
+	 * where `true` opens a system turn holding `<|think|>` that `false` has not got. A history that
+	 * declared a tool reads the option too, 84 tokens against 86, which is why all three places this
+	 * stage passes it read the same setting.
+	 *
+	 * Thinking on or off is all this engine can express, so every level above `none` reads the same
+	 * here. A consumer asking for `xhigh` is not being refused and is not being ignored; it is being
+	 * told, by this task type's contract, that the control is honoured, and this is how coarsely. The
+	 * local server the native worker talks to is no finer: that same milestone sent all six levels to
+	 * Ollama serving `gemma4:e2b` and got 8 completion tokens with no reasoning for `none` and an
+	 * identical 114 tokens with reasoning for each of the other five.
+	 *
+	 * An answer that asked for nothing does not think, which is what this stage did before any of this
+	 * was settable, so such a request is generated exactly as it is today. That milestone also measured
+	 * what thinking costs on this model, and the default is worth keeping: the same settled question
+	 * answered in 8 completion tokens without it and 114 with it, for the same answer.
+	 *
+	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for nothing.
+	 * @returns `true` when the model may think before it answers.
+	 */
+	private static isThinkingEnabled(generationSettings: GenerationSettings | undefined): boolean {
+		if (generationSettings?.reasoningEffort === undefined) {
+			return false;
+		}
+		return generationSettings.reasoningEffort !== 'none';
+	}
+
+	/**
 	 * The stopping criteria one generation call runs with.
 	 *
 	 * `stopping_criteria` is a single option of the generation call, and a constrained run wants that
@@ -903,33 +959,46 @@ export class StageHelperLlmGemma4E2bFull {
 	/**
 	 * The answer to report, for a run whose model wrote words rather than asking for a tool.
 	 *
-	 * A run that declared no tool decoded with the special tokens skipped already, so the text it
-	 * read is the answer, byte for byte as this stage has always reported it.
+	 * A run that declared no tool and was not allowed to think decoded with the special tokens skipped already, so
+	 * the text it read is the answer, byte for byte as this stage has always reported it.
 	 *
-	 * A run that declared tools had to keep the special tokens, so its text ends in the end-of-turn
-	 * marker the model wrote, which no consumer asked for. The answer is arrived at by decoding the
-	 * same token identifiers a second time with the special tokens skipped, rather than by cutting
-	 * markers off the text: the set of markers this model may write is the model's, not this file's,
-	 * and a list of them written here would be one more thing to keep in step with the model.
+	 * A run that declared tools had to keep the special tokens, so its text ends in the end-of-turn marker the model
+	 * wrote, which no consumer asked for. The answer is arrived at by decoding the same token identifiers a second
+	 * time with the special tokens skipped, rather than by cutting markers off the text: the set of markers this
+	 * model may write is the model's, not this file's, and a list of them written here would be one more thing to
+	 * keep in step with the model.
 	 *
-	 * That second decoding goes round the watcher the generation stream forwarded through, so it is
-	 * cut by a watcher of its own. Without it, a task that declared tools and asked for a stop
-	 * sequence would have generation stopped at the sequence and then report the sequence anyway,
-	 * which is the control half kept — and a control declared and half kept is not honoured.
+	 * A run that was allowed to think has the model's own thinking to take out as well, which
+	 * {@link ThoughtChannelCut} does on those same identifiers. Nothing in this cluster carries a model's thinking
+	 * beside its answer, so an answer that thought has to arrive with the thinking already gone — and the native
+	 * worker's answer already does, the local server putting its thinking in a `reasoning` field that
+	 * `OpenaiApiClient` never reads. See milestone 1 of
+	 * [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223), which measured both.
+	 *
+	 * That second decoding goes round the watcher the generation stream forwarded through, so it is cut by a watcher
+	 * of its own. Without it, a task that declared tools and asked for a stop sequence would have generation stopped
+	 * at the sequence and then report the sequence anyway, which is the control half kept — and a control declared
+	 * and half kept is not honoured. A task that asked for a stop sequence and asked the model to think is the one
+	 * case these two controls read each other: the watcher the stream forwards through sees the thinking as well as
+	 * the answer, so a sequence the model happens to write while thinking stops generation before the answer begins.
+	 * That is recorded rather than worked around, in the milestone 1 comment of issue #223.
 	 *
 	 * @param state The generation state holding the text read and the tokens it came from.
 	 * @returns The answer text to report.
 	 */
 	private static async answerTextOf(state: TaskGenerationState): Promise<string> {
-		if (state.declaredTools.length === 0) {
+		if (state.declaredTools.length === 0 && state.isThinkingEnabled === false) {
 			return state.text;
 		}
 		const generator = await StageHelperLlmGemma4E2bFull.loadedGenerator();
+		const answerTokenIds = state.isThinkingEnabled === false
+			? state.generatedTokenIds
+			: ThoughtChannelCut.outsideEveryChannel(generator.tokenizer, state.generatedTokenIds);
 		const decoded = (
 			generator.tokenizer as unknown as {
 				decode: (tokenIds: number[], options: Record<string, unknown>) => string;
 			}
-		).decode(state.generatedTokenIds, { skip_special_tokens: true });
+		).decode(answerTokenIds, { skip_special_tokens: true });
 		const stopSequenceWatcher = new StopSequenceWatcher(state.stopSequences);
 		return stopSequenceWatcher.accept(decoded) + stopSequenceWatcher.flush();
 	}
@@ -943,12 +1012,14 @@ export class StageHelperLlmGemma4E2bFull {
 	 * @param generator The loaded text-generation pipeline, read for its tokenizer's chat template.
 	 * @param promptOrHistory The prompt or history submitted with the task.
 	 * @param declaredTools The tools the history declared.
+	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for nothing.
 	 * @returns The prompt text to generate from.
 	 */
 	private static renderedPrompt(
 		generator: TextGenerationPipeline,
 		promptOrHistory: string | HistoryInput,
 		declaredTools: readonly ToolDeclaration[],
+		generationSettings: GenerationSettings | undefined,
 	): string {
 		return (
 			generator.tokenizer as unknown as {
@@ -957,7 +1028,7 @@ export class StageHelperLlmGemma4E2bFull {
 		).apply_chat_template(Gemma4E2bHistoryMessages.of(promptOrHistory), {
 			tokenize: false,
 			add_generation_prompt: true,
-			enable_thinking: false,
+			enable_thinking: StageHelperLlmGemma4E2bFull.isThinkingEnabled(generationSettings),
 			...ChatTemplateTools.templateOption(declaredTools),
 		});
 	}
