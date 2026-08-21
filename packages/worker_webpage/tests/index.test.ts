@@ -13,6 +13,8 @@ import { ChatTemplateTools } from '../web/src/stages/chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from '../web/src/stages/gemma_4_e2b_history_messages.js';
 import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call_reader.js';
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
+import { EmptyAnswerRefusal } from '../web/src/stages/empty_answer_refusal.js';
+import { ThoughtChannelCut } from '../web/src/stages/thought_channel_cut.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -612,4 +614,107 @@ Test('the forwarder refuses a constraint whose shape it was not written for', ()
 		}),
 		/returned 2 logits processors/,
 	);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	EmptyAnswerRefusal
+//
+//	[issue #225](https://github.com/webai-at-home/webai-at-home/issues/225). Every stage helper of
+//	this page reported an empty answer as a finished one whatever ended it, so a model that ran its
+//	whole budget without writing a word reached the consumer as a model with nothing to say. The one
+//	stage where that really happens is Gemma 4 E2B: `ThoughtChannelCut` drops everything after a
+//	thought channel opened and never closed, so a model still thinking when its budget ran out
+//	leaves no answer behind at all. No model is loaded here — the rule is the whole of what is
+//	asserted, which is why it lives in a module of its own rather than in four stage helpers.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+Test('refuses an answer holding no text that ran out of room, and says how many tokens went nowhere', () => {
+	Assert.throws(
+		() => EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('', 'max_new_tokens', 1024, false),
+		/all 1024 tokens it was allowed/,
+	);
+});
+
+Test('says what to ask for instead when the run let the model think, since thinking is what produces this', () => {
+	Assert.throws(
+		() => EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('', 'max_new_tokens', 1024, true),
+		/reasoningEffort of "none"/,
+	);
+});
+
+Test('names no reasoning effort when the run did not let the model think, rather than sending a consumer to the wrong setting', () => {
+	// `stage_helper_llm_llama3_2_1b_full.ts` and `stage_helper_llm_qwen3_0_6b_sharded.ts` run models
+	// that cannot think at all, and their task types offer no `reasoningEffort` to change.
+	Assert.throws(
+		() => EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('', 'max_new_tokens', 160, false),
+		(error: unknown) => {
+			Assert.match((error as Error).message, /all 160 tokens it was allowed/);
+			Assert.equal((error as Error).message.includes('reasoningEffort'), false);
+			return true;
+		},
+	);
+});
+
+Test('says every token it was allowed when the stage counted none, rather than naming a number nobody reported', () => {
+	Assert.throws(
+		() => EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('', 'max_new_tokens', undefined, false),
+		/every token it was allowed/,
+	);
+});
+
+Test('still reports an empty answer the model ended of its own accord, which says something an interrupted one does not', () => {
+	// The [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192) decision, which
+	// this rule must not undo: a model that stopped writing because it had finished, having written
+	// nothing, has said what it had to say.
+	EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('', 'end_of_sequence', 0, true);
+});
+
+Test('still reports an empty answer that ended on a stop sequence or was interrupted, both being what a caller asked for', () => {
+	EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('', 'stop_sequence', 4, true);
+	EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('', 'interrupted', 4, true);
+});
+
+Test('still reports an answer that ran out of room after writing something, since that answer is real as far as it goes', () => {
+	// A `maximumOutputTokenCount` of 1 ends a perfectly good answer at its limit. Only an answer
+	// that never began is refused.
+	EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan('In', 'max_new_tokens', 1, true);
+});
+
+/**
+ * A tokenizer that decodes one identifier at a time, standing in for the real one so that
+ * {@link ThoughtChannelCut} can be read without loading a model.
+ *
+ * Identifier 1 is the channel opener and identifier 2 is the channel closer, spelled exactly as
+ * Gemma 4 E2B's tokenizer configuration spells them. Every other identifier decodes to a word.
+ *
+ * @param wordByTokenId The word each ordinary identifier stands for.
+ * @returns Something with the one `decode` method {@link ThoughtChannelCut} calls.
+ */
+const fakeChannelTokenizer = (wordByTokenId: Record<number, string>): Parameters<typeof ThoughtChannelCut.outsideEveryChannel>[0] => ({
+	decode: (tokenIds: number[]): string => {
+		const [tokenId] = tokenIds;
+		if (tokenId === 1) {
+			return '<|channel>';
+		}
+		if (tokenId === 2) {
+			return '<channel|>';
+		}
+		return wordByTokenId[tokenId as number] ?? '';
+	},
+} as unknown as Parameters<typeof ThoughtChannelCut.outsideEveryChannel>[0]);
+
+Test('a thought channel opened and never closed leaves no answer at all, which is what makes the refusal above necessary', () => {
+	// This is the whole of [issue #225](https://github.com/webai-at-home/webai-at-home/issues/225)
+	// on Gemma 4 E2B: the model was still thinking when its budget ran out, so every token it
+	// generated is inside a channel that never closed, and nothing survives the cut. Reported as an
+	// answer, that is a model with nothing to say; refused, it is a stage the gateway can run again.
+	const tokenizer = fakeChannelTokenizer({ 10: 'Thinking', 11: ' about', 12: ' it' });
+	Assert.deepEqual(ThoughtChannelCut.outsideEveryChannel(tokenizer, [1, 10, 11, 12]), []);
+});
+
+Test('a thought channel that closed leaves the answer written after it, which is the usual case', () => {
+	const tokenizer = fakeChannelTokenizer({ 10: 'Thinking', 20: 'Paris' });
+	Assert.deepEqual(ThoughtChannelCut.outsideEveryChannel(tokenizer, [1, 10, 2, 20]), [20]);
 });
