@@ -135,14 +135,34 @@ const streamedStageResultOf = async (
 	payload: LlmStagePayload,
 	generationSettings?: GenerationSettings,
 ): Promise<LlmStagePayload> => {
+	const body = `${events.map((event) => `data: ${JSON.stringify(event)}\n`).join('')}data: [DONE]\n`;
+	return await rawStreamedStageResultOf(body, payload, generationSettings);
+};
+
+/**
+ * Runs one stage run against a local HTTP server that answers with exactly the body given, and
+ * returns the stage result.
+ *
+ * Separate from {@link streamedStageResultOf} because a body built out of `data:` lines can carry
+ * no `event:` line, and `event: error` is how LM Studio writes a failure into a stream it has
+ * already answered with a successful status. Milestone 0 of
+ * https://github.com/webai-at-home/webai-at-home/issues/215 measured that shape live.
+ *
+ * @param body The whole response body the local server answers with, written exactly as given.
+ * @param payload The stage payload the run is given.
+ * @param generationSettings What the consumer asked for, passed to the stage unchanged.
+ * @returns The stage result.
+ */
+const rawStreamedStageResultOf = async (
+	body: string,
+	payload: LlmStagePayload,
+	generationSettings?: GenerationSettings,
+): Promise<LlmStagePayload> => {
 	const server = Http.createServer((request, response) => {
 		request.on('data', () => undefined);
 		request.on('end', () => {
 			response.writeHead(200, { 'Content-Type': 'text/event-stream' });
-			for (const event of events) {
-				response.write(`data: ${JSON.stringify(event)}\n`);
-			}
-			response.end('data: [DONE]\n');
+			response.end(body);
 		});
 	});
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -460,6 +480,71 @@ Test('still reports an answer that ran out of room after writing something, sinc
 		'task-short-length', 'assignment-short-length', { text: 'Write a long story.' }, undefined, client, 'qwen_qwen3.5-0.8b',
 	);
 	Assert.deepEqual(result, { text: 'In', done: true, promptTokenCount: 12, completionTokenCount: 1, stopReason: 'max_new_tokens' });
+});
+
+Test('fails the stage when the local server writes an error event into a stream it already answered successfully', async () => {
+	// The defect of [issue #215](https://github.com/webai-at-home/webai-at-home/issues/215), as
+	// LM Studio 0.4.20 serving `qwen_qwen3.5-0.8b` really writes it: HTTP 200, one `event: error`
+	// line, one `data:` line carrying the message twice, and then nothing at all — no
+	// `finish_reason`, no `usage`, and no `data: [DONE]`. Measured live for milestone 0.
+	const failure = 'Engine protocol predict request returned 500: Jinja Exception: System message must be at the beginning.';
+	const body = `event: error\ndata: ${JSON.stringify({ error: { message: failure }, message: failure })}\n\n`;
+	await Assert.rejects(
+		async () => await rawStreamedStageResultOf(body, { text: 'What is the capital of France?' }),
+		(error: unknown) => {
+			// The stage fails with the message the local server gave, because that message is the
+			// only account of the real cause anyone downstream will ever get.
+			Assert.match((error as Error).message, /Jinja Exception: System message must be at the beginning\./);
+			return true;
+		},
+	);
+});
+
+Test('fails the stage when a streamed event carries an error object with no event line before it', async () => {
+	// `--openai-base-url` can be pointed at any server speaking this interface, and only LM Studio
+	// and Ollama have been measured, so an `error` object is read as a failure however it arrives.
+	const body = `data: ${JSON.stringify({ error: { message: 'the engine crashed' } })}\n\ndata: [DONE]\n\n`;
+	await Assert.rejects(
+		async () => await rawStreamedStageResultOf(body, { text: 'What is the capital of France?' }),
+		(error: unknown) => {
+			Assert.match((error as Error).message, /the engine crashed/);
+			return true;
+		},
+	);
+});
+
+Test('reads an answer whose events are named something other than a failure, and reads the pieces after one', async () => {
+	// Only an event named `error` is a failure. A server that names its ordinary events is read
+	// exactly as one that names none, and the blank line ending a named event clears that name
+	// rather than carrying it onto whatever follows.
+	const body = 'event: message\ndata: {"choices":[{"delta":{"content":"Par"}}]}\n\n'
+		+ 'data: {"choices":[{"delta":{"content":"is"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+	const result = await rawStreamedStageResultOf(body, { text: 'What is the capital of France?' });
+	Assert.deepEqual(result, { text: 'Paris', done: true, stopReason: 'end_of_sequence' });
+});
+
+Test('fails the stage when the answer holds no text and the local server never said why generation stopped', async () => {
+	// The safety net behind reading the error events: a failure written in a shape this worker has
+	// never seen still ends a stream having produced nothing and having reported no finish reason,
+	// and a server that finishes an answer always reports one.
+	const body = `data: ${JSON.stringify({ failure: 'the engine died' })}\n\ndata: [DONE]\n\n`;
+	await Assert.rejects(
+		async () => await rawStreamedStageResultOf(body, { text: 'What is the capital of France?' }),
+		(error: unknown) => {
+			Assert.match((error as Error).message, /without ever saying why generation stopped/);
+			return true;
+		},
+	);
+});
+
+Test('still reports an empty answer that ended of its own accord when it is read out of a real stream', async () => {
+	// The [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192) decision, checked
+	// through the real reader rather than a fake client: `finish_reason: stop` with no text is a
+	// model that had nothing to say, and refusing an empty answer for having no finish reason must
+	// not touch it.
+	const body = 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n';
+	const result = await rawStreamedStageResultOf(body, { text: 'Say nothing at all.' });
+	Assert.deepEqual(result, { text: '', done: true, stopReason: 'end_of_sequence' });
 });
 
 Test('reads one piece per run, and joins them across a continuation, when asked for pieces', async () => {
