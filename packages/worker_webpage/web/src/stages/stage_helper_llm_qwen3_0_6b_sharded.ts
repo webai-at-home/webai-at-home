@@ -3,6 +3,7 @@
 import * as OnnxRuntimeWeb from 'onnxruntime-web';
 import { Tokenizer } from '@huggingface/tokenizers';
 import { GeneratedText, StagePayloadFactory, type EncodedTensor, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
+import { EmptyAnswerRefusal } from './empty_answer_refusal.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 
@@ -249,12 +250,14 @@ export class StageHelperLlmQwen3_0_6bSharded {
 			state.answerText += newText;
 			if (done) {
 				const answerText = state.answerText;
-				const usage = StageHelperLlmQwen3_0_6bSharded.usageOf(
-					state,
-					promptTokenCount,
-					StageHelperLlmQwen3_0_6bSharded.stopReasonOf(hasStoppedOnSequence, isEndOfSequence),
-				);
+				const stopReason = StageHelperLlmQwen3_0_6bSharded.stopReasonOf(hasStoppedOnSequence, isEndOfSequence);
+				const generatedTokenCount = state.generatedIds.length;
+				const usage = StageHelperLlmQwen3_0_6bSharded.usageOf(state, promptTokenCount, stopReason);
 				StageHelperLlmQwen3_0_6bSharded.clearTask(taskId);
+				// Refused after the task is cleared, so a refusal leaves nothing of this task held here,
+				// exactly as the finished answer below leaves nothing. This model does not think, so the
+				// failure names no reasoning effort to change.
+				EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan(answerText, stopReason, generatedTokenCount, false);
 				// The whole answer travels once, on the one result that ends the task, and the piece
 				// travels with it so a reader joining the pieces receives the last one as well. See
 				// milestone 3 of issue #150 for the usage this stage now reports alongside it.

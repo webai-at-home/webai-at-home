@@ -3,6 +3,7 @@ import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type L
 import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 import { ToolCallReader } from './tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
+import { EmptyAnswerRefusal } from './empty_answer_refusal.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -343,6 +344,12 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 			if (toolCalls.length > 0) {
 				return StagePayloadFactory.llmToolCalls(toolCalls, StageHelperLlmQwen3_5_0_8bFull.usageOf(state));
 			}
+			EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan(
+				state.text,
+				state.stopReason,
+				state.completionTokenCount,
+				StageHelperLlmQwen3_5_0_8bFull.isThinkingEnabled(generationSettings),
+			);
 			return StagePayloadFactory.llmDone(state.text, undefined, StageHelperLlmQwen3_5_0_8bFull.usageOf(state));
 		} finally {
 			if (leavesAnswerOpen === false) {

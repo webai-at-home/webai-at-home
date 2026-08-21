@@ -1,5 +1,6 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, type TextGenerationPipeline } from '@huggingface/transformers';
 import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload } from '@webai/protocol';
+import { EmptyAnswerRefusal } from './empty_answer_refusal.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 
@@ -322,6 +323,10 @@ export class StageHelperLlmLlama3_2_1bFull {
 				}
 			}
 			StageHelperLlmLlama3_2_1bFull.refuseIfReplaced(state, stageAssignmentId);
+			// This model does not think, so `false` is passed rather than a setting read: nothing a
+			// consumer can ask this stage for would make it think, and naming one would send a
+			// consumer to change a setting that had nothing to do with what happened.
+			EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan(state.text, state.stopReason, state.completionTokenCount, false);
 			return StagePayloadFactory.llmDone(state.text, undefined, StageHelperLlmLlama3_2_1bFull.usageOf(state));
 		} finally {
 			if (leavesAnswerOpen === false) {

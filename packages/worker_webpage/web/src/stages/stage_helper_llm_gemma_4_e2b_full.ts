@@ -17,6 +17,7 @@ import { ResponseConstraintBuilder } from './structured_output/response_constrai
 import type { ForwardedResponseConstraint } from './structured_output/sampled_token_forwarder.js';
 import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
+import { EmptyAnswerRefusal } from './empty_answer_refusal.js';
 import { Gemma4E2bHistoryMessages } from './gemma_4_e2b_history_messages.js';
 import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 import { ThoughtChannelCut } from './thought_channel_cut.js';
@@ -459,8 +460,18 @@ export class StageHelperLlmGemma4E2bFull {
 			if (toolCalls.length > 0) {
 				return StagePayloadFactory.llmToolCalls(toolCalls, StageHelperLlmGemma4E2bFull.usageOf(state));
 			}
+			// Read once and refused before it is reported, because the cut this stage makes is what
+			// can leave it empty: a thought channel opened and never closed drops everything after
+			// it, so a model still thinking when its budget ran out leaves no answer at all.
+			const answerText = await StageHelperLlmGemma4E2bFull.answerTextOf(state);
+			EmptyAnswerRefusal.refuseAnswerThatRanOutBeforeItBegan(
+				answerText,
+				state.stopReason,
+				state.completionTokenCount,
+				state.isThinkingEnabled,
+			);
 			return StagePayloadFactory.llmDone(
-				await StageHelperLlmGemma4E2bFull.answerTextOf(state),
+				answerText,
 				undefined,
 				StageHelperLlmGemma4E2bFull.usageOf(state),
 			);
