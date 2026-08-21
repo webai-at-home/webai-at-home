@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemma 4 E2B · generation controls measurement (issue #222)</title>
+    <style>
+      body { font-family: ui-monospace, monospace; background: #111; color: #ddd; padding: 1.5rem; }
+      h1 { font-size: 1rem; color: #fff; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #000; padding: 1rem; border: 1px solid #333; }
+      .phase { color: #6cf; }
+      .pass { color: #6f6; }
+      .fail { color: #f66; }
+    </style>
+  </head>
+  <body>
+    <h1>Gemma 4 E2B generation controls measurement — issue #222 milestone 0</h1>
+    <p>Loads the exact pinned export the real stage helper runs (<code>onnx-community/gemma-4-E2B-it-ONNX</code>,
+      revision <code>9f4bef82ea6e296bc69f8a2f5939f73af81b07a6</code>, <code>q4f16</code>, WebGPU only) and answers the
+      one assumption <a href="https://github.com/webai-at-home/webai-at-home/issues/222">issue #222</a> rests on:
+      <strong>does this model act differently when a generation control is asked for, through
+      <code>pipeline('text-generation', …)</code> of <code>@huggingface/transformers</code> 4.2.0?</strong></p>
+    <p>The row of <code>task_type_llm_gemma_4_e2b_full</code> in <code>generation_control_support.ts</code> is empty,
+      and it is empty on purpose: that table holds what a live run observed and nothing else. Nothing about this model
+      has been measured. Until it has, a control acted on in the stage helper would be acted on without being
+      declared, which the class itself says is exactly as wrong as one declared without being acted on.</p>
+    <p>One phase per control — <code>temperature</code>, <code>top_p</code>, the maximum output token count, stop
+      sequences, and a random seed — then the phase that asks whether turning <code>do_sample</code> on changes an
+      answer that asked for no temperature, which decides how milestone 1 is allowed to write the call. Every phase
+      generates. Nothing here reads a control off documentation, and nothing is carried over from the rows of the
+      neighbouring task types: those were measured on Qwen3.5-0.8B and on Llama 3.2 1B, and copying one of them would
+      be a claim about the library standing in for a claim about this model.</p>
+    <p>The answers are printed with every space and every line break visible, before any verdict is stated. Read them
+      rather than the verdict.</p>
+    <button id="run-button" type="button" disabled>Loading…</button>
+    <pre id="output">(nothing yet)</pre>
+    <script type="module" src="/gemma4-e2b-generation-controls-measurement/src/main.ts"></script>
+  </body>
+</html>
