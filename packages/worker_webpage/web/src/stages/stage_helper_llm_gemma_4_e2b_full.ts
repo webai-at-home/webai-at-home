@@ -18,6 +18,7 @@ import type { ForwardedResponseConstraint } from './structured_output/sampled_to
 import { Gemma4E2bToolCallReader } from './gemma_4_e2b_tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
 import { Gemma4E2bHistoryMessages } from './gemma_4_e2b_history_messages.js';
+import { StopSequenceWatcher } from './stop_sequence_watcher.js';
 import type { FullModelReadiness } from './stage_helper_llm_qwen3_5_0_8b_full.js';
 import type { ModelDownloadProgress } from './model_download_progress.js';
 
@@ -143,6 +144,18 @@ type TaskGenerationState = {
 	 */
 	responseFormat: ResponseFormat | undefined;
 	/**
+	 * The stop sequences the consumer asked to stop at, empty when it asked for none.
+	 *
+	 * Read once, from the run that starts the answer, and kept for the runs that carry it on, for the
+	 * same reason {@link TaskGenerationState.declaredTools} is: only the first run of a task carries
+	 * the settings, and the run that reports the finished answer is often a later one.
+	 *
+	 * Kept as the sequences rather than as the watcher built from them, because two watchers are made
+	 * from them at two different moments: the one the generation stream forwards through, and the one
+	 * {@link StageHelperLlmGemma4E2bFull.answerTextOf} cuts a tool run's re-decoded answer with.
+	 */
+	stopSequences: readonly string[];
+	/**
 	 * Every token identifier the model has generated for this answer, in order.
 	 *
 	 * Kept because one answer may have to be decoded two ways. A run that declared tools decodes
@@ -182,11 +195,11 @@ type TaskGenerationState = {
 	 * Why generation stopped, once it has, in this stage's own word for it rather than an OpenAI
 	 * value.
 	 *
-	 * `stop_sequence` is not among the values this stage can report, because this task type honours
-	 * no `stopSequences` control for there to be a sequence to stop on. See
-	 * `generation_control_support.ts`.
+	 * `stop_sequence` is among them since milestone 1 of
+	 * https://github.com/webai-at-home/webai-at-home/issues/222, because this task type now honours
+	 * the `stopSequences` control there is a sequence to stop on. See `generation_control_support.ts`.
 	 */
-	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | undefined;
+	stopReason: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' | undefined;
 };
 
 /**
@@ -213,14 +226,20 @@ type TaskGenerationState = {
  * audio part beside the text part, and its pipeline tag is `any-to-any`. Only the merged decoder and
  * the token embedding graphs are downloaded, and only text is ever sent to it.
  *
- * What this stage does not do, and why, in each case because the task type's contract in
- * `generation_control_support.ts` and `structured_output_support.ts` says it does not:
+ * Of the six generation controls, this stage acts on three — `temperature`,
+ * `maximumOutputTokenCount`, and `stopSequences` — since milestone 1 of
+ * https://github.com/webai-at-home/webai-at-home/issues/222. Each of the three is acted on because
+ * that issue's milestone 0 watched this model act on it in a real browser tab on WebGPU, and the
+ * other three are not: `topP` and `randomSeed` because the same measurement found the engine reads
+ * neither, and `reasoningEffort` because it is measured by
+ * https://github.com/webai-at-home/webai-at-home/issues/223 and thinking stays off here until then.
+ * A request that asked for none of the three generates byte for byte the answer it always did.
  *
- * - It honours no generation control, so every answer is decoded greedily with `do_sample: false`
- *   and thinking turned off, whatever the consumer asked for. Those tables are empty because nothing
- *   about this model has been measured yet, and milestone 5 of issue #211 is where they are widened
- *   from a live run. Do not wire a control through here before that row names it: a control acted on
- *   without being declared is exactly as wrong as one declared without being acted on.
+ * Do not widen that set here before `generation_control_support.ts` names the control, and do not
+ * name one there before a live run has watched this model act on it: a control acted on without
+ * being declared is exactly as wrong as one declared without being acted on, and a control declared
+ * from what a neighbouring row says would be a claim about the library standing in for a claim about
+ * this model.
  *
  * It does read tool calls, since milestone 2 of
  * https://github.com/webai-at-home/webai-at-home/issues/216, and the format it reads them in was
@@ -343,12 +362,15 @@ export class StageHelperLlmGemma4E2bFull {
 	 * is the one allowed to release the answer it is reading.
 	 * @param payload The prompt or history submitted with the task, or, on a run that carries an
 	 * answer on, a value saying so and nothing else.
-	 * @param generationSettings What the consumer asked for. Two fields are read. `isStreaming`
-	 * decides whether one run returns one piece and leaves the answer open, or reads the whole
-	 * answer. `responseFormat` decides the shape the answer is written in, and is not a generation
-	 * control: it is honoured against `structured_output_support.ts`. Every generation control is
-	 * ignored, because this task type's contract in `generation_control_support.ts` names none, and a
-	 * control acted on without being declared is as wrong as one declared without being acted on.
+	 * @param generationSettings What the consumer asked for. `isStreaming` decides whether one run
+	 * returns one piece and leaves the answer open, or reads the whole answer. `responseFormat`
+	 * decides the shape the answer is written in, and is not a generation control: it is honoured
+	 * against `structured_output_support.ts`. Of the generation controls, `temperature`,
+	 * `maximumOutputTokenCount`, and `stopSequences` are acted on, because those three are what
+	 * `generation_control_support.ts` names for this task type and what milestone 0 of
+	 * https://github.com/webai-at-home/webai-at-home/issues/222 measured this model acting on. `topP`
+	 * and `randomSeed` are not, because that measurement found the engine reads neither, and
+	 * `reasoningEffort` is not, which is https://github.com/webai-at-home/webai-at-home/issues/223.
 	 * @returns One piece of the answer, or the whole answer marked as finished.
 	 * @throws If the model cannot be loaded, if the run is asked to carry on an answer this browser is
 	 * not holding, if the answer is abandoned before or while it is being read, or if generation
@@ -366,6 +388,7 @@ export class StageHelperLlmGemma4E2bFull {
 		if (payload.isContinuation !== true) {
 			state.declaredTools = payload.history?.tools ?? [];
 			state.responseFormat = generationSettings?.responseFormat;
+			state.stopSequences = generationSettings?.stopSequences ?? [];
 		}
 		// A history that declared tools is never read in pieces, even when the consumer asked for
 		// pieces. Until the model has finished writing, a piece of a tool call is indistinguishable
@@ -378,7 +401,11 @@ export class StageHelperLlmGemma4E2bFull {
 		// answer, and every failure — releases it.
 		let leavesAnswerOpen = false;
 		try {
-			const reader = state.reader ?? await StageHelperLlmGemma4E2bFull.startGeneration(state, payload.history ?? payload.text ?? '');
+			const reader = state.reader ?? await StageHelperLlmGemma4E2bFull.startGeneration(
+				state,
+				payload.history ?? payload.text ?? '',
+				generationSettings,
+			);
 			while (state.pieceCount < MAXIMUM_ANSWER_PIECES) {
 				const piece = await reader.read();
 				if (state.isReleased === true) {
@@ -518,6 +545,7 @@ export class StageHelperLlmGemma4E2bFull {
 			text: '',
 			declaredTools: [],
 			responseFormat: undefined,
+			stopSequences: [],
 			generatedTokenIds: [],
 			pieceCount: 0,
 			isReleased: false,
@@ -612,6 +640,8 @@ export class StageHelperLlmGemma4E2bFull {
 	 *
 	 * @param state The generation state this run registered, already released or not.
 	 * @param promptOrHistory The prompt or history submitted with the task.
+	 * @param generationSettings What the consumer asked for, read for the generation controls this
+	 * task type honours, or `undefined` when it asked for nothing.
 	 * @returns The reader that delivers the answer.
 	 * @throws If the prompt or history is empty, if the model cannot be loaded, or if the assignment
 	 * was taken away while the browser was loading the model.
@@ -619,6 +649,7 @@ export class StageHelperLlmGemma4E2bFull {
 	private static async startGeneration(
 		state: TaskGenerationState,
 		promptOrHistory: string | HistoryInput,
+		generationSettings: GenerationSettings | undefined,
 	): Promise<ReadableStreamDefaultReader<string>> {
 		if (StageHelperLlmGemma4E2bFull.isEmpty(promptOrHistory)) {
 			throw new Error('A prompt is needed to start an answer.');
@@ -647,7 +678,9 @@ export class StageHelperLlmGemma4E2bFull {
 		state.promptTokenCount = promptTensor.data?.length;
 		const criteria = new InterruptableStoppingCriteria();
 		state.criteria = criteria;
-		state.reader = StageHelperLlmGemma4E2bFull.createGenerationStream(generator, promptOrHistory, criteria, state).getReader();
+		state.reader = StageHelperLlmGemma4E2bFull
+			.createGenerationStream(generator, promptOrHistory, criteria, state, generationSettings)
+			.getReader();
 		return state.reader;
 	}
 
@@ -678,8 +711,14 @@ export class StageHelperLlmGemma4E2bFull {
 	 * onto `state` rather than returned, because a `ReadableStream<string>` has nowhere else to carry
 	 * them.
 	 *
-	 * Generation is greedy and thinking is off, whatever the consumer asked for, because this task
-	 * type honours no generation control. Thinking off is not an arbitrary default: milestone 0 of
+	 * Generation acts on the three controls this task type honours — `temperature`,
+	 * `maximumOutputTokenCount`, and `stopSequences` — and a request that asked for none of them
+	 * generates byte for byte the answer it always did: `generationControlsOf` then returns the
+	 * greedy call this stage has always made, and a watcher built from no stop sequence forwards
+	 * every piece whole.
+	 *
+	 * Thinking stays off, whatever the consumer asked for, because `reasoningEffort` is measured by
+	 * issue #223 and not by this one. Thinking off is not an arbitrary default: milestone 0 of
 	 * issue #210 measured this model on a local server with thinking on and found it answer 515
 	 * characters to a request budgeted at 8 tokens, so thinking is what makes this model's output
 	 * unbounded rather than any property of the budget.
@@ -694,6 +733,8 @@ export class StageHelperLlmGemma4E2bFull {
 	 * @param promptOrHistory The prompt or history to generate an answer for.
 	 * @param criteria Stops generation early when the stream's reader is cancelled.
 	 * @param state The generation state to record the completion token count and stop reason on.
+	 * @param generationSettings What the consumer asked for, read for the generation controls this
+	 * task type honours, or `undefined` when it asked for nothing.
 	 * @returns A stream of the pieces of text the model produces, in order.
 	 */
 	private static createGenerationStream(
@@ -701,9 +742,14 @@ export class StageHelperLlmGemma4E2bFull {
 		promptOrHistory: string | HistoryInput,
 		criteria: InterruptableStoppingCriteria,
 		state: TaskGenerationState,
+		generationSettings: GenerationSettings | undefined,
 	): ReadableStream<string> {
 		let isCancelled = false;
 		const tokenIds = state.generatedTokenIds;
+		const generationControls = StageHelperLlmGemma4E2bFull.generationControlsOf(generationSettings);
+		// Built from the state rather than from the settings, because the settings arrive on the first
+		// run of a task and this stream outlives that run.
+		const stopSequenceWatcher = new StopSequenceWatcher(state.stopSequences);
 		// A run that declared tools has to keep the special tokens, because every marker a tool call is
 		// written with is a special token of this tokenizer and skipping them would strip the call down
 		// to text no reader could find it in. A run that declared none keeps skipping them, so a task
@@ -724,8 +770,16 @@ export class StageHelperLlmGemma4E2bFull {
 					skip_prompt: true,
 					skip_special_tokens: keepsSpecialTokens === false,
 					callback_function: (chunk: string) => {
-						if (isCancelled === false && chunk !== '') {
-							controller.enqueue(chunk);
+						const forwardable = stopSequenceWatcher.accept(chunk);
+						if (isCancelled === false && forwardable !== '') {
+							controller.enqueue(forwardable);
+						}
+						// A stop sequence stops generation by interrupting it, which is an ordinary
+						// stopping condition, so the generation resolves with what it had rather than
+						// throwing. `stopReasonOf` reads the watcher before the interruption, so a run
+						// stopped this way is told apart from one whose reader was cancelled.
+						if (stopSequenceWatcher.hasStopped === true) {
+							criteria.interrupt();
 						}
 					},
 					token_callback_function: (newTokens: bigint[]) => {
@@ -743,16 +797,22 @@ export class StageHelperLlmGemma4E2bFull {
 					? Gemma4E2bHistoryMessages.of(promptOrHistory)
 					: StageHelperLlmGemma4E2bFull.renderedPrompt(generator, promptOrHistory, state.declaredTools);
 				generator(input, {
-					max_new_tokens: MAX_NEW_TOKENS,
-					do_sample: false,
+					...generationControls,
 					return_full_text: false,
 					tokenizer_encode_kwargs: { enable_thinking: false },
 					stopping_criteria: stoppingCriteria,
 					streamer,
 					...(constraint === undefined ? {} : { logits_processor: constraint.logitsProcessor }),
 				}).then(() => {
+					// Nothing may stay held back once generation has ended: there is no chunk after the
+					// last one to release it.
+					const remaining = stopSequenceWatcher.flush();
+					if (isCancelled === false && remaining !== '') {
+						controller.enqueue(remaining);
+					}
 					state.completionTokenCount = tokenIds.length;
-					state.stopReason = StageHelperLlmGemma4E2bFull.stopReasonOf(criteria, generator, tokenIds);
+					state.stopReason = StageHelperLlmGemma4E2bFull
+						.stopReasonOf(criteria, generator, tokenIds, stopSequenceWatcher);
 					if (isCancelled === false) {
 						controller.close();
 					}
@@ -767,6 +827,45 @@ export class StageHelperLlmGemma4E2bFull {
 				criteria.interrupt();
 			},
 		});
+	}
+
+	/**
+	 * The generation controls one call runs with, from what the consumer asked for.
+	 *
+	 * Three of the six are here, and each one is here because milestone 0 of
+	 * https://github.com/webai-at-home/webai-at-home/issues/222 watched this model act on it in a
+	 * real browser tab on WebGPU. `temperature` was read: one distinct answer of three at
+	 * `temperature: 0` against three distinct of three at `temperature: 1.6`. The token limit was
+	 * read: 8 asked for and 8 generated, against 32 asked for and 18 generated. `stopSequences` is
+	 * kept by {@link StopSequenceWatcher} rather than by this call, which takes no such option.
+	 *
+	 * `topP` and `randomSeed` are absent because that same measurement found the engine reads
+	 * neither: `top_p: 0.01` narrowed nothing, with and without `top_k: 0` beside it, and the loaded
+	 * generation configuration carries no option whose name mentions a seed. Gaining either one means
+	 * writing a sampler by hand, which is what `task_type_llm_qwen3_0_6b_sharded` did and which issue
+	 * #222 does not propose. `reasoningEffort` is issue #223.
+	 *
+	 * Sampling is turned on only for a request that asked for a temperature. Milestone 0 found the
+	 * settled question answered the same way with `do_sample` on and off, so this is not forced by a
+	 * measurement; it is the rule `StageHelperLlmQwen3_5_0_8bFull` already follows, and keeping it
+	 * costs nothing while one prompt answering the same way four times is no promise about every
+	 * prompt.
+	 *
+	 * @param generationSettings What the consumer asked for, or `undefined` when it asked for
+	 * nothing.
+	 * @returns The controls to spread into the generation call.
+	 */
+	private static generationControlsOf(
+		generationSettings: GenerationSettings | undefined,
+	): { max_new_tokens: number; do_sample: boolean; temperature?: number } {
+		const controls: { max_new_tokens: number; do_sample: boolean; temperature?: number } = {
+			max_new_tokens: Math.min(MAX_NEW_TOKENS, generationSettings?.maximumOutputTokenCount ?? MAX_NEW_TOKENS),
+			do_sample: generationSettings?.temperature !== undefined,
+		};
+		if (generationSettings?.temperature !== undefined) {
+			controls.temperature = generationSettings.temperature;
+		}
+		return controls;
 	}
 
 	/**
@@ -813,6 +912,11 @@ export class StageHelperLlmGemma4E2bFull {
 	 * markers off the text: the set of markers this model may write is the model's, not this file's,
 	 * and a list of them written here would be one more thing to keep in step with the model.
 	 *
+	 * That second decoding goes round the watcher the generation stream forwarded through, so it is
+	 * cut by a watcher of its own. Without it, a task that declared tools and asked for a stop
+	 * sequence would have generation stopped at the sequence and then report the sequence anyway,
+	 * which is the control half kept — and a control declared and half kept is not honoured.
+	 *
 	 * @param state The generation state holding the text read and the tokens it came from.
 	 * @returns The answer text to report.
 	 */
@@ -821,11 +925,13 @@ export class StageHelperLlmGemma4E2bFull {
 			return state.text;
 		}
 		const generator = await StageHelperLlmGemma4E2bFull.loadedGenerator();
-		return (
+		const decoded = (
 			generator.tokenizer as unknown as {
 				decode: (tokenIds: number[], options: Record<string, unknown>) => string;
 			}
 		).decode(state.generatedTokenIds, { skip_special_tokens: true });
+		const stopSequenceWatcher = new StopSequenceWatcher(state.stopSequences);
+		return stopSequenceWatcher.accept(decoded) + stopSequenceWatcher.flush();
 	}
 
 	/**
@@ -871,8 +977,8 @@ export class StageHelperLlmGemma4E2bFull {
 	 */
 	private static usageOf(
 		state: TaskGenerationState,
-	): { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' } {
-		const usage: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' } = {};
+	): { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' } {
+		const usage: { promptTokenCount?: number; completionTokenCount?: number; stopReason?: 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' } = {};
 		if (state.promptTokenCount !== undefined) {
 			usage.promptTokenCount = state.promptTokenCount;
 		}
@@ -892,13 +998,20 @@ export class StageHelperLlmGemma4E2bFull {
 	 * @param generator The loaded text-generation pipeline, read for its model's own `eos_token_id`
 	 * values.
 	 * @param tokenIds The raw token identifiers generated for this answer, in order.
+	 * @param stopSequenceWatcher The watcher that was forwarding this answer, read before the
+	 * interruption because a stop sequence stops generation by interrupting it, and the two mean
+	 * different things.
 	 * @returns Why generation stopped.
 	 */
 	private static stopReasonOf(
 		criteria: InterruptableStoppingCriteria,
 		generator: TextGenerationPipeline,
 		tokenIds: number[],
-	): 'end_of_sequence' | 'max_new_tokens' | 'interrupted' {
+		stopSequenceWatcher: StopSequenceWatcher,
+	): 'end_of_sequence' | 'max_new_tokens' | 'interrupted' | 'stop_sequence' {
+		if (stopSequenceWatcher.hasStopped === true) {
+			return 'stop_sequence';
+		}
 		if (criteria.interrupted === true) {
 			return 'interrupted';
 		}
