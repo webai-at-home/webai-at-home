@@ -452,3 +452,138 @@ NodeTest.test('refuses a shape asked for beside declared tools, which cannot bot
 		},
 	);
 });
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	Generation Controls
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+// One test per control the row of this task type in `generation_control_support.ts` names, added by milestone 3 of
+// https://github.com/webai-at-home/webai-at-home/issues/222. They are what makes that row permanent rather than a
+// claim: a control that stops being acted on fails here, in a real browser tab, against the real model.
+//
+// The three were measured before they were declared. Milestone 0 of that issue ran this exact export on WebGPU and
+// watched each of them act, and milestone 2 watched the native worker keep the same three, which is what makes the
+// row the intersection of the two workers rather than the capability of one.
+
+/** The question the sampling tests repeat, chosen because it has many acceptable answers. */
+const OPEN_ENDED_PROMPT = 'Write one sentence about the sea.';
+
+/**
+ * The question the token limit and stop sequence tests use, chosen because its shape is known before it is
+ * generated.
+ */
+const COUNTING_PROMPT = 'Count from 1 to 9, separated by spaces. Answer with the numbers only.';
+
+/**
+ * Submits {@link OPEN_ENDED_PROMPT} at one temperature and returns the answer.
+ *
+ * @param temperature The temperature to ask for.
+ * @returns The answer text.
+ */
+const answerAtTemperature = async (temperature: number): Promise<string> => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: OPEN_ENDED_PROMPT }],
+		temperature: temperature,
+	});
+	return completion.choices[0]?.message.content ?? '';
+};
+
+NodeTest.test('honours temperature: it answers the same way twice at 0, and answers differently at 1.6', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const firstColdAnswer = await answerAtTemperature(0);
+	const secondColdAnswer = await answerAtTemperature(0);
+	Assert.equal(secondColdAnswer, firstColdAnswer, 'two answers at temperature 0 must be the same answer');
+
+	// Three runs, and one of them differing is enough. A temperature that is read makes a different answer likely
+	// rather than certain, and asking for all three to differ would make this test fail on the model agreeing with
+	// itself, which is not what is being measured.
+	const hotAnswers = [await answerAtTemperature(1.6), await answerAtTemperature(1.6), await answerAtTemperature(1.6)];
+	Assert.ok(
+		hotAnswers.some((hotAnswer) => hotAnswer !== firstColdAnswer),
+		`expected at least one answer at temperature 1.6 to differ from the greedy one, got ${JSON.stringify(hotAnswers)}`,
+	);
+});
+
+NodeTest.test('honours max_completion_tokens: it stops on the budget and says so, and finishes on its own when the budget is generous', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const cutCompletion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: COUNTING_PROMPT }],
+		max_completion_tokens: 8,
+	});
+	Assert.equal(cutCompletion.choices[0]?.finish_reason, 'length');
+	Assert.ok(
+		(cutCompletion.usage?.completion_tokens ?? 0) <= 8,
+		`expected at most 8 completion tokens, got ${cutCompletion.usage?.completion_tokens}`,
+	);
+
+	const wholeCompletion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: COUNTING_PROMPT }],
+		max_completion_tokens: 32,
+	});
+	Assert.equal(wholeCompletion.choices[0]?.finish_reason, 'stop');
+	Assert.ok(
+		(wholeCompletion.usage?.completion_tokens ?? 0) > (cutCompletion.usage?.completion_tokens ?? 0),
+		'a generous budget must produce more tokens than a budget of 8',
+	);
+});
+
+NodeTest.test('honours stop: the answer ends where the stop sequence began, and never carries it', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const unstoppedCompletion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: COUNTING_PROMPT }],
+		max_completion_tokens: 32,
+	});
+	const unstoppedAnswer = unstoppedCompletion.choices[0]?.message.content ?? '';
+	Assert.match(unstoppedAnswer, /5/, 'the answer with no stop sequence must reach the character the next one stops at');
+
+	const stoppedCompletion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: COUNTING_PROMPT }],
+		max_completion_tokens: 32,
+		stop: ['5'],
+	});
+	const stoppedAnswer = stoppedCompletion.choices[0]?.message.content ?? '';
+	Assert.doesNotMatch(
+		stoppedAnswer,
+		/5/,
+		`the stop sequence must never be forwarded, got ${JSON.stringify(stoppedAnswer)}`,
+	);
+	Assert.equal(stoppedCompletion.choices[0]?.finish_reason, 'stop');
+	Assert.ok(
+		(stoppedCompletion.usage?.completion_tokens ?? 0) < (unstoppedCompletion.usage?.completion_tokens ?? 0),
+		'a stopped answer must cost fewer tokens than the same answer generated whole',
+	);
+});
+
+NodeTest.test('refuses top_p and seed, which this task type does not honour, rather than ignoring them', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	for (const [controlName, body] of [
+		['top_p', { top_p: 0.01 }],
+		['seed', { seed: 42 }],
+	] as [string, Record<string, unknown>][]) {
+		await Assert.rejects(
+			() => openaiClient().chat.completions.create({
+				model: 'llm_gemma_4_e2b_full',
+				messages: [{ role: 'user', content: OPEN_ENDED_PROMPT }],
+				...body,
+			} as never),
+			(error: unknown) => {
+				const apiError = error as { status?: number; error?: { code?: string; param?: string } };
+				Assert.equal(apiError.status, 400);
+				Assert.equal(apiError.error?.code, 'unhonourable_generation_control');
+				Assert.equal(apiError.error?.param, controlName);
+				return true;
+			},
+		);
+	}
+});
