@@ -60,9 +60,8 @@ export type GenerationControlName =
  *   without `top_k: 0` beside it, and the loaded generation configuration carries no option whose
  *   name mentions a seed. The native worker forwarding to Ollama serving `gemma4:e2b` keeps the same
  *   three, measured in that issue's milestone 2, so the intersection of the two workers is the three
- *   entered here. `reasoningEffort` is measured separately by
- *   [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223), and until it runs this
- *   model's worker browser tab denies thinking whatever a consumer asks for.
+ *   entered here. `reasoningEffort` was measured separately, by
+ *   [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223), and is the fourth.
  * - `task_type_llm_qwen3_0_6b_sharded` honours all five, more than any other task type in this
  *   project, because its sampler is written by hand over the logits tensor rather than taken from
  *   a library: nothing there refuses a `topP`, and a seeded source of random numbers can be built
@@ -85,9 +84,11 @@ export type GenerationControlName =
  * type in this project to honour any of the five, proved live against LM Studio 0.4.20 serving
  * `llama-3.2-3b-instruct`. See [issue #154](https://github.com/webai-at-home/webai-at-home/issues/154).
  *
- * `reasoningEffort` is the sixth control, and `task_type_llm_qwen3_5_0_8b_full` is the only task
- * type that honours it, because it is the only one whose model thinks before it answers on both of
- * its workers. Both workers were gated live for [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192):
+ * `reasoningEffort` is the sixth control, and two task types honour it: the two whose model thinks
+ * before it answers on both of its workers.
+ *
+ * `task_type_llm_qwen3_5_0_8b_full` was the first. Both its workers were measured live for
+ * [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192):
  *
  * - The native worker forwarding to LM Studio 0.4.20 reads `reasoning_effort` on the request.
  *   `"none"` took a question that had spent all 8153 of its tokens thinking down to 0 reasoning
@@ -102,6 +103,25 @@ export type GenerationControlName =
  * other level as on. A task type's contract says which controls a worker acts on, not how finely,
  * and a control acted on coarsely is not a control dropped.
  *
+ * `task_type_llm_gemma_4_e2b_full` was the second, measured live for
+ * [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223), and both of its workers
+ * turned out to be exactly as coarse:
+ *
+ * - The worker browser tab reads `enable_thinking` on the chat template. Rendering one history both
+ *   ways in a real browser tab on WebGPU gives two different prompts, 22 tokens against 29, where
+ *   `true` opens a system turn holding `<|think|>` that `false` has not got. A history that declared
+ *   a tool reads it too, 84 tokens against 86.
+ * - The native worker forwarding to Ollama serving `gemma4:e2b` reads `reasoning_effort` on the
+ *   request, and refuses a level it does not know rather than dropping the field.
+ *
+ * Measured through the whole cluster, all six levels on both workers, `none` is 8 completion tokens
+ * with no thinking on each and every level above it is about 114 with thinking on each. Unlike
+ * Qwen3.5-0.8B, this model closes its thinking and writes its answer well inside the token limit
+ * its stage runs, so thinking here is a thing a consumer might actually want rather than only a
+ * runaway to be switched off. The thinking itself never reaches the consumer: the browser tab cuts
+ * it out through `ThoughtChannelCut`, and the local server the native worker talks to reports it in
+ * a `reasoning` field that `OpenaiApiClient` never reads.
+ *
  * `task_type_llm_qwen3_0_6b_sharded` is not entered here even though Qwen3-0.6B also thinks. Its
  * stage helper builds its prompt and drives its own sampler rather than going through either seam
  * above, so whether it can honour this control is unmeasured, and an unmeasured entry is the one
@@ -113,7 +133,7 @@ const controlsByTaskType: Record<TaskType, readonly GenerationControlName[]> = {
 	task_type_llm_gemma_nano_chrome_full: [],
 	task_type_llm_qwen3_5_0_8b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences', 'reasoningEffort'],
 	task_type_llm_llama3_2_1b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences'],
-	task_type_llm_gemma_4_e2b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences'],
+	task_type_llm_gemma_4_e2b_full: ['temperature', 'maximumOutputTokenCount', 'stopSequences', 'reasoningEffort'],
 };
 
 /** Which task type honours which generation control. */

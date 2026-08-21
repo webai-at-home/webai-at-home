@@ -501,3 +501,59 @@ NodeTest.test('honours stop: the answer ends where the stop sequence began, and 
 		'a stopped answer must cost fewer tokens than the same answer generated whole',
 	);
 });
+/**
+ * The question the thinking test asks, chosen because its answer is settled and short whether the model thinks
+ * about it or not, so the completion token count is the only thing that moves.
+ */
+const SETTLED_PROMPT = 'What is the capital of France? Answer in one short sentence.';
+
+/**
+ * Submits {@link SETTLED_PROMPT} at one level of thinking and returns the answer beside what it cost.
+ *
+ * @param reasoningEffort The level to ask for.
+ * @returns The answer text and the completion token count.
+ */
+const answerAtReasoningEffort = async (
+	reasoningEffort: string,
+): Promise<{ answer: string; completionTokenCount: number }> => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: SETTLED_PROMPT }],
+		reasoning_effort: reasoningEffort,
+	} as never);
+	return {
+		answer: completion.choices[0]?.message.content ?? '',
+		completionTokenCount: completion.usage?.completion_tokens ?? 0,
+	};
+};
+
+NodeTest.test('honours reasoning_effort: none does not think, high does, and the thinking never reaches the consumer', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const withoutThinking = await answerAtReasoningEffort('none');
+	const withThinking = await answerAtReasoningEffort('high');
+
+	Assert.match(withoutThinking.answer, /Paris/i, 'the answer asked to think least must still be an answer');
+	Assert.match(withThinking.answer, /Paris/i, 'the answer asked to think most must still be an answer');
+
+	// The local server really acted on the field. Measured through this cluster in milestone 2 of
+	// https://github.com/webai-at-home/webai-at-home/issues/223: this question costs 8 completion tokens at `none`
+	// and between 115 and 131 at every level above it, the spread being the server's own sampling rather than the
+	// level. The worker browser tab spends the same 8 against 114, which is what makes this control the
+	// intersection of the two workers rather than the capability of one.
+	Assert.ok(
+		withThinking.completionTokenCount > withoutThinking.completionTokenCount * 3,
+		'reasoning_effort high must cost far more completion tokens than none, or the model did not think: '
+		+ `${withThinking.completionTokenCount} against ${withoutThinking.completionTokenCount}`,
+	);
+
+	// And none of what it thought was reported as its answer. This server reports thinking in a `reasoning` field
+	// of its own, which `OpenaiApiClient` never reads, so the answer arrives clean without anything being cut out
+	// of it. The worker browser tab has to cut it out, through `ThoughtChannelCut`. The assertion is written the
+	// same way on both so that either worker failing it fails for the same stated reason.
+	Assert.ok(
+		withThinking.answer.length < withoutThinking.answer.length * 2,
+		'an answer that thought must be about as long as one that did not, or the thinking reached the consumer: '
+		+ `${JSON.stringify(withThinking.answer)}`,
+	);
+});

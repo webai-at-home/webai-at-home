@@ -203,12 +203,12 @@ Test('still refuses the two controls the model cannot honour, while honouring th
 	}
 });
 
-Test('carries reasoning_effort for the one model that thinks, and refuses it for the one that does not', () => {
-	// `llm_qwen3_5_0_8b_full` is the only model here that thinks before it answers on both of its
-	// workers, and the only one that honours this control. Both seams were proved live by the gates
-	// of [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192): `reasoning_effort`
-	// on the request to LM Studio 0.4.20, and `enable_thinking` on the chat template in a real
-	// browser tab.
+Test('carries reasoning_effort for the two models that think, and refuses it for the one that does not', () => {
+	// `llm_qwen3_5_0_8b_full` was the first model here that thinks before it answers on both of its
+	// workers, and the first that honours this control. Both seams were proved live by the
+	// measurements of [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192):
+	// `reasoning_effort` on the request to LM Studio 0.4.20, and `enable_thinking` on the chat
+	// template in a real browser tab.
 	Assert.deepEqual(
 		generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'none' }, 'llm_qwen3_5_0_8b_full'),
 		{
@@ -221,6 +221,14 @@ Test('carries reasoning_effort for the one model that thinks, and refuses it for
 		generationSettingsOf({ model: 'llm_qwen3_5_0_8b_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'xhigh' }, 'llm_qwen3_5_0_8b_full'),
 		{
 			reasoningEffort: 'xhigh',
+		},
+	);
+	// `llm_gemma_4_e2b_full` is the second, measured live for
+	// [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223), and is carried the same way at every level.
+	Assert.deepEqual(
+		generationSettingsOf({ model: 'llm_gemma_4_e2b_full', messages: [{ role: 'user', content: 'hello' }], reasoning_effort: 'high' }, 'llm_gemma_4_e2b_full'),
+		{
+			reasoningEffort: 'high',
 		},
 	);
 	// `llama-3.2-1b-instruct` never thought, so there is no thinking to budget, and asking for one

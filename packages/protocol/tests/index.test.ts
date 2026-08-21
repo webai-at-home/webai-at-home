@@ -358,7 +358,7 @@ Test('names both response formats as honoured by the one task type whose two wor
 	}
 });
 
-Test('names reasoning_effort as honoured only by the task type whose model thinks on both of its workers', () => {
+Test('names reasoning_effort as honoured only by the task types whose model thinks on both of its workers', () => {
 	// A task type's contract is the intersection of what all of its workers honour, so this control
 	// could only be entered here once both workers of `task_type_llm_qwen3_5_0_8b_full` were gated
 	// live: `reasoning_effort` on the request to LM Studio 0.4.20, and `enable_thinking` on the chat
@@ -372,14 +372,19 @@ Test('names reasoning_effort as honoured only by the task type whose model think
 	Assert.equal(GenerationControlSupport.honours('task_type_llm_qwen3_0_6b_sharded', 'reasoningEffort'), false);
 	Assert.equal(GenerationControlSupport.honours('task_type_llm_gemma_nano_chrome_full', 'reasoningEffort'), false);
 	Assert.equal(GenerationControlSupport.honours('task_type_dev_formula', 'reasoningEffort'), false);
-	// Gemma 4 E2B does think, and its stage helper turns thinking off unconditionally rather than
-	// letting a consumer budget it, so there is nothing to honour. Nothing about this task type has
-	// been measured into this table yet; milestone 5 of
-	// [issue #211](https://github.com/webai-at-home/webai-at-home/issues/211) is what widens it.
-	Assert.equal(GenerationControlSupport.honours('task_type_llm_gemma_4_e2b_full', 'reasoningEffort'), false);
-	// Adding this control took nothing away from the three that task type already honoured.
+	// Gemma 4 E2B is the second task type to honour it, measured live for
+	// [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223): the chat template renders one history as 22
+	// tokens with thinking off and 29 with it on, and Ollama serving `gemma4:e2b` answers `none` in 8
+	// completion tokens and every level above it in about 114. Its worker browser tab cuts the model's
+	// own thinking out of the answer, so both workers report the same answer for the same level.
+	Assert.equal(GenerationControlSupport.honours('task_type_llm_gemma_4_e2b_full', 'reasoningEffort'), true);
+	// Adding this control took nothing away from the three either task type already honoured.
 	Assert.deepEqual(
 		GenerationControlSupport.honouredControls('task_type_llm_qwen3_5_0_8b_full'),
+		['temperature', 'maximumOutputTokenCount', 'stopSequences', 'reasoningEffort'],
+	);
+	Assert.deepEqual(
+		GenerationControlSupport.honouredControls('task_type_llm_gemma_4_e2b_full'),
 		['temperature', 'maximumOutputTokenCount', 'stopSequences', 'reasoningEffort'],
 	);
 });

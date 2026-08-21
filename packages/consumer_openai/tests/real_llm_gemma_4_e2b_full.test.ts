@@ -563,6 +563,61 @@ NodeTest.test('honours stop: the answer ends where the stop sequence began, and 
 		'a stopped answer must cost fewer tokens than the same answer generated whole',
 	);
 });
+/**
+ * The question the thinking test asks, chosen because its answer is settled and short whether the model thinks
+ * about it or not, so the completion token count is the only thing that moves.
+ */
+const SETTLED_PROMPT = 'What is the capital of France? Answer in one short sentence.';
+
+/**
+ * Submits {@link SETTLED_PROMPT} at one level of thinking and returns the answer beside what it cost.
+ *
+ * @param reasoningEffort The level to ask for, or `undefined` to ask for nothing.
+ * @returns The answer text and the completion token count.
+ */
+const answerAtReasoningEffort = async (
+	reasoningEffort: string | undefined,
+): Promise<{ answer: string; completionTokenCount: number }> => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: SETTLED_PROMPT }],
+		...(reasoningEffort === undefined ? {} : { reasoning_effort: reasoningEffort }),
+	} as never);
+	return {
+		answer: completion.choices[0]?.message.content ?? '',
+		completionTokenCount: completion.usage?.completion_tokens ?? 0,
+	};
+};
+
+NodeTest.test('honours reasoning_effort: none does not think, high does, and the thinking never reaches the consumer', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	const withoutThinking = await answerAtReasoningEffort('none');
+	const withThinking = await answerAtReasoningEffort('high');
+
+	Assert.match(withoutThinking.answer, /Paris/i, 'the answer asked to think least must still be an answer');
+	Assert.match(withThinking.answer, /Paris/i, 'the answer asked to think most must still be an answer');
+
+	// The model really thought. Measured in milestone 0 of
+	// https://github.com/webai-at-home/webai-at-home/issues/223: this question costs 8 completion tokens with
+	// thinking off and 114 with it on, and the chat template renders 22 prompt tokens against 29. Three times is
+	// far below that gap and far above anything two runs of one setting differ by.
+	Assert.ok(
+		withThinking.completionTokenCount > withoutThinking.completionTokenCount * 3,
+		'reasoning_effort high must cost far more completion tokens than none, or the model did not think: '
+		+ `${withThinking.completionTokenCount} against ${withoutThinking.completionTokenCount}`,
+	);
+
+	// And none of what it thought was reported as its answer. Before `ThoughtChannelCut`, milestone 1 of that issue
+	// watched this exact request answered with 450 characters of "Thinking Process: 1. Analyze the Request ..."
+	// followed by the sentence, where the native worker answered with the sentence alone. Two workers of one task
+	// type must keep a control the same way, and an answer that carries the thinking is the control half kept.
+	Assert.ok(
+		withThinking.answer.length < withoutThinking.answer.length * 2,
+		'an answer that thought must be about as long as one that did not, or the thinking reached the consumer: '
+		+ `${JSON.stringify(withThinking.answer)}`,
+	);
+});
 
 NodeTest.test('refuses top_p and seed, which this task type does not honour, rather than ignoring them', {
 	timeout: ANSWER_TIMEOUT_MS,
