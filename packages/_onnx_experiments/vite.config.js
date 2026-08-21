@@ -156,6 +156,10 @@ export default defineConfig({
           import.meta.dirname,
           'public/gemma4-e2b-generation-controls-measurement/index.html',
         ),
+        gemma4E2bReasoningEffortMeasurement: resolve(
+          import.meta.dirname,
+          'public/gemma4-e2b-reasoning-effort-measurement/index.html',
+        ),
         matmulNBitsOwnedWebgpuBufferGate: resolve(
           import.meta.dirname,
           'public/matmulnbits-owned-webgpu-buffer-gate/index.html',
