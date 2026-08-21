@@ -13,14 +13,14 @@ A skipped test is a capability the endpoint declared it does not support, and is
 
 ## Test Run
 
-- Generated: 2026-08-21T17:28:05.573Z
+- Generated: 2026-08-21T19:09:20.123Z
 - Endpoint: `http://localhost:8788/v1`
 - Model: `llm_gemma_4_e2b_full`
 
 ### Command Line
 
 ```bash
-openai_test conformance --model llm_gemma_4_e2b_full --profile full --format markdown --output data/conformance_reports/webai_at_home_llm_gemma_4_e2b_full.conformance_report.md --thinking on -v
+openai_test conformance --model llm_gemma_4_e2b_full --profile full --format markdown --output data/conformance_reports/webai_at_home_llm_gemma_4_e2b_full.conformance_report.md -v
 ```
 
 ### Parameters
@@ -30,7 +30,7 @@ openai_test conformance --model llm_gemma_4_e2b_full --profile full --format mar
 | `--model` | llm_gemma_4_e2b_full |
 | `--profile` | full |
 | `--repeats` | 3 |
-| `--thinking` | on |
+| `--thinking` | off |
 | `--output` | data/conformance_reports/webai_at_home_llm_gemma_4_e2b_full.conformance_report.md |
 | `--verbose` | true |
 | `--base_url` | http://localhost:8788/v1 |
@@ -123,11 +123,11 @@ openai_test conformance --model llm_gemma_4_e2b_full --profile full --format mar
 | --- | --- | --- |
 | `parameters.temperature` (stream off) | ✅ |  |
 | `parameters.temperature` (stream on) | ✅ |  |
-| `parameters.top_p` (stream off) | ⊘ | The model llm_gemma_4_e2b_full cannot honour top_p, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop. Send the request again without top_p, or send it to a model that honours it. |
-| `parameters.top_p` (stream on) | ⊘ | The model llm_gemma_4_e2b_full cannot honour top_p, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop. Send the request again without top_p, or send it to a model that honours it. |
+| `parameters.top_p` (stream off) | ⊘ | The model llm_gemma_4_e2b_full cannot honour top_p, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop, reasoning_effort. Send the request again without top_p, or send it to a model that honours it. |
+| `parameters.top_p` (stream on) | ⊘ | The model llm_gemma_4_e2b_full cannot honour top_p, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop, reasoning_effort. Send the request again without top_p, or send it to a model that honours it. |
 | `parameters.max_completion_tokens` (stream off) | ✅ |  |
 | `parameters.max_completion_tokens` (stream on) | ✅ |  |
 | `parameters.stop` (stream off) | ✅ |  |
 | `parameters.stop` (stream on) | ✅ |  |
-| `parameters.seed` (stream off) | ⊘ | The model llm_gemma_4_e2b_full cannot honour seed, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop. Send the request again without seed, or send it to a model that honours it. |
-| `parameters.seed` (stream on) | ⊘ | The model llm_gemma_4_e2b_full cannot honour seed, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop. Send the request again without seed, or send it to a model that honours it. |
+| `parameters.seed` (stream off) | ⊘ | The model llm_gemma_4_e2b_full cannot honour seed, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop, reasoning_effort. Send the request again without seed, or send it to a model that honours it. |
+| `parameters.seed` (stream on) | ⊘ | The model llm_gemma_4_e2b_full cannot honour seed, and this server refuses a request it would have to ignore rather than answering it as though nothing had been asked for. The generation controls llm_gemma_4_e2b_full honours are temperature, max_completion_tokens, stop, reasoning_effort. Send the request again without seed, or send it to a model that honours it. |

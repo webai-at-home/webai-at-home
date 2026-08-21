@@ -168,6 +168,23 @@ None of this makes the model able to answer a plain two-turn question. A consume
 
 The cluster goes on offering `llm_qwen3_5_0_8b_full` on those terms, decided on [issue #192](https://github.com/webai-at-home/webai-at-home/issues/192). A model that answers when asked properly and fails loudly when not is worth offering; it was the silent empty answer that was not, and that is gone. This is written down so the two ❌ rows above are not read as an oversight: they are a model's limitation, stated.
 
+### A run of `llm_gemma_4_e2b_full` without `--thinking on` failed ten tests that had nothing wrong with them — fixed on 2026-08-21
+
+The conformance test sends `reasoning_effort: "none"` with every tools request unless it is run with `--thinking on`. Until 2026-08-21 the row of `task_type_llm_gemma_4_e2b_full` in [`packages/protocol/src/task/generation_control_support.ts`](../packages/protocol/src/task/generation_control_support.ts) did not name `reasoningEffort`, so `consumer_openai` refused every one of those requests with HTTP 400 and code `unhonourable_generation_control`, exactly as it is meant to. The refusal was right. What it collided with is that a `tools.*` test reads a refusal as a failure, while a `parameters.*` test reads one as ⊘.
+
+The same cluster, the same model, the same day, recorded in [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223) before any of its work began — and so before [issue #222](https://github.com/webai-at-home/webai-at-home/issues/222) entered three generation controls and moved the skipped count:
+
+| run | passed | failed | skipped | compatibility |
+| --- | --- | --- | --- | --- |
+| `--thinking on` | 32 | 0 | 12 | 100.0% |
+| without it | 22 | 10 | 12 | 68.8% |
+
+All ten failures were that one refusal, reported ten times.
+
+What changed is the row, not what the suite sends: the suite is right to send the field, and a server that answered a request it would have to ignore would be the worse of the two. Issue #223 measured whether the control could be honoured at all, and it could. Gemma 4 E2B's chat template reads `enable_thinking` — one history rendered 22 tokens with thinking off against 29 with it on — and Ollama serving `gemma4:e2b`, which is the local server the native worker was pointed at for this measurement, reads `reasoning_effort` and refuses a level it does not know with HTTP 400. Both kinds of worker express the same choice, at the same coarseness — `none` is off, and every level above it is on — so `reasoningEffort` joined the row.
+
+Both runs were then made again through a real worker browser tab on WebGPU. They now differ only in their timestamp and in the value of `--thinking`: 38 passed, 0 failed, 6 skipped, 100.0% both ways, with every test result identical between them. [`webai_at_home_llm_gemma_4_e2b_full.conformance_report.md`](../packages/openai_test/data/conformance_reports/webai_at_home_llm_gemma_4_e2b_full.conformance_report.md) records the run without `--thinking on`, which is the one the `report:conformance:webai_at_home:llm_gemma_4_e2b_full` script produces on its own.
+
 ### Two gaps in LM Studio, which `consumer_openai` does not share
 
 - `errors.unknown_model`: LM Studio answered HTTP 200 for a model it was never told about, instead of refusing. Both LM Studio columns recorded that on 2026-08-15, and the 2026-08-16 qwen run passed it, on the same LM Studio 0.4.20. Nothing observed here explains the difference, so nothing is claimed about it.

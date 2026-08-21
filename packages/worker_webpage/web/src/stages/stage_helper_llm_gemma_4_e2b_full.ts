@@ -452,7 +452,10 @@ export class StageHelperLlmGemma4E2bFull {
 			// A tool call that cannot be read throws out of here, which fails the stage and names what
 			// could not be read. That is deliberate: a calling program runs whatever tool call it
 			// receives, so a call read wrongly is a call run wrongly on the caller's own machine.
-			const toolCalls = Gemma4E2bToolCallReader.read(state.text, state.declaredTools);
+			const toolCalls = Gemma4E2bToolCallReader.read(
+				await StageHelperLlmGemma4E2bFull.toolCallTextOf(state),
+				state.declaredTools,
+			);
 			if (toolCalls.length > 0) {
 				return StagePayloadFactory.llmToolCalls(toolCalls, StageHelperLlmGemma4E2bFull.usageOf(state));
 			}
@@ -954,6 +957,42 @@ export class StageHelperLlmGemma4E2bFull {
 		stoppingCriteria.extend(constraint.stoppingCriteria);
 		stoppingCriteria.extend(criteria);
 		return stoppingCriteria;
+	}
+
+	/**
+	 * The text a tool call is looked for in, for a run whose model may have thought first.
+	 *
+	 * A run that was not allowed to think reads the text the generation stream produced, byte for byte as this stage
+	 * has always read it.
+	 *
+	 * A run that was allowed to think has the model's own thinking taken out first, on the token identifiers, and is
+	 * then decoded keeping the special tokens — because the tool call markers this reader looks for are special
+	 * tokens themselves. The reader scans whatever text it is handed, so without this cut a tool call the model wrote
+	 * inside its thinking, while working out what to do, is read as a call it decided on. The thinking is the model's
+	 * own working, and no part of it is a decision the consumer asked for.
+	 *
+	 * This is kept on that reasoning rather than on an observed failure. Milestone 4 of
+	 * [issue #223](https://github.com/webai-at-home/webai-at-home/issues/223) ran the live test that covers this
+	 * combination against the uncut reader as well, and it passed: asked for the weather of one city at
+	 * `reasoning_effort: "high"`, this model wrote no tool call inside its thinking. Whether it writes one is the
+	 * model's choice on the day, and a call run wrongly is run on the caller's own machine.
+	 *
+	 * @param state The generation state holding the text read and the tokens it came from.
+	 * @returns The text to look for a tool call in.
+	 */
+	private static async toolCallTextOf(state: TaskGenerationState): Promise<string> {
+		if (state.isThinkingEnabled === false) {
+			return state.text;
+		}
+		const generator = await StageHelperLlmGemma4E2bFull.loadedGenerator();
+		return (
+			generator.tokenizer as unknown as {
+				decode: (tokenIds: number[], options: Record<string, unknown>) => string;
+			}
+		).decode(
+			ThoughtChannelCut.outsideEveryChannel(generator.tokenizer, state.generatedTokenIds),
+			{ skip_special_tokens: false },
+		);
 	}
 
 	/**

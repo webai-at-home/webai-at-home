@@ -32,7 +32,7 @@ const CHANNEL_CLOSE_TOKEN = '<channel|>';
  * Cut on the token identifiers rather than on the decoded text, for two reasons. A cut made on text would have to
  * keep the special tokens in so that the channel markers could be found, and would then have to take them out again
  * by hand — which is the list of the model's own markers written into this repository that
- * {@link StageHelperLlmGemma4E2bFull.answerTextOf} already refuses to keep. And cutting on identifiers is what lets
+ * `StageHelperLlmGemma4E2bFull.answerTextOf` already refuses to keep. And cutting on identifiers is what lets
  * the surviving tokens be decoded with `skip_special_tokens: true`, which is the decoding a consumer is served.
  *
  * Which tokens survive is decided the way the `strip_thinking` macro of this model's own chat template decides it:

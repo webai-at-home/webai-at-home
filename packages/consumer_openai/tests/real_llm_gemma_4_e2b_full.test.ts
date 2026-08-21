@@ -563,6 +563,7 @@ NodeTest.test('honours stop: the answer ends where the stop sequence began, and 
 		'a stopped answer must cost fewer tokens than the same answer generated whole',
 	);
 });
+
 /**
  * The question the thinking test asks, chosen because its answer is settled and short whether the model thinks
  * about it or not, so the completion token count is the only thing that moves.
@@ -617,6 +618,89 @@ NodeTest.test('honours reasoning_effort: none does not think, high does, and the
 		'an answer that thought must be about as long as one that did not, or the thinking reached the consumer: '
 		+ `${JSON.stringify(withThinking.answer)}`,
 	);
+});
+
+/** The tool the thinking-with-tools test declares, and the only one it declares. */
+const WEATHER_TOOL = {
+	type: 'function',
+	function: {
+		name: 'get_current_weather',
+		description: 'Reads the current weather of one city.',
+		parameters: {
+			type: 'object',
+			properties: {
+				city: {
+					type: 'string',
+				},
+			},
+			required: ['city'],
+		},
+	},
+} as const;
+
+/**
+ * Asks for the weather of one city with {@link WEATHER_TOOL} declared, at one level of thinking.
+ *
+ * @param reasoningEffort The level to ask for.
+ * @returns The tool calls reported, the finish reason, and the completion token count.
+ */
+const toolCallAtReasoningEffort = async (
+	reasoningEffort: string,
+): Promise<{
+	toolCalls: { type: string; function: { name: string; arguments: string } }[];
+	finishReason: string;
+	completionTokenCount: number;
+}> => {
+	const completion = await openaiClient().chat.completions.create({
+		model: 'llm_gemma_4_e2b_full',
+		messages: [{ role: 'user', content: 'What is the weather in Paris right now?' }],
+		reasoning_effort: reasoningEffort,
+		tools: [WEATHER_TOOL],
+	} as never);
+	return {
+		toolCalls: (completion.choices[0]?.message.tool_calls ?? []) as never,
+		finishReason: completion.choices[0]?.finish_reason ?? '',
+		completionTokenCount: completion.usage?.completion_tokens ?? 0,
+	};
+};
+
+NodeTest.test('asks for the same tool whether it thought first or not, and never asks for one it only thought about', {
+	timeout: ANSWER_TIMEOUT_MS,
+}, async () => {
+	// Neither conformance run reaches this combination. `--thinking off` sends `reasoning_effort: "none"` and
+	// `--thinking on` sends no thinking field at all, so both leave thinking off on this model, and a tool call made
+	// by a model that thought first had no live cover at all before this test.
+	//
+	// A run that declared tools keeps every special token in the text `Gemma4E2bToolCallReader` scans, and the
+	// model's thinking is where it works out which tool to call and with what. A call written there is not a call the
+	// model decided on, and a calling program runs whatever call it receives on its own machine, so the reader is
+	// given the same cut text the answer is decoded from rather than the whole generation.
+	const withoutThinking = await toolCallAtReasoningEffort('none');
+	const withThinking = await toolCallAtReasoningEffort('high');
+
+	// The model really thought, so the cut really had something to cut. Without this the test would pass on a run
+	// where thinking silently stopped happening on the tools path, and would then be measuring nothing.
+	Assert.ok(
+		withThinking.completionTokenCount > withoutThinking.completionTokenCount * 2,
+		'reasoning_effort high must cost far more completion tokens than none, or the model did not think: '
+		+ `${withThinking.completionTokenCount} against ${withoutThinking.completionTokenCount}`,
+	);
+
+	for (const [levelName, result] of [['none', withoutThinking], ['high', withThinking]] as const) {
+		Assert.equal(
+			result.toolCalls.length,
+			1,
+			`at reasoning_effort ${levelName}, exactly one tool call must be reported, not one per time the model `
+			+ `wrote one: ${JSON.stringify(result.toolCalls)}`,
+		);
+		const [toolCall] = result.toolCalls;
+		Assert.equal(toolCall?.type, 'function');
+		Assert.equal(toolCall?.function.name, 'get_current_weather');
+		Assert.deepEqual(JSON.parse(toolCall?.function.arguments ?? '{}'), {
+			city: 'Paris',
+		});
+		Assert.equal(result.finishReason, 'tool_calls');
+	}
 });
 
 NodeTest.test('refuses top_p and seed, which this task type does not honour, rather than ignoring them', {
