@@ -245,6 +245,7 @@ export class LocalServerGeneration {
 				return StagePayloadFactory.llmToolCalls(toolCalls, this.usageOf(state.usage));
 			}
 			this.refuseAnswerThatRanOutBeforeItBegan(state);
+			this.refuseEmptyAnswerThatNeverSaidWhyItStopped(state);
 			return StagePayloadFactory.llmDone(state.text, undefined, this.usageOf(state.usage));
 		} finally {
 			if (leavesAnswerOpen === false) {
@@ -493,6 +494,40 @@ export class LocalServerGeneration {
 			? 'every token it was allowed'
 			: `all ${completionTokenCount} tokens it was allowed`;
 		throw new Error(`The model generated ${generated} without writing any answer text, and stopped because it ran out of room rather than because it had finished. A model that thinks before it answers can do this by never finishing thinking; asking for reasoning_effort "none" stops it.`);
+	}
+
+	/**
+	 * Fails the stage when the answer holds no text and the local server never said why generation
+	 * stopped, rather than reporting that silence as a finished answer.
+	 *
+	 * A local server that finishes an answer always says why it finished. Measured live for
+	 * milestone 0 of https://github.com/webai-at-home/webai-at-home/issues/215: LM Studio 0.4.20
+	 * serving `llama-3.2-1b-instruct` and Ollama serving `gemma4:e2b` both send a `finish_reason`
+	 * and then `data: [DONE]` on every answer they complete. So an empty answer carrying no finish
+	 * reason at all is not a model that had nothing to say; it is a stream that ended before the
+	 * server ever finished the answer.
+	 *
+	 * This is deliberately not the wider rule of refusing every answer holding no text, which
+	 * would undo what https://github.com/webai-at-home/webai-at-home/issues/192 decided: an empty
+	 * answer reporting `finish_reason: stop` is a model that had nothing to say, and that is an
+	 * answer. Only silence about why generation stopped is refused here.
+	 *
+	 * Worth having beside {@link OpenaiApiClient}'s own reading of the failures a stream carries,
+	 * because that reading knows the two shapes a failure has been seen written in, and this
+	 * catches a third shape nobody has seen yet — which is the whole class of defect
+	 * https://github.com/webai-at-home/webai-at-home/issues/215 is about.
+	 *
+	 * @param state The answer this run has finished reading.
+	 * @throws If the answer holds no text and no event of the stream ever carried a finish reason.
+	 */
+	private refuseEmptyAnswerThatNeverSaidWhyItStopped(state: TaskGenerationState): void {
+		if (state.text !== '') {
+			return;
+		}
+		if (state.usage?.finishReason !== undefined) {
+			return;
+		}
+		throw new Error('The local server ended this answer without writing any answer text and without ever saying why generation stopped. A server that finishes an answer says why it finished, so this stream ended before the answer was ever produced.');
 	}
 
 	/**
