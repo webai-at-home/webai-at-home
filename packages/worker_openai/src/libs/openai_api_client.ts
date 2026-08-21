@@ -78,7 +78,32 @@ type ChatCompletionChunk = {
 		prompt_tokens?: number;
 		completion_tokens?: number;
 	};
+	/**
+	 * The failure the local server reports inside a stream it already answered HTTP 200 to, when
+	 * that stream carries one. See {@link OpenaiApiClient.streamFailureMessageOf} for the two
+	 * places the message is written, and
+	 * https://github.com/webai-at-home/webai-at-home/issues/215 for what reading neither of them
+	 * cost.
+	 */
+	error?: {
+		message?: string;
+	} | null;
+	/**
+	 * The same failure message again, which LM Studio writes beside the `error` object as well as
+	 * inside it. Read as a second place to look, not as a different failure.
+	 */
+	message?: string;
 };
+
+/**
+ * The name of the server-sent event that carries a failure rather than a piece of an answer.
+ *
+ * Measured live against LM Studio 0.4.20 serving `qwen_qwen3.5-0.8b` for milestone 0 of
+ * https://github.com/webai-at-home/webai-at-home/issues/215: a request whose chat template raised
+ * was answered with HTTP 200, one `event: error` line, one `data:` line carrying the message, and
+ * then nothing — no `finish_reason`, no `usage`, and no `data: [DONE]`.
+ */
+const STREAM_ERROR_EVENT_NAME = 'error';
 
 /**
  * The usage and finish reason a Chat Completions stream carries once it has finished, read from
@@ -302,7 +327,9 @@ export class OpenaiApiClient {
 	 * @returns The stream of text pieces the model produces, in order, the usage object, and the
 	 * tool calls the model asked for. The usage object and the tool calls are both filled in as the
 	 * stream is read and are only complete once the stream has closed.
-	 * @throws If the server cannot be reached, or answers with a failure status.
+	 * @throws If the server cannot be reached, or answers with a failure status. A failure the
+	 * server writes into the stream after answering with a successful status fails the returned
+	 * stream instead, since by then this call has already returned.
 	 */
 	async chatCompletionStream(
 		modelId: string,
@@ -337,7 +364,7 @@ export class OpenaiApiClient {
 		}
 		const usage: ChatCompletionStreamUsage = { promptTokenCount: undefined, completionTokenCount: undefined, finishReason: undefined };
 		const toolCalls: ChatCompletionStreamToolCalls = { byIndex: new Map<number, StreamedToolCall>() };
-		return { stream: OpenaiApiClient.textPiecesOf(response.body, abortController, usage, toolCalls), usage, toolCalls };
+		return { stream: OpenaiApiClient.textPiecesOf(response.body, abortController, usage, toolCalls, this.baseUrl), usage, toolCalls };
 	}
 
 	/**
@@ -594,6 +621,42 @@ export class OpenaiApiClient {
 	}
 
 	/**
+	 * Reads the failure out of one streamed event, when that event carries one rather than a piece
+	 * of an answer.
+	 *
+	 * A local server can answer a chat completion with a successful status and then write its
+	 * failure into the stream, which no status check can catch. LM Studio 0.4.20 writes it as a
+	 * server-sent event named `error`, measured live for milestone 0 of
+	 * https://github.com/webai-at-home/webai-at-home/issues/215, and writes the message twice: once
+	 * at `error.message` and once beside it at `message`. Both places are read, and either one is
+	 * the same single failure.
+	 *
+	 * An event carrying an `error` object is a failure whether or not an `event: error` line came
+	 * before it, because `--openai-base-url` can be pointed at any server speaking this interface
+	 * and only LM Studio and Ollama have been measured here. An `error` field explicitly set to
+	 * nothing is not a failure: a server that writes `"error": null` on every ordinary event is
+	 * saying there is no failure, and reading that as one would fail every stage it ran.
+	 *
+	 * @param chunk The parsed body of the `data:` line of the event.
+	 * @param eventName The name of the server-sent event being read, `undefined` for an event that
+	 * carried no `event:` line.
+	 * @returns The failure message to fail the stream with, or `undefined` when this event carries
+	 * no failure. An event named as a failure that carries no message at all returns the whole
+	 * event, since an operator with no message has nothing else to go on.
+	 */
+	private static streamFailureMessageOf(chunk: ChatCompletionChunk, eventName: string | undefined): string | undefined {
+		const carriesErrorObject = chunk.error !== undefined && chunk.error !== null;
+		if (eventName !== STREAM_ERROR_EVENT_NAME && carriesErrorObject === false) {
+			return undefined;
+		}
+		const message = chunk.error?.message ?? chunk.message;
+		if (typeof message === 'string' && message !== '') {
+			return message;
+		}
+		return JSON.stringify(chunk);
+	}
+
+	/**
 	 * Reads a Chat Completions streaming response body and delivers the text piece of each event,
 	 * as `server-sent events` carrying the shape of {@link ChatCompletionChunk}.
 	 *
@@ -604,12 +667,21 @@ export class OpenaiApiClient {
 	 * as they arrive. Complete only once the returned stream has closed.
 	 * @param toolCalls Filled in with the tool call fragments each event carries, as they arrive.
 	 * Complete only once the returned stream has closed.
+	 * @param baseUrl The server this stream is being read from, named in the failure this stream
+	 * fails with when the server writes a failure into it.
 	 * @returns A stream of the pieces of text the events carry, skipping events that carry none.
+	 * @throws Through the stream, when the server writes a failure into a stream it had already
+	 * answered with a successful status. See {@link OpenaiApiClient.streamFailureMessageOf}.
 	 */
-	private static textPiecesOf(body: ReadableStream<Uint8Array>, abortController: AbortController, usage: ChatCompletionStreamUsage, toolCalls: ChatCompletionStreamToolCalls): ReadableStream<string> {
+	private static textPiecesOf(body: ReadableStream<Uint8Array>, abortController: AbortController, usage: ChatCompletionStreamUsage, toolCalls: ChatCompletionStreamToolCalls, baseUrl: string): ReadableStream<string> {
 		const bodyReader = body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = '';
+		// The name of the server-sent event whose lines are being read now, set by an `event:` line
+		// and cleared by the blank line that ends the event, which is what the server-sent events
+		// format says. Every event carrying a piece of an answer arrives with no `event:` line of
+		// its own and so is read unnamed; only a failure is named.
+		let eventName: string | undefined = undefined;
 		return new ReadableStream<string>({
 			// This must not return until it has enqueued a piece, closed the stream, or failed.
 			// A pull that returns having done none of the three is never called again while a
@@ -630,6 +702,14 @@ export class OpenaiApiClient {
 					}
 					const line = buffer.slice(0, newlineIndex).trim();
 					buffer = buffer.slice(newlineIndex + 1);
+					if (line === '') {
+						eventName = undefined;
+						continue;
+					}
+					if (line.startsWith('event:') === true) {
+						eventName = line.slice('event:'.length).trim();
+						continue;
+					}
 					if (line.startsWith('data:') === false) {
 						continue;
 					}
@@ -642,6 +722,14 @@ export class OpenaiApiClient {
 						continue;
 					}
 					const chunk = JSON.parse(data) as ChatCompletionChunk;
+					const failureMessage = OpenaiApiClient.streamFailureMessageOf(chunk, eventName);
+					if (failureMessage !== undefined) {
+						// Thrown rather than closed, so that the read waiting on this piece rejects
+						// and the stage fails with the reason the local server gave, instead of
+						// finishing with the empty answer of
+						// https://github.com/webai-at-home/webai-at-home/issues/215.
+						throw new Error(`The server at ${baseUrl} failed inside a chat completion it had already answered with a successful status: ${failureMessage}`);
+					}
 					if (chunk.usage?.prompt_tokens !== undefined) {
 						usage.promptTokenCount = chunk.usage.prompt_tokens;
 					}
