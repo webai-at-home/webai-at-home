@@ -71,6 +71,11 @@ Test('reads Time to First and Time to Last Character from a real server-sent eve
 			timeoutMs: 5_000,
 		});
 		const pieces: string[] = [];
+		// When this test watched the first piece arrive, on a clock of its own, started before
+		// `CompletionSender` starts its clock and read after `CompletionSender` reads its own.
+		// That ordering is what makes the two brackets below exact rather than approximate.
+		const pieceArrivalsMs: number[] = [];
+		const watchStartedAt = performance.now();
 		const result = await CompletionSender.send({
 			client,
 			modelId: 'irrelevant-to-this-test',
@@ -81,18 +86,44 @@ Test('reads Time to First and Time to Last Character from a real server-sent eve
 				},
 			],
 			streamSetting: 'on',
-			writePiece: (piece) => pieces.push(piece),
+			writePiece: (piece) => {
+				pieces.push(piece);
+				pieceArrivalsMs.push(performance.now() - watchStartedAt);
+			},
 		});
+		const elapsedWhenSendReturnedMs = performance.now() - watchStartedAt;
 		Assert.equal(result.answer, 'Hello, world');
 		Assert.deepEqual(pieces, ['Hello', ', world']);
-		// The two content chunks are spaced 40 ms and then 60 ms apart, so the Time to First
-		// Character must land after roughly the first wait and the Time to Last Character after
-		// roughly both — proof this measures real elapsed wall-clock time from a real streamed
-		// connection, not just the shape of the numbers.
+		const firstPieceArrivalMs = pieceArrivalsMs[0] as number;
+		// Two floors and two brackets, none of which a busy machine can break.
+		//
+		// The floors come from the server's own waits: the first content chunk is written 40 ms in
+		// and the second 60 ms after that, so a real reading of a clock cannot be below either
+		// figure. A machine that takes this process's core away pushes both readings later, never
+		// earlier, which is why a floor is safe where the difference between the two readings is not.
+		// Asserting that difference — that the Time to Last Character was at least 50 ms after the
+		// Time to First — is what this replaced, and it was this package's most frequent failure
+		// under load: the client and the server share this one event loop, so a stall that holds the
+		// loop past both waits lets both chunks reach the socket together, and the spacing the server
+		// asked for is gone before the client can look. That assertion was a claim about an unstarved
+		// event loop rather than about `CompletionSender`.
+		// See [issue #227](https://github.com/webai-at-home/webai-at-home/issues/227).
 		Assert.ok(result.timeToFirstCharacterMs >= 30, `expected the Time to First Character to reflect the 40 ms wait, got ${result.timeToFirstCharacterMs} ms`);
+		Assert.ok(result.timeToLastCharacterMs >= 90, `expected the Time to Last Character to reflect the 40 ms and 60 ms waits together, got ${result.timeToLastCharacterMs} ms`);
+		// The brackets come from this test's own clock, and hold exactly rather than within some
+		// allowance: this clock is started before `CompletionSender` starts its own and is read after
+		// `CompletionSender` reads its own, so each reading it reports has to be the smaller of the
+		// pair. No tolerance is written here on purpose. The gap between the two clocks is a few
+		// microseconds of work, but the operating system may stop this process anywhere in it, and it
+		// was measured reaching 25 ms with ten test processes running at once — so any tolerance
+		// narrow enough to mean something is also narrow enough to fail on a busy machine.
 		Assert.ok(
-			result.timeToLastCharacterMs >= result.timeToFirstCharacterMs + 50,
-			`expected the Time to Last Character to be at least ~60 ms after the Time to First Character, got Time to First Character ${result.timeToFirstCharacterMs} ms and Time to Last Character ${result.timeToLastCharacterMs} ms`,
+			result.timeToFirstCharacterMs <= firstPieceArrivalMs,
+			`expected the Time to First Character to be no later than when this test watched the first piece arrive, got ${result.timeToFirstCharacterMs} ms against ${firstPieceArrivalMs} ms`,
+		);
+		Assert.ok(
+			result.timeToLastCharacterMs <= elapsedWhenSendReturnedMs,
+			`expected the Time to Last Character to be no later than when the answer came back, got ${result.timeToLastCharacterMs} ms against ${elapsedWhenSendReturnedMs} ms`,
 		);
 	} finally {
 		await server.stop();
