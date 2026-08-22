@@ -15,6 +15,7 @@ import { Gemma4E2bToolCallReader } from '../web/src/stages/gemma_4_e2b_tool_call
 import { StageCatalog } from '../web/src/stages/stage_catalog.js';
 import { EmptyAnswerRefusal } from '../web/src/stages/empty_answer_refusal.js';
 import { ThoughtChannelCut } from '../web/src/stages/thought_channel_cut.js';
+import { ThinkingBlockCut } from '../web/src/stages/thinking_block_cut.js';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -717,4 +718,121 @@ Test('a thought channel opened and never closed leaves no answer at all, which i
 Test('a thought channel that closed leaves the answer written after it, which is the usual case', () => {
 	const tokenizer = fakeChannelTokenizer({ 10: 'Thinking', 20: 'Paris' });
 	Assert.deepEqual(ThoughtChannelCut.outsideEveryChannel(tokenizer, [1, 10, 2, 20]), [20]);
+});
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+//	ThinkingBlockCut
+//
+//	[issue #226](https://github.com/webai-at-home/webai-at-home/issues/226). Asked for a
+//	`reasoningEffort` above `none`, `stage_helper_llm_qwen3_5_0_8b_full.ts` sent the model's own
+//	thinking to the consumer as the answer, where the native worker of the same task type sent the
+//	answer alone. Everything asserted here is read against
+//	`packages/_onnx_experiments/public/qwen3_5-thinking-cut-measurement/`, which generated the text
+//	below live on WebGPU at the pinned revision, decoded the way the stage helper decodes what it
+//	serves. No model is loaded here.
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Exactly what the model wrote when asked `What is the capital of France?` with thinking on, in 218 tokens,
+ * decoded with `skip_special_tokens: true`. One line per line of the answer, so that the closing marker and the
+ * two newlines after it can be read here rather than counted out of an escaped string.
+ */
+const RECORDED_ANSWER_WITH_THINKING = [
+	'Thinking Process:',
+	'',
+	'1.  **Identify the core question:** The user is asking "What is the capital of France?"',
+	'2.  **Retrieve knowledge:** Access knowledge about the capital of France.',
+	'3.  **Verify the answer:** The capital of France is Paris.',
+	'4.  **Formulate the response:** State the answer clearly and concisely.',
+	'5.  **Check for any potential nuances:** Is there any ambiguity? No, Paris is the capital.',
+	'6.  **Final Output:** "The capital of France is Paris."',
+	'',
+	'Wait, I need to check if there are any specific formatting requirements or if I should just answer '
+		+ 'directly. The user just asked a simple question. I should answer directly.',
+	'',
+	'Plan:',
+	'- State the capital clearly.',
+	'- Keep it short and direct.',
+	'',
+	'Draft: The capital of France is Paris.',
+	'',
+	'Refinement: Ensure it\'s accurate. Yes, Paris is the capital.',
+	'',
+	'Final Answer: The capital of France is Paris.',
+	'</think>',
+	'',
+	'The capital of France is **Paris**.',
+].join('\n');
+
+/** The answer alone, which is what a consumer must receive out of {@link RECORDED_ANSWER_WITH_THINKING}. */
+const RECORDED_ANSWER_ALONE = 'The capital of France is **Paris**.';
+
+/**
+ * Feeds one text through a cut in the pieces named, the way the generation stream feeds it chunk by chunk.
+ *
+ * @param isThinkingEnabled Whether the run being stood in for let the model think.
+ * @param chunks The pieces the model wrote, in order.
+ * @returns Everything the cut forwarded, joined, which is the answer the consumer receives.
+ */
+const answerAfterCutting = (isThinkingEnabled: boolean, chunks: readonly string[]): string => {
+	const thinkingBlockCut = new ThinkingBlockCut(isThinkingEnabled);
+	return chunks.map((chunk) => thinkingBlockCut.accept(chunk)).join('');
+};
+
+Test('cuts the thinking out of the answer the model really wrote, leaving the answer alone', () => {
+	Assert.equal(answerAfterCutting(true, [RECORDED_ANSWER_WITH_THINKING]), RECORDED_ANSWER_ALONE);
+});
+
+Test('cuts the same thinking out when the answer arrives in the pieces the model wrote it in', () => {
+	// The measurement recorded the closing marker arriving as one whole piece, `"</think>\n\n"`, with the first
+	// word of the answer in the piece after it. A consumer asking for pieces must receive what a consumer asking
+	// for the whole answer receives, so both ways of arriving are read here.
+	const [thinking] = RECORDED_ANSWER_WITH_THINKING.split('\n</think>\n\n');
+	Assert.equal(
+		answerAfterCutting(true, [thinking as string, '</think>\n\n', 'The capital of France is ', '**Paris**.']),
+		RECORDED_ANSWER_ALONE,
+	);
+});
+
+Test('forwards nothing at all while the model is still thinking, since a forwarded piece cannot be recalled', () => {
+	const thinkingBlockCut = new ThinkingBlockCut(true);
+	Assert.equal(thinkingBlockCut.accept('Thinking Process:\n\n1.  **Identify the core question:**'), '');
+	Assert.equal(thinkingBlockCut.accept(' The user is asking about France.'), '');
+	Assert.equal(thinkingBlockCut.hasBegunTheAnswer, false);
+});
+
+Test('finds a closing marker split across two pieces, which no piece on its own holds', () => {
+	Assert.equal(answerAfterCutting(true, ['Still thinking.\n</thi', 'nk>\n\nParis.']), 'Paris.');
+});
+
+Test('drops the newlines between the closing marker and the answer even when they arrive as their own piece', () => {
+	// The chat template drops them too, in `content.split('</think>')[-1].lstrip('\n')`, so an answer that thought
+	// begins on the same character as an answer that did not.
+	Assert.equal(answerAfterCutting(true, ['Thinking.</think>', '\n\n', 'Paris.']), 'Paris.');
+});
+
+Test('leaves no answer behind when the model thought for its whole budget without ever closing', () => {
+	// Phase 2 of the measurement: 2048 tokens in 82639 ms against the issue #192 multi-turn history, the cap
+	// reached, and no closing marker anywhere. `EmptyAnswerRefusal` is what refuses the run this leaves behind.
+	const thinkingBlockCut = new ThinkingBlockCut(true);
+	Assert.equal(thinkingBlockCut.accept('Thinking Process:\n\n1.  **Analyze the Request:**'), '');
+	Assert.equal(thinkingBlockCut.accept(' Wait, I need to check if I should output the number "42".'), '');
+	Assert.equal(thinkingBlockCut.hasBegunTheAnswer, false);
+});
+
+Test('hands back every piece unchanged when the run asked for no thinking, cutting nothing out of it', () => {
+	// Phase 3 of the measurement: with thinking off the template closes the thinking block in the prompt itself,
+	// so the model writes no marker and every word it writes is its answer. A cut applied to that run would empty
+	// every answer this model gives with thinking off.
+	const recordedWithThinkingOff = 'The capital of France is **Paris**.\n\nLocated in the region of '
+		+ 'Île-de-France, Paris is the largest city in France and serves as the country\'s political, cultural, '
+		+ 'and economic center.';
+	Assert.equal(answerAfterCutting(false, [recordedWithThinkingOff]), recordedWithThinkingOff);
+	Assert.equal(new ThinkingBlockCut(false).hasBegunTheAnswer, true);
+});
+
+Test('still forwards a marker a model writes inside an answer it did not think for, since nothing was cut', () => {
+	Assert.equal(answerAfterCutting(false, ['The tag is </think> in this template.']), 'The tag is </think> in this template.');
 });
