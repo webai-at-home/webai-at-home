@@ -7,7 +7,7 @@ import OpenAI from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_streamed_llm_qwen3_5_0_8b_full --workspace @webai/openai-test
+//   npm run example:ts:chat_completion_streamed_llm_qwen3_5_0_8b_full --workspace @webai/openai-test
 //
 // The model `llm_qwen3_5_0_8b_full` is the complete Qwen3.5-0.8B language model, downloaded
 // directly from Hugging Face and held entirely by one worker browser tab.

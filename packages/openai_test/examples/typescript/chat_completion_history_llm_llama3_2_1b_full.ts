@@ -7,7 +7,7 @@ import OpenAI, { APIError } from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_history_llm_llama3_2_1b_full --workspace @webai/openai-test
+//   npm run example:ts:chat_completion_history_llm_llama3_2_1b_full --workspace @webai/openai-test
 //
 // The model `llm_llama3_2_1b_full` is one of the three models whose task type accepts a whole
 // history rather than only one prompt (`llm_qwen3_5_0_8b_full` and `llm_gemma_4_e2b_full` are the

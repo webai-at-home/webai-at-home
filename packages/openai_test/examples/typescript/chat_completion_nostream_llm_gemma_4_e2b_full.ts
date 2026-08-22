@@ -7,7 +7,7 @@ import OpenAI, { APIError } from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_nostream_llm_gemma_4_e2b_full --workspace @webai/openai-test
+//   npm run example:ts:chat_completion_nostream_llm_gemma_4_e2b_full --workspace @webai/openai-test
 //
 // The model `llm_gemma_4_e2b_full` is the complete Gemma 4 E2B instruction-tuned language model,
 // downloaded directly from Hugging Face (onnx-community/gemma-4-E2B-it-ONNX, an ONNX export of

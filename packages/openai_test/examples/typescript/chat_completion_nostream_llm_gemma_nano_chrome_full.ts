@@ -7,7 +7,7 @@ import OpenAI, { APIError } from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_nostream_llm_gemma_nano_chrome_full --workspace @webai/openai-test
+//   npm run example:ts:chat_completion_nostream_llm_gemma_nano_chrome_full --workspace @webai/openai-test
 //
 // The model `llm_gemma_nano_chrome_full` is the Gemma Nano language model built into the Chrome
 // browser. Nothing about the model is downloaded or held by this project: the worker browser tab

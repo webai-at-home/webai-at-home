@@ -6,7 +6,7 @@ import OpenAI, { APIError } from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-// Run with: npm run example:chat_completion_system_message --workspace @webai/openai-test
+// Run with: npm run example:ts:chat_completion_system_message --workspace @webai/openai-test
 //
 // A task in the cluster carries one piece of text, so a history of several messages has to
 // become one piece of text before it can be submitted. The rule is:

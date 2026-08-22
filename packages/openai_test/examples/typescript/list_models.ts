@@ -6,7 +6,7 @@ import OpenAI, { APIError } from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-// Run with: npm run example:list_models --workspace @webai/openai-test
+// Run with: npm run example:ts:list_models --workspace @webai/openai-test
 //
 // This is the cheapest example. It reaches this server only, so it answers even when no
 // gateway is running and no volunteer browser is connected.

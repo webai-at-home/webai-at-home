@@ -6,7 +6,7 @@ import OpenAI, { APIError } from 'openai';
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-// Run with: npm run example:chat_completion_dev_formula --workspace @webai/openai-test
+// Run with: npm run example:ts:chat_completion_dev_formula --workspace @webai/openai-test
 //
 // This is the example to run first. The model `dev_formula` is the cluster's development
 // formula task: it multiplies the submitted number by two in one stage and adds seven in the

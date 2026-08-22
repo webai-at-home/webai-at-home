@@ -10,7 +10,7 @@ One short runnable TypeScript program per task type and per calling style, each 
 - `chat_completion_dev_formula.ts`: the one to start with, because the development formula task type needs no model download.
 - `chat_completion_history_llm_qwen3_5_0_8b_full.ts`, `chat_completion_history_llm_llama3_2_1b_full.ts`, `chat_completion_history_llm_gemma_4_e2b_full.ts`: the three whose task type accepts a whole history rather than one prompt alone.
 - `chat_completion_nostream_llm_gemma_4_e2b_full.ts`: the most demanding one, needing a WebGPU adapter with `shader-f16` and about 3111 megabytes of free origin storage, because its stage has no WebAssembly fallback.
-- Command to run one: `npm run example:chat_completion_dev_formula --workspace @webai/openai-test`
+- Command to run one: `npm run example:ts:chat_completion_dev_formula --workspace @webai/openai-test`
 
 ## Rules
 
@@ -18,7 +18,7 @@ One short runnable TypeScript program per task type and per calling style, each 
 - Every example goes through the official `openai` package on npm, never through this package's own client, because what an example demonstrates is what an outside client writes.
 - Every example reads `OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set, and falls back to `http://localhost:8788/v1` and a placeholder key.
 - Every example says at the top, in a comment, which command runs it and what the cluster has to have running for it to answer.
-- Every example is registered as one `example:*` script of `package.json`. An example no script names is an example nobody runs.
+- Every example is registered as one `example:ts:*` script of `package.json`. An example no script names is an example nobody runs.
 
 ## Background
 

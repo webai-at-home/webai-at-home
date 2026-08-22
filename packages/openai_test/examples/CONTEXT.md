@@ -8,7 +8,7 @@ Holds the runnable example programs of this package, one subfolder per language,
 
 - `typescript/`: the examples written in TypeScript against the official `openai` package on npm — see its own [CONTEXT.md](typescript/CONTEXT.md).
 - `clis/`: the examples written as shell scripts against the official OpenAI command line program — see its own [CONTEXT.md](clis/CONTEXT.md).
-- Command to run one: `npm run example:chat_completion_dev_formula --workspace @webai/openai-test`
+- Command to run one: `npm run example:ts:chat_completion_dev_formula --workspace @webai/openai-test`
 
 ## Rules
 
