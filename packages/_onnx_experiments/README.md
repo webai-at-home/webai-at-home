@@ -39,6 +39,7 @@ Qwen3 experiment also needs the generated shard files; see
 - [`public/qwen3_5-0.8b-gate`](public/qwen3_5-0.8b-gate) — Qwen3.5-0.8B through Transformers.js, issue #96 de-risk gate.
 - [`public/qwen3_5-2b`](public/qwen3_5-2b) — Qwen3.5-2B through Transformers.js.
 - [`public/qwen3_5-tool-calls-gate`](public/qwen3_5-tool-calls-gate) — Qwen3.5-0.8B tool calls through the chat template, issue #115 de-risk gate.
+- [`public/qwen3_5-thinking-cut-measurement`](public/qwen3_5-thinking-cut-measurement) — whether Qwen3.5-0.8B's closing `</think>` marker survives the decoding a consumer is served, and whether the model ever closes its thinking at all, issue #226 measurement.
 - [`public/gemma4-e2b-tool-calls-gate`](public/gemma4-e2b-tool-calls-gate) — Gemma 4 E2B tool calls through the chat template, on WebGPU only, issue #216 de-risk gate.
 - [`public/gemma4-e2b-response-constraint-measurement`](public/gemma4-e2b-response-constraint-measurement) — Gemma 4 E2B constrained by `@huggingface/transformers-response-constraint`, on WebGPU only, issue #221 milestone 0 de-risk test.
 - [`public/matmulnbits-owned-webgpu-buffer-gate`](public/matmulnbits-owned-webgpu-buffer-gate) — `MatMulNBits` reading 4-bit weights out of a WebGPU buffer this project overwrites between calls, issue #169 milestone 0 de-risk gate. Downloads no model.
