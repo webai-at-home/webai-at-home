@@ -22,8 +22,12 @@ const client = new OpenAI({
 
 try {
 	const models = await client.models.list();
-	for (const model of models.data) {
-		console.log(`${model.id} (owned by ${model.owned_by})`);
+	if (models.data.length === 0) {
+		console.log('No model available.');
+	} else {
+		for (const model of models.data) {
+			console.log(`${model.id} (owned by ${model.owned_by})`);
+		}
 	}
 } catch (error: unknown) {
 	// The likeliest failure here is that this server is not running at all, which the openai
