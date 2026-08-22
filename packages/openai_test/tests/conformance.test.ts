@@ -65,12 +65,25 @@ class TestFixtures {
 	 */
 	static async startServer(handler: Http.RequestListener): Promise<{ context: TestContext; stop: () => Promise<void> }> {
 		const server = Http.createServer(handler);
-		await new Promise<void>((resolve) => server.listen(0, () => resolve()));
+		// Bound to 127.0.0.1 rather than to every interface, because 127.0.0.1 is the address the
+		// client below is given. `listen(0)` with no host binds `::`, which macOS lets sit beside an
+		// unrelated process already holding `127.0.0.1` on the same port — and the client then reaches
+		// that process instead of this server. Measured: a run answered `400 WebSockets request was
+		// expected` and another `404 <!DOCTYPE html>`, neither of which this handler can write. Naming
+		// the address makes the port exclusive, because the kernel refuses a second bind on it. See
+		// [issue #227](https://github.com/webai-at-home/webai-at-home/issues/227).
+		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
 		const address = server.address();
 		if (address === null || typeof address === 'string') {
 			throw new Error('The test server did not report a port');
 		}
-		const target = { baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: 'test-key', timeoutMs: 2_000 };
+		// 2000 ms was the patience a real endpoint deserves, and this endpoint is the server three
+		// lines up, on this same event loop. A process that loses its core for longer than that then
+		// reports every test as `threw: This operation was aborted` against a server that was working
+		// perfectly, which is the same fault as
+		// [issue #227](https://github.com/webai-at-home/webai-at-home/issues/227) in the prober tests.
+		// Kept finite so a genuinely hung request still ends: `node --test` sets no timeout of its own.
+		const target = { baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: 'test-key', timeoutMs: 60_000 };
 		const openaiPackageClient = new OpenaiPackageClient(target);
 		const answerLengthCap = new AnswerLengthCap({
 			client: openaiPackageClient.client,

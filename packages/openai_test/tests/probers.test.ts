@@ -25,7 +25,14 @@ import { ToolCallProber } from '../src/probers/tool_call_prober.js';
  */
 async function startTestServer(handler: Http.RequestListener): Promise<{ baseUrl: string; stop: () => Promise<void>; }> {
 	const server = Http.createServer(handler);
-	await new Promise<void>((resolve) => server.listen(0, () => resolve()));
+	// Bound to 127.0.0.1 rather than to every interface, because 127.0.0.1 is the address the
+	// client below is given. `listen(0)` with no host binds `::`, which macOS lets sit beside an
+	// unrelated process already holding `127.0.0.1` on the same port — and the client then reaches
+	// that process instead of this server. Measured: a run answered `400 WebSockets request was
+	// expected` and another `404 <!DOCTYPE html>`, neither of which this handler can write. Naming
+	// the address makes the port exclusive, because the kernel refuses a second bind on it. See
+	// [issue #227](https://github.com/webai-at-home/webai-at-home/issues/227).
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
 	const address = server.address();
 	if (address === null || typeof address === 'string') {
 		throw new Error('The test server did not report a port');
@@ -118,6 +125,50 @@ async function startCompletionServer(answerOf: (body: ReceivedControls) => { tex
 }
 
 /**
+ * How long a request to a stand-in endpoint in this same process may take before it is given up on.
+ *
+ * Not the patience a real endpoint deserves, which is what the 5000 ms these tests used to pass was:
+ * that number was chosen for a language model on the other side of a socket, where five seconds of
+ * silence really does mean something is wrong. Here the endpoint is the server `startTestServer` above starts,
+ * running on the same event loop as the client measuring it, so five seconds of silence never means
+ * the endpoint is unwell — it means this one process was not given a core for five seconds, and every
+ * probe then reports `failed` for a stand-in that was working perfectly. That is
+ * [issue #227](https://github.com/webai-at-home/webai-at-home/issues/227), reproduced by blocking
+ * this event loop for longer than the timeout and watching all five probes time out in turn.
+ *
+ * Kept finite rather than removed because it is the only thing that ends a genuinely hung request:
+ * `node --test` sets no timeout of its own, so a test with no client timeout hangs until the runner
+ * is killed. A minute is far longer than any stall observed and far shorter than a person's patience.
+ */
+const STAND_IN_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Refuses an outcome whose probe never reached the stand-in endpoint, naming what the request said.
+ *
+ * No test in this file expects `failed`. It is the status a probe reports when the request itself
+ * did not come back, so against a stand-in endpoint it always means the transport between this
+ * process's client and this process's own server fell over, never that a prober concluded
+ * something. Raised here, a red run names the error the request raised; left to the assertions
+ * below, the same run arrives as five or six identical `failed` strings that say nothing at all
+ * about why. See [issue #227](https://github.com/webai-at-home/webai-at-home/issues/227).
+ *
+ * @param outcomes The outcomes one probe run produced.
+ * @returns Nothing.
+ * @throws {Error} If any probe reports `failed`, naming every one that did and what it observed.
+ */
+function refuseProbesThatNeverReachedTheEndpoint(outcomes: readonly (GenerationControlOutcome | ToolCallOutcome)[]): void {
+	const unreached = outcomes.filter((outcome) => outcome.status === 'failed');
+	if (unreached.length === 0) {
+		return;
+	}
+	const named = unreached.map((outcome) => {
+		const probeName = 'control' in outcome ? outcome.control : outcome.ability;
+		return `${probeName}: ${outcome.observation}`;
+	});
+	throw new Error(`${unreached.length} of ${outcomes.length} probes never reached the stand-in endpoint, so nothing was measured. ${named.join(' | ')}`);
+}
+
+/**
  * Probes one stand-in endpoint and returns what each control's probe concluded.
  *
  * @param baseUrl The stand-in endpoint's base URL.
@@ -127,7 +178,7 @@ async function probeStatuses(baseUrl: string): Promise<Record<string, string>> {
 	const client = CompletionSender.createClient({
 		baseUrl: `${baseUrl}/v1`,
 		apiKey: 'insecure-benchmark-key',
-		timeoutMs: 5_000,
+		timeoutMs: STAND_IN_REQUEST_TIMEOUT_MS,
 	});
 	const outcomes = await GenerationControlProber.probeAll({
 		client,
@@ -135,6 +186,7 @@ async function probeStatuses(baseUrl: string): Promise<Record<string, string>> {
 		streamSetting: 'off',
 		repeats: 3,
 	});
+	refuseProbesThatNeverReachedTheEndpoint(outcomes);
 	return Object.fromEntries(outcomes.map((outcome) => [outcome.control, outcome.status]));
 }
 
@@ -356,7 +408,7 @@ async function probeToolCallStatuses(baseUrl: string, streamSetting: 'off' | 'on
 	const client = CompletionSender.createClient({
 		baseUrl: `${baseUrl}/v1`,
 		apiKey: 'insecure-benchmark-key',
-		timeoutMs: 5_000,
+		timeoutMs: STAND_IN_REQUEST_TIMEOUT_MS,
 	});
 	const outcomes = await ToolCallProber.probeAll({
 		client,
@@ -364,6 +416,7 @@ async function probeToolCallStatuses(baseUrl: string, streamSetting: 'off' | 'on
 		streamSetting,
 		repeats: 3,
 	});
+	refuseProbesThatNeverReachedTheEndpoint(outcomes);
 	return Object.fromEntries(outcomes.map((outcome) => [outcome.ability, outcome.status]));
 }
 
@@ -405,7 +458,7 @@ Test('reads a streamed tool call back as one call, with its name and its whole a
 		const client = CompletionSender.createClient({
 			baseUrl: `${server.baseUrl}/v1`,
 			apiKey: 'insecure-benchmark-key',
-			timeoutMs: 5_000,
+			timeoutMs: STAND_IN_REQUEST_TIMEOUT_MS,
 		});
 		const result = await CompletionSender.send({
 			client,
@@ -538,7 +591,7 @@ function clientAndCap(baseUrl: string, streamSetting: 'off' | 'on'): { client: R
 	const client = CompletionSender.createClient({
 		baseUrl: `${baseUrl}/v1`,
 		apiKey: 'insecure-benchmark-key',
-		timeoutMs: 5_000,
+		timeoutMs: STAND_IN_REQUEST_TIMEOUT_MS,
 	});
 	return {
 		client,
@@ -567,6 +620,7 @@ Test('the output budget reaches the probes that compare whole answers, and none 
 			thinkingSetting: 'off',
 			answerLengthCap,
 		});
+		refuseProbesThatNeverReachedTheEndpoint(outcomes);
 		// A budget large enough to change nothing changes nothing: the same five verdicts as without one.
 		Assert.deepEqual(outcomes.map((outcome) => outcome.status), ['honoured', 'honoured', 'honoured', 'honoured', 'honoured']);
 
@@ -611,6 +665,7 @@ Test('an endpoint that answers a budgeted request with no text is probed with no
 			thinkingSetting: 'off',
 			answerLengthCap,
 		});
+		refuseProbesThatNeverReachedTheEndpoint(outcomes);
 		Assert.deepEqual(outcomes.map((outcome) => outcome.status), ['honoured', 'honoured', 'honoured', 'honoured', 'honoured']);
 		// The one request carrying the budget is the one that found out it cannot be carried.
 		Assert.equal(bodies.filter((body) => body.max_completion_tokens === AnswerLengthCap.tokenCount).length, 1);
@@ -635,6 +690,7 @@ Test('every tool call probe request carries the output budget once the endpoint 
 			thinkingSetting: 'off',
 			answerLengthCap,
 		});
+		refuseProbesThatNeverReachedTheEndpoint(outcomes);
 		Assert.deepEqual(new Set(outcomes.map((outcome) => outcome.status)), new Set(['supported']));
 		Assert.equal(bodies.length > 1, true);
 		Assert.equal(bodies.every((body) => body.max_completion_tokens === AnswerLengthCap.tokenCount), true);

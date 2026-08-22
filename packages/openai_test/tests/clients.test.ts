@@ -22,7 +22,14 @@ import type { CompletionTarget } from '../src/completion_types.js';
  */
 async function startTestServer(handler: Http.RequestListener): Promise<{ baseUrl: string; stop: () => Promise<void>; }> {
 	const server = Http.createServer(handler);
-	await new Promise<void>((resolve) => server.listen(0, () => resolve()));
+	// Bound to 127.0.0.1 rather than to every interface, because 127.0.0.1 is the address the
+	// client below is given. `listen(0)` with no host binds `::`, which macOS lets sit beside an
+	// unrelated process already holding `127.0.0.1` on the same port — and the client then reaches
+	// that process instead of this server. Measured: a run answered `400 WebSockets request was
+	// expected` and another `404 <!DOCTYPE html>`, neither of which this handler can write. Naming
+	// the address makes the port exclusive, because the kernel refuses a second bind on it. See
+	// [issue #227](https://github.com/webai-at-home/webai-at-home/issues/227).
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
 	const address = server.address();
 	if (address === null || typeof address === 'string') {
 		throw new Error('The test server did not report a port');
