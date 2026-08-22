@@ -1,6 +1,7 @@
 import { pipeline, TextStreamer, InterruptableStoppingCriteria, type Message, type TextGenerationPipeline } from '@huggingface/transformers';
 import { StagePayloadFactory, type HistoryInput, type GenerationSettings, type LlmStagePayload, type ToolDeclaration } from '@webai/protocol';
 import { StopSequenceWatcher } from './stop_sequence_watcher.js';
+import { ThinkingBlockCut } from './thinking_block_cut.js';
 import { ToolCallReader } from './tool_call_reader.js';
 import { ChatTemplateTools } from './chat_template_tools.js';
 import { EmptyAnswerRefusal } from './empty_answer_refusal.js';
@@ -623,6 +624,11 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 		let isCancelled = false;
 		const tokenIds: number[] = [];
 		const stopSequenceWatcher = state.stopSequenceWatcher ?? new StopSequenceWatcher([]);
+		// The model's own thinking is taken out before anything else looks at what it wrote, so that
+		// every reader below — the tool call reader, the stop sequence watcher, and the consumer —
+		// sees the answer and never the thinking. See
+		// https://github.com/webai-at-home/webai-at-home/issues/226.
+		const thinkingBlockCut = new ThinkingBlockCut(StageHelperLlmQwen3_5_0_8bFull.isThinkingEnabled(generationSettings));
 		const generationControls = StageHelperLlmQwen3_5_0_8bFull.generationControlsOf(generationSettings);
 		// `<tool_call>` and `</tool_call>` are added tokens of this tokenizer with `special: false`,
 		// read off the pinned revision's own tokenizer.json, so they survive this decoding and the
@@ -633,11 +639,15 @@ export class StageHelperLlmQwen3_5_0_8bFull {
 				const streamer = new TextStreamer(generator.tokenizer, {
 					skip_prompt: true,
 					skip_special_tokens: true,
-					callback_function: (chunk: string) => {
-						// `writtenSoFar` is every character the model has written, including any the
-						// watcher is holding back, because a tool call must be read out of the whole
-						// text. The watcher decides only what may be forwarded to the consumer, and
-						// the two answer different questions about the same text.
+					callback_function: (rawChunk: string) => {
+						// Everything below reads the answer rather than what the model wrote, because
+						// a model that is still thinking has written no answer yet. A run that asked
+						// for no thinking is handed every chunk back unchanged.
+						const chunk = thinkingBlockCut.accept(rawChunk);
+						// `writtenSoFar` is every character of the answer, including any the watcher
+						// is holding back, because a tool call must be read out of the whole answer.
+						// The watcher decides only what may be forwarded to the consumer, and the two
+						// answer different questions about the same text.
 						writtenSoFar += chunk;
 						// Stop the moment the model has finished asking for a tool. Nothing after a
 						// complete tool call is wanted, and on a volunteer's browser the tokens that
