@@ -95,7 +95,7 @@ The `report:*` scripts of `package.json` write markdown reports into [`data/conf
 
 ## The examples
 
-Beside the three subcommands, [`examples/`](./examples) holds one short runnable program per task type and per calling style, each one written against the official `openai` package on npm rather than against this package's own client, and each one runnable on its own. They came here from [`packages/_openai_api_tool_TOREMOVE`](../_openai_api_tool_TOREMOVE/) when that package was frozen, so that every program sending a chat completion request from this repository lives in one package. Start with the development formula example, which needs no model download:
+Beside the three subcommands, [`examples/typescript/`](./examples/typescript) holds one short runnable program per task type and per calling style, each one written against the official `openai` package on npm rather than against this package's own client, and each one runnable on its own. They came here from [`packages/_openai_api_tool_TOREMOVE`](../_openai_api_tool_TOREMOVE/) when that package was frozen, so that every program sending a chat completion request from this repository lives in one package. Start with the development formula example, which needs no model download:
 
 ```sh
 npm run example:chat_completion_dev_formula --workspace @webai/openai-test
@@ -104,6 +104,16 @@ npm run example:chat_completion_dev_formula --workspace @webai/openai-test
 The others are `example:list_models`, `example:chat_completion_system_message`, `example:chat_completion_nostream_llm_gemma_nano_chrome_full`, `example:chat_completion_streamed_llm_gemma_nano_chrome_full`, `example:chat_completion_nostream_llm_qwen3_0_6b_sharded`, `example:chat_completion_streamed_llm_qwen3_0_6b_sharded`, `example:chat_completion_nostream_llm_qwen3_5_0_8b_full`, `example:chat_completion_streamed_llm_qwen3_5_0_8b_full`, `example:chat_completion_history_llm_qwen3_5_0_8b_full`, `example:chat_completion_nostream_llm_llama3_2_1b_full`, `example:chat_completion_streamed_llm_llama3_2_1b_full`, `example:chat_completion_history_llm_llama3_2_1b_full`, `example:chat_completion_nostream_llm_gemma_4_e2b_full`, `example:chat_completion_streamed_llm_gemma_4_e2b_full`, and `example:chat_completion_history_llm_gemma_4_e2b_full`. Each file says at the top what the cluster has to have running for it to work. Every example reads `OPENAI_BASE_URL` and `OPENAI_API_KEY` from the environment when they are set.
 
 The three `history` examples are the ones to run to see a real history reach a worker: `llm_qwen3_5_0_8b_full`, `llm_llama3_2_1b_full`, and `llm_gemma_4_e2b_full` are the three models whose task type accepts a whole history rather than only one prompt, so each sends a fact in one request and asks for it back in a second request that carries the first request's own answer along with it.
+
+### The same examples from a terminal
+
+[`examples/clis/`](./examples/clis) holds the same set again, written as shell scripts against the official OpenAI command line program, https://developers.openai.com/api/docs/libraries/openai-cli, so that a reader who wants to try the server without writing any code can. Every script there matches a TypeScript example of the same name, and each one is registered as an `example:cli:*` script rather than an `example:*` one:
+
+```sh
+npm run example:cli:chat_completion_dev_formula --workspace @webai/openai-test
+```
+
+They need two programs installed, `brew tap openai/tools && brew install openai/tools/openai` and `brew install jq`, and they read the same `OPENAI_BASE_URL` and `OPENAI_API_KEY` the TypeScript examples read. One script has no TypeScript counterpart: [`examples/clis/responses_dev_formula.sh`](./examples/clis/responses_dev_formula.sh) posts to `/v1/responses` where every other example posts to `/v1/chat/completions`.
 
 ## Its own tests
 

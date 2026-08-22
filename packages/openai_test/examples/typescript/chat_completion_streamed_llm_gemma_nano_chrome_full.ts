@@ -2,19 +2,20 @@ import OpenAI from 'openai';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Shows the complete Qwen3.5-0.8B model's answer arriving as it is written
+//	Shows the Chrome built-in model's answer arriving as it is written
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_streamed_llm_qwen3_5_0_8b_full --workspace @webai/openai-test
+//   npm run example:chat_completion_streamed_llm_gemma_nano_chrome_full --workspace @webai/openai-test
 //
-// The model `llm_qwen3_5_0_8b_full` is the complete Qwen3.5-0.8B language model, downloaded
-// directly from Hugging Face and held entirely by one worker browser tab.
+// The model `llm_gemma_nano_chrome_full` is the Gemma Nano language model built into the Chrome
+// browser. Nothing about the model is downloaded or held by this project: the worker browser tab
+// asks the browser for the answer through the browser's own prompt interface.
 //
-// It needs the gateway running and one worker browser tab open in a browser with WebGPU and
-// 16-bit float shader support, for example the page
-// http://localhost:8787/debug_iframe_llm_qwen3_5_0_8b_full.
+// It needs the gateway running and one worker browser tab open in a recent Chrome whose own
+// language model is ready, for example the page
+// http://localhost:8787/debug_iframe_llm_gemma_nano_chrome_full.
 //
 // A request that asks for `stream: true` is answered as the answer is written, as server-sent
 // events: one chunk per piece of the answer, ended by a `[DONE]` line. Joining the pieces gives
@@ -22,7 +23,7 @@ import OpenAI from 'openai';
 //
 // Asking for a stream is what makes the cluster send pieces at all. It costs a scheduling round
 // for every piece, so a request that does not ask for one is answered with the fewest messages
-// the pipeline can manage, which `examples/chat_completion_nostream_llm_qwen3_5_0_8b_full.ts` shows.
+// the pipeline can manage, which `examples/typescript/chat_completion_nostream_llm_gemma_nano_chrome_full.ts` shows.
 
 const client = new OpenAI({
 	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',
@@ -31,7 +32,7 @@ const client = new OpenAI({
 });
 
 const stream = await client.chat.completions.create({
-	model: 'llm_qwen3_5_0_8b_full',
+	model: 'llm_gemma_nano_chrome_full',
 	messages: [
 		{
 			role: 'user',

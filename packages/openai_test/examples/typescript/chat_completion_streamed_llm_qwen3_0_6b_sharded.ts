@@ -24,7 +24,7 @@ import OpenAI from 'openai';
 // the same text the request would have been answered with in one piece. Every piece here is one
 // token, which is the smallest piece this model produces regardless of whether a stream was
 // asked for, so streaming costs no extra scheduling round for this model the way it does for
-// `examples/chat_completion_streamed_llm_gemma_nano_chrome_full.ts`.
+// `examples/typescript/chat_completion_streamed_llm_gemma_nano_chrome_full.ts`.
 //
 // This is the slowest example by a wide margin. Generation stops at the end-of-sequence token or
 // at 160 tokens.

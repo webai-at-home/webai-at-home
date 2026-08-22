@@ -2,20 +2,22 @@ import OpenAI, { APIError } from 'openai';
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-//	Carries a real history across two turns, with the complete Qwen3.5-0.8B model
+//	Carries a real history across two turns, with the complete Gemma 4 E2B instruction-tuned model
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 // Run with:
-//   npm run example:chat_completion_history_llm_qwen3_5_0_8b_full --workspace @webai/openai-test
+//   npm run example:chat_completion_history_llm_gemma_4_e2b_full --workspace @webai/openai-test
 //
-// The model `llm_qwen3_5_0_8b_full` is one of the three models whose task type accepts a whole
-// history rather than only one prompt (`llm_llama3_2_1b_full` and `llm_gemma_4_e2b_full` are the
-// other two; see `examples/chat_completion_history_llm_llama3_2_1b_full.ts` and
-// `examples/chat_completion_history_llm_gemma_4_e2b_full.ts`). Sending several messages here does
+// The model `llm_gemma_4_e2b_full` is one of the three models whose task type accepts a whole
+// history rather than only one prompt (`llm_qwen3_5_0_8b_full` and `llm_llama3_2_1b_full` are the
+// other two; see `examples/typescript/chat_completion_history_llm_qwen3_5_0_8b_full.ts` and
+// `examples/typescript/chat_completion_history_llm_llama3_2_1b_full.ts`). Sending several messages here does
 // not flatten them into lines of `role: content` text the way `llm_gemma_nano_chrome_full` and
 // `llm_qwen3_0_6b_sharded` still do — this server submits the messages as they are, and
-// `@huggingface/transformers` applies the model's own chat template to real turns.
+// `@huggingface/transformers` applies the model's own chat template to real turns. Gemma 4 E2B
+// ships both `chat_template.jinja` and a `chat_template` in `tokenizer_config.json`, which is what
+// makes that possible for this model.
 //
 // This example shows what that is worth: the first request states a fact and nothing else, the
 // second sends the whole history so far, including the model's own first answer, and asks a
@@ -23,10 +25,10 @@ import OpenAI, { APIError } from 'openai';
 // second request's `messages` array itself; this server keeps no history state between
 // requests, so every request still carries the whole history.
 //
-// It needs the gateway running and one worker browser tab open in a browser with WebGPU and
-// 16-bit float shader support, for example the page
-// http://localhost:8787/debug_iframe_llm_qwen3_5_0_8b_full. The first request on a fresh browser
-// profile downloads about 600 MB of model files, which took about 163 seconds in testing; later
+// It needs the gateway running and one worker browser tab open in a browser with a WebGPU adapter
+// carrying the `shader-f16` feature, for example the page
+// http://localhost:8787/debug_iframe_llm_gemma_4_e2b_full. This stage has no WebAssembly fallback.
+// The first request on a fresh browser profile downloads about 3111 MB of model files; later
 // requests, including the second one below, reuse the browser's cache.
 
 const client = new OpenAI({
@@ -36,7 +38,7 @@ const client = new OpenAI({
 	timeout: 600_000,
 });
 
-const model = 'llm_qwen3_5_0_8b_full';
+const model = 'llm_gemma_4_e2b_full';
 
 try {
 	const firstQuestion = 'My name is Ada and my favorite programming language is Lisp. Please just say hello back.';

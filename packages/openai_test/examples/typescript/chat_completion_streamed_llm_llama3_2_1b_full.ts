@@ -22,7 +22,7 @@ import OpenAI from 'openai';
 //
 // Asking for a stream is what makes the cluster send pieces at all. It costs a scheduling round
 // for every piece, so a request that does not ask for one is answered with the fewest messages
-// the pipeline can manage, which `examples/chat_completion_nostream_llm_llama3_2_1b_full.ts` shows.
+// the pipeline can manage, which `examples/typescript/chat_completion_nostream_llm_llama3_2_1b_full.ts` shows.
 
 const client = new OpenAI({
 	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',

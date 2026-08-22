@@ -20,7 +20,7 @@ import OpenAI, { APIError } from 'openai';
 //
 // The whole answer is generated before this server answers, one piece of the answer per stage
 // run, so expect to wait. Ask for `stream: true` to be answered as the answer is written instead,
-// which `examples/chat_completion_streamed_llm_llama3_2_1b_full.ts` shows.
+// which `examples/typescript/chat_completion_streamed_llm_llama3_2_1b_full.ts` shows.
 
 const client = new OpenAI({
 	baseURL: process.env.OPENAI_BASE_URL ?? 'http://localhost:8788/v1',

@@ -8,7 +8,7 @@ The one command line tool that tests, measures, and talks to a server speaking t
 
 - `src/cli.ts`: the `openai_test` program and its subcommands.
 - `src/`: every source folder — see [its own CONTEXT.md](src/CONTEXT.md).
-- `examples/`: one runnable program per task type and per calling style, written against the official `openai` package on npm — see [its own CONTEXT.md](examples/CONTEXT.md).
+- `examples/`: the runnable example programs, one subfolder per language — see [its own CONTEXT.md](examples/CONTEXT.md).
 - `tests/index.test.ts`: this package's own automated test suite, which starts its own local HTTP server and so needs neither a cluster nor a local model server.
 - Command to run this folder: `npx tsx src/cli.ts conformance --base_url http://localhost:1234/v1 --model <name> --profile full`
 
